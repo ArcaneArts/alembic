@@ -2,8 +2,7 @@ import 'dart:math';
 
 import 'package:alembic/splash.dart';
 import 'package:alembic/util/window.dart';
-import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
+import 'package:arcane/arcane.dart';
 import 'package:hive_flutter/adapters.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -30,10 +29,15 @@ class Alembic extends StatefulWidget {
 
 class _AlembicState extends State<Alembic> {
   @override
-  Widget build(BuildContext context) => const CupertinoApp(
+  Widget build(BuildContext context) => ArcaneApp(
         debugShowCheckedModeBanner: false,
         title: 'Alembic',
-        theme: CupertinoThemeData(scaffoldBackgroundColor: Colors.transparent),
+        theme: ArcaneTheme(
+            themeMode: ThemeMode.system,
+            scheme: ContrastedColorScheme(
+              dark: ColorSchemes.darkZinc(),
+              light: ColorSchemes.lightZinc(),
+            )),
         home: SplashScreen(),
       );
 }

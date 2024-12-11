@@ -1,11 +1,9 @@
 import 'package:alembic/home.dart';
 import 'package:alembic/login.dart';
 import 'package:alembic/main.dart';
-import 'package:fast_log/fast_log.dart';
-import 'package:flutter/cupertino.dart';
-import 'package:github/github.dart';
-import 'package:flutter/material.dart';
+import 'package:arcane/arcane.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:github/github.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -16,11 +14,10 @@ class SplashScreen extends StatefulWidget {
 
 class SplashScreenState extends State<SplashScreen> {
   void doLogin() {
-    warn("Not Logged In");
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Navigator.pushAndRemoveUntil(
           context,
-          CupertinoPageRoute(builder: (context) => const LoginScreen()),
+          MaterialPageRoute(builder: (context) => const LoginScreen()),
           (route) => false);
     });
   }
@@ -33,7 +30,7 @@ class SplashScreenState extends State<SplashScreen> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         Navigator.pushAndRemoveUntil(
             context,
-            CupertinoPageRoute(
+            MaterialPageRoute(
                 builder: (context) => AlembicHome(github: auth())),
             (route) => false);
       });
@@ -42,13 +39,11 @@ class SplashScreenState extends State<SplashScreen> {
     super.initState();
   }
 
-  GitHub auth() =>
-      GitHub(auth: Authentication.basic(box.get("1"), box.get("2")));
+  GitHub auth() => GitHub(auth: Authentication.withToken(box.get("1")));
 
   @override
   Widget build(BuildContext context) {
-    return CupertinoPageScaffold(
-      backgroundColor: Colors.transparent,
+    return FillScreen(
       child: Center(
         child: SvgPicture.asset("assets/icon.svg", width: 150, height: 150),
       ),

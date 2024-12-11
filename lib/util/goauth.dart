@@ -1,5 +1,5 @@
-import 'package:oauth2/oauth2.dart' as oauth2;
 import 'package:github/github.dart';
+import 'package:oauth2/oauth2.dart' as oauth2;
 import 'package:url_launcher/url_launcher.dart';
 
 class GitHubOAuth {
@@ -40,5 +40,7 @@ class GitHubOAuth {
   static Future<String> getAuthCodeFromRedirect() async {
     // Implement this method to capture the auth code from the redirect URL
     // This might involve using a local server or deep linking
+
+    return "err";
   }
 }
