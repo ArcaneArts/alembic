@@ -1,23 +1,61 @@
 import 'package:alembic/core/arcane_repository.dart';
+import 'package:alembic/screen/home.dart';
 import 'package:alembic/screen/repository_settings.dart';
 import 'package:alembic/util/extensions.dart';
+import 'package:alembic/util/window.dart';
 import 'package:alembic/widget/link_menu.dart';
 import 'package:arcane/arcane.dart';
+import 'package:github/github.dart';
 
-class RepositoryTile extends StatelessWidget {
+BehaviorSubject<List<Repository>> syncingRepositories =
+    BehaviorSubject.seeded([]);
+
+class RepositoryTile extends StatefulWidget {
   RepositoryTile({super.key});
 
   @override
-  Widget build(BuildContext context) => ContextMenu(
-      items: buildMenu(context),
-      child: ListTile(
-        onPressed: () => ArcaneRepository(repository: context.repository)
-            .open(context.github),
-        title: OverflowMarquee(child: Text(context.repository.name)),
-        subtitle: context.repository.description.trim().isNotEmpty
-            ? Text(context.repository.description)
-            : null,
-      ));
+  State<RepositoryTile> createState() => _RepositoryTileState();
+}
+
+class _RepositoryTileState extends State<RepositoryTile>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    return Pylon<ArcaneRepository>(
+      value: ArcaneRepository(repository: context.repository),
+      builder: (context) => ContextMenu(
+          items: buildMenu(context),
+          child: syncingRepositories
+              .map((i) =>
+                  i.any((g) => g.fullName == context.repository.fullName))
+              .distinct()
+              .build((loading) => ListTile(
+                    trailing: loading
+                        ? const CircularProgressIndicator()
+                        : context.arepository.state.build(
+                            (state) => switch (state) {
+                                  RepoState.active => Clickable(
+                                      child: const Icon(Icons.folder_fill),
+                                      onPressed: () => context.arepository
+                                          .openInFinder()
+                                          .then((i) {
+                                        updateActiveSection
+                                            .add(updateActiveSection.value + 1);
+                                        WindowUtil.hide();
+                                      }),
+                                    ),
+                                  RepoState.cloud => const Icon(Icons.cloud),
+                                  RepoState.archived =>
+                                    const Icon(Icons.archive),
+                                },
+                            loading: const CircularProgressIndicator()),
+                    onPressed: () => context.arepository.open(context.github),
+                    title:
+                        OverflowMarquee(child: Text(context.repository.name)),
+                  ))),
+    );
+  }
 
   List<MenuItem> buildMenu(BuildContext context) => [
         MenuButton(
@@ -53,4 +91,7 @@ class RepositoryTile extends StatelessWidget {
                 "https://github.com/${context.repository.owner?.login}/${context.repository.name}/compare",
             icon: Icons.plus),
       ];
+
+  @override
+  bool get wantKeepAlive => true;
 }

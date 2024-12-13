@@ -140,8 +140,10 @@ class AlembicRepoConfig {
   late ApplicationTool? editorTool;
   late GitTool? gitTool;
   late String openDirectory;
+  late int? lastOpen;
 
-  AlembicRepoConfig({this.editorTool, this.gitTool, this.openDirectory = "/"});
+  AlembicRepoConfig(
+      {this.editorTool, this.gitTool, this.openDirectory = "/", this.lastOpen});
 
   AlembicRepoConfig.fromJson(String json) {
     final data = jsonDecode(json);
@@ -151,6 +153,7 @@ class AlembicRepoConfig {
     gitTool = GitTool.values.select((e) => e.name == data["gitTool"]) ??
         config.gitTool;
     openDirectory = data["openDirectory"] ?? AlembicRepoConfig().openDirectory;
+    lastOpen = data["lastOpen"];
   }
 
   String get json => jsonEncode({
@@ -159,5 +162,6 @@ class AlembicRepoConfig {
         if (gitTool != null && gitTool != config.gitTool)
           "gitTool": gitTool!.name,
         "openDirectory": openDirectory,
+        if (lastOpen != null) "lastOpen": lastOpen
       });
 }

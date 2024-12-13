@@ -1,14 +1,18 @@
 import 'dart:async';
 
+import 'package:alembic/core/arcane_repository.dart';
 import 'package:alembic/main.dart';
 import 'package:alembic/screen/settings.dart';
 import 'package:alembic/screen/splash.dart';
 import 'package:alembic/util/extensions.dart';
+import 'package:alembic/widget/active_section.dart';
 import 'package:alembic/widget/organization_section.dart';
 import 'package:alembic/widget/personal_section.dart';
 import 'package:arcane/arcane.dart';
 import 'package:fast_log/fast_log.dart';
 import 'package:github/github.dart';
+
+BehaviorSubject<int> updateActiveSection = BehaviorSubject.seeded(0);
 
 class AlembicHome extends StatefulWidget {
   final GitHub github;
@@ -23,6 +27,7 @@ class _AlembicHomeState extends State<AlembicHome> {
   late Future<List<Repository>> allRepos;
   Map<Organization, List<Repository>> orgRepos = {};
   List<Repository> personalRepos = [];
+  List<Repository> active = [];
   final BehaviorSubject<int> _fetching = BehaviorSubject.seeded(0);
   BehaviorSubject<String?> search = BehaviorSubject.seeded(null);
   TextEditingController searchController = TextEditingController();
@@ -34,6 +39,18 @@ class _AlembicHomeState extends State<AlembicHome> {
       error(e);
       error(es);
       return <Repository>[];
+    }).then((r) {
+      List<Future> work = [];
+      for (Repository i in r) {
+        ArcaneRepository r = ArcaneRepository(repository: i);
+        work.add(r.isActive.then((g) {
+          if (g) {
+            active.add(i);
+          }
+        }));
+      }
+
+      return Future.wait(work).then((_) => r);
     });
   }
 
@@ -168,6 +185,17 @@ class _AlembicHomeState extends State<AlembicHome> {
                         ],
                       builder: (context) => MultiSliver(
                             children: [
+                              updateActiveSection.build((i) => context.search
+                                  .buildNullable((query) => Pylon<
+                                          List<Repository>>(
+                                      key: ValueKey("active.${query ?? ""}"),
+                                      value: active.filterBy(query).sorted((b,
+                                              a) =>
+                                          (getRepoConfig(a).lastOpen ?? 0)
+                                              .compareTo(
+                                                  getRepoConfig(b).lastOpen ??
+                                                      0)),
+                                      builder: (context) => ActiveSection()))),
                               context.search.buildNullable((query) =>
                                   Pylon<List<Repository>>(
                                       key: ValueKey("personal.${query ?? ""}"),

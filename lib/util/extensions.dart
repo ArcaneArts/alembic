@@ -1,3 +1,4 @@
+import 'package:alembic/core/arcane_repository.dart';
 import 'package:arcane/arcane.dart';
 import 'package:github/github.dart';
 
@@ -7,6 +8,8 @@ extension XBuildContextRepo on BuildContext {
   GitHub get github => pylon<GitHub>();
 
   Repository get repository => pylon<Repository>();
+
+  ArcaneRepository get arepository => pylon<ArcaneRepository>();
 
   Organization get organization => pylon<Organization>();
 
