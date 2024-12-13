@@ -1,5 +1,5 @@
 import 'package:alembic/main.dart';
-import 'package:alembic/splash.dart';
+import 'package:alembic/screen/splash.dart';
 import 'package:arcane/arcane.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 

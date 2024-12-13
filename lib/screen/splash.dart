@@ -1,6 +1,6 @@
-import 'package:alembic/home.dart';
-import 'package:alembic/login.dart';
 import 'package:alembic/main.dart';
+import 'package:alembic/screen/home.dart';
+import 'package:alembic/screen/login.dart';
 import 'package:arcane/arcane.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:github/github.dart';

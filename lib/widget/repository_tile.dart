@@ -1,3 +1,5 @@
+import 'package:alembic/core/arcane_repository.dart';
+import 'package:alembic/screen/repository_settings.dart';
 import 'package:alembic/util/extensions.dart';
 import 'package:alembic/widget/link_menu.dart';
 import 'package:arcane/arcane.dart';
@@ -9,6 +11,8 @@ class RepositoryTile extends StatelessWidget {
   Widget build(BuildContext context) => ContextMenu(
       items: buildMenu(context),
       child: ListTile(
+        onPressed: () => ArcaneRepository(repository: context.repository)
+            .open(context.github),
         title: OverflowMarquee(child: Text(context.repository.name)),
         subtitle: context.repository.description.trim().isNotEmpty
             ? Text(context.repository.description)
@@ -16,6 +20,12 @@ class RepositoryTile extends StatelessWidget {
       ));
 
   List<MenuItem> buildMenu(BuildContext context) => [
+        MenuButton(
+          leading: const Icon(Icons.gear_six),
+          onPressed: (_) => Arcane.push(context, const RepositorySettings()),
+          child: const Text("Configure"),
+        ),
+        const MenuDivider(),
         linkMenu(
             text: "View on Github",
             url:
