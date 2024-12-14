@@ -100,6 +100,16 @@ class Settings extends StatelessWidget {
                     title: Text(v.displayName),
                   )),
         ]),
+        OptionGroup(name: "Archive", options: [
+          IntOption(
+            name: "Days to Archive",
+            reader: () => config.daysToArchive,
+            writer: (v) => setConfig(config..daysToArchive = v ?? 30),
+            icon: Icons.calendar_fill,
+            description:
+                "The number of days to keep a project in the active list before archiving.",
+          ),
+        ]),
       ]));
 }
 
@@ -108,12 +118,14 @@ class AlembicConfig {
   late GitTool gitTool;
   late String workspaceDirectory;
   late String archiveDirectory;
+  late int daysToArchive;
 
   AlembicConfig(
       {this.editorTool = ApplicationTool.intellij,
       this.gitTool = GitTool.gitkraken,
       this.workspaceDirectory = "~/development/workspace",
-      this.archiveDirectory = "~/Documents/Alembic"});
+      this.archiveDirectory = "~/Documents/Alembic",
+      this.daysToArchive = 30});
 
   AlembicConfig.fromJson(String json) {
     final data = jsonDecode(json);
@@ -126,13 +138,15 @@ class AlembicConfig {
         data["workspaceDirectory"] ?? AlembicConfig().workspaceDirectory;
     archiveDirectory =
         data["archiveDirectory"] ?? AlembicConfig().archiveDirectory;
+    daysToArchive = data["daysToArchive"] ?? AlembicConfig().daysToArchive;
   }
 
   String get json => jsonEncode({
         "editorTool": editorTool.name,
         "gitTool": gitTool.name,
         "workspaceDirectory": workspaceDirectory,
-        "archiveDirectory": archiveDirectory
+        "archiveDirectory": archiveDirectory,
+        "daysToArchive": daysToArchive
       });
 }
 

@@ -10,6 +10,11 @@ import 'package:github/github.dart';
 BehaviorSubject<List<Repository>> syncingRepositories =
     BehaviorSubject.seeded([]);
 
+enum RepoTileMode {
+  tile,
+  card,
+}
+
 class RepositoryTile extends StatefulWidget {
   RepositoryTile({super.key});
 
@@ -22,42 +27,82 @@ class _RepositoryTileState extends State<RepositoryTile>
   @override
   Widget build(BuildContext context) {
     super.build(context);
+    RepoTileMode mode = context.pylonOr<RepoTileMode>() ?? RepoTileMode.tile;
+
     return Pylon<ArcaneRepository>(
       value: ArcaneRepository(repository: context.repository),
-      builder: (context) => ContextMenu(
-          items: buildMenu(context),
-          child: syncingRepositories
-              .map((i) =>
-                  i.any((g) => g.fullName == context.repository.fullName))
-              .distinct()
-              .build((loading) => ListTile(
-                    trailing: loading
-                        ? const CircularProgressIndicator()
-                        : context.arepository.state.build(
-                            (state) => switch (state) {
+      builder: (context) => context.arepository.state.build((state) =>
+          ContextMenu(
+              items: buildMenu(context, state),
+              child: syncingRepositories
+                  .map((i) =>
+                      i.any((g) => g.fullName == context.repository.fullName))
+                  .distinct()
+                  .build((loading) => mode == RepoTileMode.card
+                      ? BasicCard(
+                          leading: loading
+                              ? const CircularProgressIndicator()
+                              : switch (state) {
                                   RepoState.active => Clickable(
                                       child: const Icon(Icons.folder_fill),
-                                      onPressed: () => context.arepository
-                                          .openInFinder()
-                                          .then((i) {
-                                        updateActiveSection
-                                            .add(updateActiveSection.value + 1);
-                                        WindowUtil.hide();
-                                      }),
+                                      onPressed: () => open(context),
                                     ),
                                   RepoState.cloud => const Icon(Icons.cloud),
                                   RepoState.archived =>
                                     const Icon(Icons.archive),
                                 },
-                            loading: const CircularProgressIndicator()),
-                    onPressed: () => context.arepository.open(context.github),
-                    title:
-                        OverflowMarquee(child: Text(context.repository.name)),
-                  ))),
+                          onPressed: () =>
+                              context.arepository.open(context.github),
+                          title: Text(context.repository.name).xSmall(),
+                        )
+                      : context.arepository.streamWork().buildNullable((work) =>
+                          ListTile(
+                            subtitle: work?.isNotEmpty ?? false
+                                ? Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const CircularProgressIndicator(),
+                                      const Gap(4),
+                                      Text(work!.join(", ")).xSmall(),
+                                    ],
+                                  )
+                                : null,
+                            trailing: loading
+                                ? const CircularProgressIndicator()
+                                : context.arepository.state.build(
+                                    (state) => switch (state) {
+                                          RepoState.active => Clickable(
+                                              child:
+                                                  const Icon(Icons.folder_fill),
+                                              onPressed: () => open(context),
+                                            ),
+                                          RepoState.cloud =>
+                                            const Icon(Icons.cloud),
+                                          RepoState.archived =>
+                                            const Icon(Icons.archive),
+                                        },
+                                    loading: const CircularProgressIndicator()),
+                            onPressed: () =>
+                                context.arepository.open(context.github),
+                            title: OverflowMarquee(
+                                child: Text(context.repository.name)),
+                          ))))),
     );
   }
 
-  List<MenuItem> buildMenu(BuildContext context) => [
+  void open(BuildContext context) {
+    WindowUtil.hide();
+    context.arepository.openInFinder().then((i) {
+      update.add(update.value + 1);
+    });
+  }
+
+  List<MenuItem> buildMenu(BuildContext context, RepoState state) => [
+        MenuButton(
+          onPressed: (_) => open(context),
+          leading: const Icon(Icons.pencil),
+          child: const Text("Open"),
+        ),
         MenuButton(
           leading: const Icon(Icons.gear_six),
           onPressed: (_) => Arcane.push(context, const RepositorySettings()),
@@ -90,6 +135,63 @@ class _RepositoryTileState extends State<RepositoryTile>
             url:
                 "https://github.com/${context.repository.owner?.login}/${context.repository.name}/compare",
             icon: Icons.plus),
+        const MenuDivider(),
+        if (state == RepoState.active) ...[
+          MenuButton(
+              leading: const Icon(Icons.download),
+              child: const Text("Pull"),
+              onPressed: (_) =>
+                  context.arepository.ensureRepositoryUpdated(context.github)),
+          MenuButton(
+              leading: const Icon(Icons.archive),
+              onPressed: (_) => context.arepository.archive(),
+              child: const Text("Archive")),
+          MenuButton(
+              leading: const Icon(Icons.trash),
+              onPressed: (_) => DialogConfirm(
+                  title: "Delete ${context.repository.fullName}?",
+                  destructive: true,
+                  confirmText: "Delete Project",
+                  description:
+                      "Are you sure you want to delete this repository from your active workspace? THERE COULD BE UNSTAGED OR UNPUSHED LOCAL CHANGES YOU WILL LOSE FOREVER!",
+                  onConfirm: () =>
+                      context.arepository.deleteRepository()).open(context),
+              child: const Text("Delete")),
+        ],
+        if (state == RepoState.archived) ...[
+          MenuButton(
+              leading: const Icon(Icons.upload),
+              onPressed: (_) => context.arepository.unarchive(context.github),
+              child: const Text("Activate")),
+          MenuButton(
+              leading: const Icon(Icons.refresh_ionic),
+              onPressed: (_) =>
+                  context.arepository.updateArchive(context.github),
+              child: const Text("Update Archive")),
+          MenuButton(
+              leading: const Icon(Icons.trash),
+              onPressed: (_) => DialogConfirm(
+                  title: "Delete Archive ${context.repository.fullName}?",
+                  description:
+                      "Are you sure you want to delete this archive? You will lose the image of this repository. THERE COULD BE LOCAL UNSTAGED OR UNPUSHED CHANGES IN THIS REPOSITORY ARCHIVE YOU COULD LOSE CHANGES FOREVER!",
+                  destructive: true,
+                  confirmText: "Delete Archive",
+                  onConfirm: () =>
+                      context.arepository.deleteRepository()).open(context),
+              child: const Text("Delete Archive")),
+        ],
+        if (state == RepoState.cloud) ...[
+          MenuButton(
+              leading: const Icon(Icons.download),
+              onPressed: (_) =>
+                  context.arepository.ensureRepositoryActive(context.github),
+              child: const Text("Clone")),
+          MenuButton(
+              leading: const Icon(Icons.archive),
+              onPressed: (_) =>
+                  context.arepository.archiveFromCloud(context.github),
+              child: const Text("Archive")),
+        ]
       ];
 
   @override

@@ -55,7 +55,8 @@ String expandPath(String path) {
   return path;
 }
 
-Future<int> cmd(String cmd, List<String> args) async {
+Future<int> cmd(String cmd, List<String> args,
+    {BehaviorSubject<String>? stdout, String? workingDirectory}) async {
   cmd = expandPath(cmd);
   args = args.map(expandPath).toList();
   info("cmd $cmd ${args.map((m) {
@@ -70,12 +71,13 @@ Future<int> cmd(String cmd, List<String> args) async {
 
     return m;
   }).join(" ")}");
-  Process p = await Process.start(cmd, args);
+  Process p =
+      await Process.start(cmd, args, workingDirectory: workingDirectory);
 
-  p.stdout
-      .transform(utf8.decoder)
-      .transform(const LineSplitter())
-      .listen((line) => verbose("cmd $cmd stdout: $line"));
+  p.stdout.transform(utf8.decoder).transform(const LineSplitter()).map((i) {
+    stdout?.add(i);
+    return i;
+  }).listen((line) => verbose("cmd $cmd stdout: $line"));
 
   p.stderr
       .transform(utf8.decoder)
