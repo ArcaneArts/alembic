@@ -10,11 +10,6 @@ import 'package:github/github.dart';
 BehaviorSubject<List<Repository>> syncingRepositories =
     BehaviorSubject.seeded([]);
 
-enum RepoTileMode {
-  tile,
-  card,
-}
-
 class RepositoryTile extends StatefulWidget {
   RepositoryTile({super.key});
 
@@ -27,7 +22,6 @@ class _RepositoryTileState extends State<RepositoryTile>
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    RepoTileMode mode = context.pylonOr<RepoTileMode>() ?? RepoTileMode.tile;
 
     return Pylon<ArcaneRepository>(
       value: ArcaneRepository(repository: context.repository),
@@ -38,25 +32,9 @@ class _RepositoryTileState extends State<RepositoryTile>
                   .map((i) =>
                       i.any((g) => g.fullName == context.repository.fullName))
                   .distinct()
-                  .build((loading) => mode == RepoTileMode.card
-                      ? BasicCard(
-                          leading: loading
-                              ? const CircularProgressIndicator()
-                              : switch (state) {
-                                  RepoState.active => Clickable(
-                                      child: const Icon(Icons.folder_fill),
-                                      onPressed: () => open(context),
-                                    ),
-                                  RepoState.cloud => const Icon(Icons.cloud),
-                                  RepoState.archived =>
-                                    const Icon(Icons.archive),
-                                },
-                          onPressed: () =>
-                              context.arepository.open(context.github),
-                          title: Text(context.repository.name).xSmall(),
-                        )
-                      : context.arepository.streamWork().buildNullable((work) =>
-                          ListTile(
+                  .build((loading) => context.arepository
+                      .streamWork()
+                      .buildNullable((work) => ListTile(
                             subtitle: work?.isNotEmpty ?? false
                                 ? Row(
                                     mainAxisSize: MainAxisSize.min,
@@ -66,7 +44,11 @@ class _RepositoryTileState extends State<RepositoryTile>
                                       Text(work!.join(", ")).xSmall(),
                                     ],
                                   )
-                                : null,
+                                : context.arepository.shouldBeSpecific()
+                                    ? Text(context.repository.owner?.login ??
+                                            "?")
+                                        .xSmall()
+                                    : null,
                             trailing: loading
                                 ? const CircularProgressIndicator()
                                 : context.arepository.state.build(

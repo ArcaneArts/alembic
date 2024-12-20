@@ -15,8 +15,14 @@ BehaviorSubject<List<(Repository, String)>> repoWork =
 
 class ArcaneRepository {
   final Repository repository;
+  bool? _specific;
 
   ArcaneRepository({required this.repository});
+
+  bool shouldBeSpecific() {
+    _specific ??= active.where((i) => i.name == repository.name).length > 1;
+    return _specific!;
+  }
 
   Future<T> doWork<T>(String msg, Future<T> Function() work) async {
     (Repository, String) job = (repository, msg);
@@ -32,8 +38,8 @@ class ArcaneRepository {
   Stream<List<String>> streamWork() => repoWork.stream
       .map((i) => i.where((i) => i.$1 == repository).map((i) => i.$2).toList());
 
-  String get repoPath =>
-      expandPath("${config.workspaceDirectory}/${repository.name}");
+  String get repoPath => expandPath(
+      "${config.workspaceDirectory}/${repository.owner?.login}/${repository.name}");
 
   String get imagePath => expandPath(
       "${config.archiveDirectory}/archives/${repository.owner?.login ?? 'unknown'}/${repository.name}.zip");
@@ -159,10 +165,14 @@ class ArcaneRepository {
         await ensureRepositoryActive(github);
         ApplicationTool tool =
             getRepoConfig(repository).editorTool ?? config.editorTool;
-        info("Opening ${repository.fullName} with ${tool.displayName}");
+        info("Opening ${repository.fullName} with IDE ${tool.displayName}");
         ensureRepositoryUpdated(github);
         tool.launch("$repoPath/${getRepoConfig(repository).openDirectory}"
             .replaceAll("//", "/"));
+        GitTool gitTool = getRepoConfig(repository).gitTool ?? config.gitTool;
+        info(
+            "Opening ${repository.fullName} with Git Client ${gitTool.displayName}");
+        gitTool.launch(repoPath);
         setRepoConfig(
             repository,
             getRepoConfig(repository)

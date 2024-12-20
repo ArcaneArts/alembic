@@ -59,7 +59,7 @@ Future<int> cmd(String cmd, List<String> args,
     {BehaviorSubject<String>? stdout, String? workingDirectory}) async {
   cmd = expandPath(cmd);
   args = args.map(expandPath).toList();
-  info("cmd $cmd ${args.map((m) {
+  verbose("cmd $cmd ${args.map((m) {
     if (m.contains("ghp_")) {
       return m.split(" ").map((i) {
         if (i.contains("ghp_")) {

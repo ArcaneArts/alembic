@@ -40,6 +40,11 @@ extension XGitTool on GitTool {
         GitTool.fork => "Fork",
         GitTool.sourcetree => "SourceTree",
       };
+
+  Future<void> launch(String path) => switch (this) {
+        GitTool.gitkraken => cmd("gitkraken", ["-p", path]),
+        _ => Future.value()
+      };
 }
 
 AlembicRepoConfig getRepoConfig(Repository repo) =>

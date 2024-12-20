@@ -7,14 +7,11 @@ class RepositoryListView extends StatelessWidget {
   RepositoryListView({super.key});
 
   @override
-  Widget build(BuildContext context) => Pylon<RepoTileMode>(
-        value: RepoTileMode.tile,
-        builder: (context) => SliverList.builder(
-          itemBuilder: (context, i) => Pylon<Repository>(
-            value: context.repositories[i],
-            builder: (context) => RepositoryTile(),
-          ),
-          itemCount: context.repositories.length,
+  Widget build(BuildContext context) => SliverList.builder(
+        itemBuilder: (context, i) => Pylon<Repository>(
+          value: context.repositories[i],
+          builder: (context) => RepositoryTile(),
         ),
+        itemCount: context.repositories.length,
       );
 }

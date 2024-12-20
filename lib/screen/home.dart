@@ -48,6 +48,11 @@ class _AlembicHomeState extends State<AlembicHome> {
       List<Future> work = [];
       for (Repository i in r) {
         ArcaneRepository r = ArcaneRepository(repository: i);
+
+        if (active.any((i) => i.fullName == r.repository.fullName)) {
+          continue;
+        }
+
         work.add(r.isActive.then((g) {
           if (g) {
             active.add(i);
