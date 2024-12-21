@@ -64,8 +64,8 @@ class _RepositoryTileState extends State<RepositoryTile>
                                             const Icon(Icons.archive),
                                         },
                                     loading: const CircularProgressIndicator()),
-                            onPressed: () =>
-                                context.arepository.open(context.github),
+                            onPressed: () => context.arepository
+                                .open(context.github, context),
                             title: OverflowMarquee(
                                 child: Text(context.repository.name)),
                           ))))),

@@ -16,29 +16,56 @@ late Box boxSettings;
 late PackageInfo packageInfo;
 
 void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  Future<PackageInfo> pinf = PackageInfo.fromPlatform();
-  print("${(await getApplicationDocumentsDirectory()).path}/Alembic");
-  Hive.init("${(await getApplicationDocumentsDirectory()).path}/Alembic");
-  Random r = Random(384858582220);
-  box = await Hive.openBox("d",
-      encryptionCipher:
-          HiveAesCipher(List.generate(32, (_) => r.nextInt(256))));
-  boxSettings = await Hive.openBox("s");
-  await WindowUtil.init();
-  await pinf.then((value) {
-    packageInfo = value;
-    launchAtStartup.setup(
-      appName: "Alembic",
-      appPath: Platform.resolvedExecutable,
+  try {
+    lDebugMode = true;
+    WidgetsFlutterBinding.ensureInitialized();
+    File logFile =
+        File("${(await getApplicationDocumentsDirectory()).path}/alembic.log");
+    IOSink logSink = logFile.openWrite(
+      mode: FileMode.writeOnlyAppend,
     );
-  });
+    lLogHandler = (cat, l) {
+      logSink.writeln("${cat.name}: $l");
+    };
+    verbose("Getting package info");
+    Future<PackageInfo> pinf = PackageInfo.fromPlatform();
+    info("${(await getApplicationDocumentsDirectory()).path}/Alembic");
+    Hive.init("${(await getApplicationDocumentsDirectory()).path}/Alembic");
+    verbose("Opening Hive boxes");
+    Random r = Random(384858582220);
+    box = await Hive.openBox("d",
+        encryptionCipher:
+            HiveAesCipher(List.generate(32, (_) => r.nextInt(256))));
+    verbose("Opening settings box");
+    boxSettings = await Hive.openBox("s");
+    verbose("Init Window");
+    await WindowUtil.init();
+    verbose("Waiting for PackageInfo");
+    await pinf.then((value) {
+      packageInfo = value;
+      verbose("PackageInfo: ${packageInfo.version}");
+      verbose("Configuring launch startup mode");
+      launchAtStartup.setup(
+        appName: "Alembic",
+        appPath: Platform.resolvedExecutable,
+      );
+    });
 
-  if (boxSettings.get("autolaunch", defaultValue: true) == true) {
-    launchAtStartup.enable();
-  } else {
-    launchAtStartup.disable();
+    verbose("Checking if autolaunch is enabled");
+
+    if (boxSettings.get("autolaunch", defaultValue: true) == true) {
+      launchAtStartup.enable();
+      verbose("Autolaunch enabled");
+    } else {
+      launchAtStartup.disable();
+      verbose("Autolaunch disabled");
+    }
+  } catch (e, es) {
+    error("ERROR $e");
+    error("ERROR $es");
   }
+
+  success("=====================================");
 
   runApp(const Alembic());
 }
@@ -77,6 +104,12 @@ Future<int> cmd(String cmd, List<String> args,
     {BehaviorSubject<String>? stdout, String? workingDirectory}) async {
   cmd = expandPath(cmd);
   args = args.map(expandPath).toList();
+  args = [
+    "-ilc",
+    [cmd, ...args].join(" "),
+  ];
+  cmd = Platform.environment['SHELL'] ?? '/bin/bash';
+
   verbose("cmd $cmd ${args.map((m) {
     if (m.contains("ghp_")) {
       return m.split(" ").map((i) {

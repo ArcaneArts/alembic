@@ -189,7 +189,8 @@ class ArcaneRepository {
   Future<void> openInFinder() async =>
       cmd('open', [Directory(repoPath).absolute.path]);
 
-  Future<void> open(GitHub github) => doWork("Opening", () async {
+  Future<void> open(GitHub github, BuildContext context) =>
+      doWork("Opening", () async {
         await ensureRepositoryActive(github);
         ApplicationTool tool =
             getRepoConfig(repository).editorTool ?? config.editorTool;

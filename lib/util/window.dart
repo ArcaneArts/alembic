@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:fast_log/fast_log.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_acrylic/flutter_acrylic.dart';
 import 'package:screen_retriever/screen_retriever.dart';
@@ -12,17 +13,27 @@ class WindowUtil {
   static bool iconIsDark = true;
 
   static Future<void> init() async {
+    verbose("  Starting Window Manager");
     await windowManager.ensureInitialized();
+    verbose("  Starting System tray");
     await initSystemTray();
+    verbose("  Starting Screen Retriever");
     Display d = await screenRetriever.getPrimaryDisplay();
+    verbose("  Initializing Window");
     await Window.initialize();
+    verbose("  Setup Blur Listeners");
     windowManager.addListener(HideOnBlurWindowListener());
+    verbose("  Waiting for Window to be ready");
     windowManager.waitUntilReadyToShow(windowOptions, () async {
+      verbose("Window is Ready. Hiding...");
       await windowManager.hide();
+      verbose("Setting Window Properties (mv=false, bg=transparent)");
       await windowManager.setBackgroundColor(Colors.transparent);
       await windowManager.setMovable(false);
+      verbose("Setting Window Position");
       await windowManager
           .setPosition(Offset(d.size.width - windowOptions.size!.width, 0));
+      verbose("Setting Window Effect to menu 0x0000");
       await Window.setEffect(
         effect: WindowEffect.menu,
         color: const Color(0x00000000),
@@ -31,10 +42,13 @@ class WindowUtil {
   }
 
   static Future<void> initSystemTray() async {
+    verbose("    Init System Tray");
     systemTray = SystemTray();
+    verbose("    Setting System Tray Icon");
     await systemTray.initSystemTray(
         iconPath: 'assets/tray.png', isTemplate: true, toolTip: "Alembic");
 
+    verbose("    Building System Tray Menu");
     final Menu menu = Menu();
     await menu.buildFrom([
       MenuItemLabel(
@@ -43,8 +57,10 @@ class WindowUtil {
               windowManager.destroy().then((_) => exit(0))),
     ]);
 
+    verbose("    Setting System Tray Menu");
     await systemTray.setContextMenu(menu);
 
+    verbose("    Registering System Tray Event Handler");
     systemTray.registerSystemTrayEventHandler((eventName) {
       if (eventName == kSystemTrayEventClick) {
         show();
