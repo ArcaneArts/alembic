@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:alembic/main.dart';
 import 'package:arcane/arcane.dart';
 import 'package:github/github.dart';
+import 'package:launch_at_startup/launch_at_startup.dart';
 
 enum ApplicationTool { vscode, intellij, zed, xcode }
 
@@ -64,6 +65,21 @@ class Settings extends StatelessWidget {
   @override
   Widget build(BuildContext context) => SettingsScreen(
           options: OptionScreen(name: "Settings", options: [
+        OptionGroup(name: "Application", options: [
+          BoolOption(
+              name: "Launch at Startup",
+              icon: Icons.open_ionic,
+              reader: () => boxSettings.get("autolaunch", defaultValue: true),
+              writer: (b) {
+                boxSettings.put("autolaunch", b);
+
+                if (b == true) {
+                  launchAtStartup.enable();
+                } else {
+                  launchAtStartup.disable();
+                }
+              })
+        ]),
         OptionGroup(name: "Tools", options: [
           StringOption(
             name: "Workspace Directory",

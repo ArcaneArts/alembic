@@ -7,13 +7,17 @@ import 'package:alembic/util/window.dart';
 import 'package:arcane/arcane.dart';
 import 'package:fast_log/fast_log.dart';
 import 'package:hive_flutter/adapters.dart';
+import 'package:launch_at_startup/launch_at_startup.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 
 late Box box;
 late Box boxSettings;
+late PackageInfo packageInfo;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  Future<PackageInfo> pinf = PackageInfo.fromPlatform();
   print("${(await getApplicationDocumentsDirectory()).path}/Alembic");
   Hive.init("${(await getApplicationDocumentsDirectory()).path}/Alembic");
   Random r = Random(384858582220);
@@ -22,6 +26,20 @@ void main() async {
           HiveAesCipher(List.generate(32, (_) => r.nextInt(256))));
   boxSettings = await Hive.openBox("s");
   await WindowUtil.init();
+  await pinf.then((value) {
+    packageInfo = value;
+    launchAtStartup.setup(
+      appName: "Alembic",
+      appPath: Platform.resolvedExecutable,
+    );
+  });
+
+  if (boxSettings.get("autolaunch", defaultValue: true) == true) {
+    launchAtStartup.enable();
+  } else {
+    launchAtStartup.disable();
+  }
+
   runApp(const Alembic());
 }
 

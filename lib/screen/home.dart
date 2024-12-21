@@ -393,8 +393,13 @@ class _AlembicHomeState extends State<AlembicHome> {
                                             (context) => OrganizationSection())
                                   ],
                                 )),
-                    loading: SliverFillRemaining(
-                        child: const CircularProgressIndicator().iw.ih)),
+                    loading: const SliverFillRemaining(
+                        child: Center(
+                      child: SizedBox(
+                          height: 48,
+                          width: 48,
+                          child: CircularProgressIndicator()),
+                    ))),
           )));
 }
 
