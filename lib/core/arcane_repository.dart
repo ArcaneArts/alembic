@@ -158,6 +158,34 @@ class ArcaneRepository {
               ? RepoState.archived
               : RepoState.cloud);
 
+  Future<void> runAutoMacros() async {
+    for (String path in [
+      ...await findDartPackages(
+              "$repoPath/${getRepoConfig(repository).openDirectory}"
+                  .replaceAll("//", "/"))
+          .toList(),
+      ...await findDartPackages(repoPath).toList()
+    ]) {
+      warn("IN $path");
+      cmd("flutter", ["pub", "get"], workingDirectory: path);
+    }
+  }
+
+  Stream<String> findDartPackages(String path) async* {
+    if (await File("$path/pubspec.yaml").exists()) {
+      yield path;
+    }
+
+    for (FileSystemEntity entity
+        in Directory(path).listSync(followLinks: false)) {
+      if (entity is Directory) {
+        if (entity.path.endsWith(".plugin_symlinks")) continue;
+
+        yield* findDartPackages(entity.path);
+      }
+    }
+  }
+
   Future<void> openInFinder() async =>
       cmd('open', [Directory(repoPath).absolute.path]);
 
@@ -173,6 +201,7 @@ class ArcaneRepository {
         info(
             "Opening ${repository.fullName} with Git Client ${gitTool.displayName}");
         gitTool.launch(repoPath);
+        runAutoMacros();
         setRepoConfig(
             repository,
             getRepoConfig(repository)
