@@ -4,11 +4,10 @@ import 'package:fast_log/fast_log.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_acrylic/flutter_acrylic.dart';
 import 'package:screen_retriever/screen_retriever.dart';
-import 'package:system_tray/system_tray.dart';
+import 'package:tray_manager/tray_manager.dart';
 import 'package:window_manager/window_manager.dart';
 
 class WindowUtil {
-  static late SystemTray systemTray;
   static bool isDark = false;
   static bool iconIsDark = true;
 
@@ -42,32 +41,20 @@ class WindowUtil {
   }
 
   static Future<void> initSystemTray() async {
-    verbose("    Init System Tray");
-    systemTray = SystemTray();
-    verbose("    Setting System Tray Icon");
-    await systemTray.initSystemTray(
-        iconPath: 'assets/tray.png', isTemplate: true, toolTip: "Alembic");
-
-    verbose("    Building System Tray Menu");
-    final Menu menu = Menu();
-    await menu.buildFrom([
-      MenuItemLabel(
+    await trayManager.setIcon('assets/tray.png', isTemplate: true);
+    Menu menu = Menu(
+      items: [
+        MenuItem(
+          key: 'exit',
           label: 'Exit Alembic',
-          onClicked: (menuItem) =>
-              windowManager.destroy().then((_) => exit(0))),
-    ]);
+        ),
+      ],
+    );
 
-    verbose("    Setting System Tray Menu");
-    await systemTray.setContextMenu(menu);
-
+    await trayManager.setContextMenu(menu);
     verbose("    Registering System Tray Event Handler");
-    systemTray.registerSystemTrayEventHandler((eventName) {
-      if (eventName == kSystemTrayEventClick) {
-        show();
-      } else if (eventName == kSystemTrayEventRightClick) {
-        systemTray.popUpContextMenu();
-      }
-    });
+    trayManager.addListener(AlembicTrayListener());
+    verbose("    System Tray Ready");
   }
 
   static const WindowOptions windowOptions = WindowOptions(
@@ -96,6 +83,31 @@ class WindowUtil {
 
   static Future<void> hide() async {
     await windowManager.hide();
+  }
+}
+
+class AlembicTrayListener implements TrayListener {
+  @override
+  void onTrayIconMouseDown() {}
+
+  @override
+  void onTrayIconMouseUp() {
+    WindowUtil.show();
+  }
+
+  @override
+  void onTrayIconRightMouseDown() {}
+
+  @override
+  void onTrayIconRightMouseUp() {
+    trayManager.popUpContextMenu();
+  }
+
+  @override
+  void onTrayMenuItemClick(MenuItem menuItem) {
+    if (menuItem.key == "exit") {
+      windowManager.destroy().then((_) => exit(0));
+    }
   }
 }
 
