@@ -81,13 +81,13 @@ class _RepositoryTileState extends State<RepositoryTile>
 
   List<MenuItem> buildMenu(BuildContext context, RepoState state) => [
         MenuButton(
-          onPressed: (_) => open(context),
+          onPressed: () => open(context),
           leading: const Icon(Icons.pencil),
           child: const Text("Open"),
         ),
         MenuButton(
           leading: const Icon(Icons.gear_six),
-          onPressed: (_) => Arcane.push(context, const RepositorySettings()),
+          onPressed: () => Arcane.push(context, const RepositorySettings()),
           child: const Text("Configure"),
         ),
         const MenuDivider(),
@@ -122,15 +122,15 @@ class _RepositoryTileState extends State<RepositoryTile>
           MenuButton(
               leading: const Icon(Icons.download),
               child: const Text("Pull"),
-              onPressed: (_) =>
+              onPressed: () =>
                   context.arepository.ensureRepositoryUpdated(context.github)),
           MenuButton(
               leading: const Icon(Icons.archive),
-              onPressed: (_) => context.arepository.archive(),
+              onPressed: () => context.arepository.archive(),
               child: const Text("Archive")),
           MenuButton(
               leading: const Icon(Icons.trash),
-              onPressed: (_) => DialogConfirm(
+              onPressed: () => DialogConfirm(
                   title: "Delete ${context.repository.fullName}?",
                   destructive: true,
                   confirmText: "Delete Project",
@@ -143,16 +143,16 @@ class _RepositoryTileState extends State<RepositoryTile>
         if (state == RepoState.archived) ...[
           MenuButton(
               leading: const Icon(Icons.upload),
-              onPressed: (_) => context.arepository.unarchive(context.github),
+              onPressed: () => context.arepository.unarchive(context.github),
               child: const Text("Activate")),
           MenuButton(
               leading: const Icon(Icons.refresh_ionic),
-              onPressed: (_) =>
+              onPressed: () =>
                   context.arepository.updateArchive(context.github),
               child: const Text("Update Archive")),
           MenuButton(
               leading: const Icon(Icons.trash),
-              onPressed: (_) => DialogConfirm(
+              onPressed: () => DialogConfirm(
                   title: "Delete Archive ${context.repository.fullName}?",
                   description:
                       "Are you sure you want to delete this archive? You will lose the image of this repository. THERE COULD BE LOCAL UNSTAGED OR UNPUSHED CHANGES IN THIS REPOSITORY ARCHIVE YOU COULD LOSE CHANGES FOREVER!",
@@ -165,12 +165,12 @@ class _RepositoryTileState extends State<RepositoryTile>
         if (state == RepoState.cloud) ...[
           MenuButton(
               leading: const Icon(Icons.download),
-              onPressed: (_) =>
+              onPressed: () =>
                   context.arepository.ensureRepositoryActive(context.github),
               child: const Text("Clone")),
           MenuButton(
               leading: const Icon(Icons.archive),
-              onPressed: (_) =>
+              onPressed: () =>
                   context.arepository.archiveFromCloud(context.github),
               child: const Text("Archive")),
         ]

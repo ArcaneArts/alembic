@@ -171,7 +171,7 @@ class _AlembicHomeState extends State<AlembicHome> {
                             .existsSync())
                           MenuButton(
                             leading: const Icon(Icons.folder),
-                            onPressed: (_) => cmd('open', [
+                            onPressed: () => cmd('open', [
                               Directory(expandPath(config.workspaceDirectory))
                                   .absolute
                                   .path
@@ -183,7 +183,7 @@ class _AlembicHomeState extends State<AlembicHome> {
                             .existsSync())
                           MenuButton(
                             leading: const Icon(Icons.folder),
-                            onPressed: (_) => cmd('open', [
+                            onPressed: () => cmd('open', [
                               Directory(expandPath(config.archiveDirectory) +
                                       "/archives".replaceAll("//", "/"))
                                   .absolute
@@ -198,7 +198,7 @@ class _AlembicHomeState extends State<AlembicHome> {
                                 MenuButton(
                                   leading:
                                       const Icon(Icons.code_download_ionic),
-                                  onPressed: (_) {
+                                  onPressed: () {
                                     progress.add(0);
                                     active
                                         .map((i) => () =>
@@ -218,7 +218,7 @@ class _AlembicHomeState extends State<AlembicHome> {
                               if (active.isNotEmpty)
                                 MenuButton(
                                   leading: const Icon(Icons.archive_box),
-                                  onPressed: (_) {
+                                  onPressed: () {
                                     progress.add(0);
                                     active
                                         .map((i) => () =>
@@ -236,7 +236,7 @@ class _AlembicHomeState extends State<AlembicHome> {
                                 ),
                               MenuButton(
                                 leading: const Icon(Icons.refresh_ionic),
-                                onPressed: (_) {
+                                onPressed: () {
                                   progress.add(0);
                                   allRepos.then((g) => g
                                           .where((i) =>
@@ -257,7 +257,7 @@ class _AlembicHomeState extends State<AlembicHome> {
                               ),
                               MenuButton(
                                 leading: const Icon(Icons.upload),
-                                onPressed: (_) {
+                                onPressed: () {
                                   progress.add(0);
                                   allRepos.then((g) => g
                                           .where((i) =>
@@ -279,7 +279,7 @@ class _AlembicHomeState extends State<AlembicHome> {
                               ),
                               MenuButton(
                                 leading: const Icon(Icons.refresh_ionic),
-                                onPressed: (_) {
+                                onPressed: () {
                                   progress.add(0);
                                   allRepos.then((g) => g
                                           .map((i) => () =>
@@ -302,7 +302,7 @@ class _AlembicHomeState extends State<AlembicHome> {
                         MenuButton(
                             leading: const Icon(Icons.log_out_outline_ionic),
                             child: const Text("Log Out"),
-                            onPressed: (_) => DialogConfirm(
+                            onPressed: () => DialogConfirm(
                                   title: "Log Out?",
                                   description:
                                       "Are you sure you want to log out? Your PAT will be deleted from this device.",
@@ -320,7 +320,7 @@ class _AlembicHomeState extends State<AlembicHome> {
                                 ).open(context)),
                         MenuButton(
                             leading: const Icon(Icons.refresh_ionic),
-                            onPressed: (_) => Navigator.pushAndRemoveUntil(
+                            onPressed: () => Navigator.pushAndRemoveUntil(
                                 context,
                                 MaterialPageRoute(
                                     builder: (context) => const SplashScreen()),
@@ -328,7 +328,7 @@ class _AlembicHomeState extends State<AlembicHome> {
                             child: const Text("Restart")),
                         MenuButton(
                           leading: const Icon(Icons.gear_six),
-                          onPressed: (_) => Arcane.push(context, Settings()),
+                          onPressed: () => Arcane.push(context, Settings()),
                           child: const Text("Settings"),
                         )
                       ]));

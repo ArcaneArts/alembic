@@ -10,5 +10,5 @@ MenuItem linkMenu({
     MenuButton(
         leading: Icon(icon),
         subMenu: subMenu,
-        onPressed: (context) => launchUrlString(url),
+        onPressed: () => launchUrlString(url),
         child: Text(text));
