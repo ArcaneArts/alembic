@@ -14,6 +14,7 @@ import 'package:path_provider/path_provider.dart';
 late Box box;
 late Box boxSettings;
 late PackageInfo packageInfo;
+late bool windowMode = false;
 
 void main() async {
   try {
@@ -29,6 +30,9 @@ void main() async {
     };
     verbose("Getting package info");
     Future<PackageInfo> pinf = PackageInfo.fromPlatform();
+    windowMode = Directory(
+            "${(await getApplicationDocumentsDirectory()).path}/Alembic/WINDOW_MODE")
+        .existsSync();
     info("${(await getApplicationDocumentsDirectory()).path}/Alembic");
     Hive.init("${(await getApplicationDocumentsDirectory()).path}/Alembic");
     verbose("Opening Hive boxes");

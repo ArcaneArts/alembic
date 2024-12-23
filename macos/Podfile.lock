@@ -64,7 +64,7 @@ SPEC CHECKSUMS:
   screen_retriever_macos: 776e0fa5d42c6163d2bf772d22478df4b302b161
   sqflite_darwin: 5a7236e3b501866c1c9befc6771dfd73ffb8702d
   tray_manager: 9064e219c56d75c476e46b9a21182087930baf90
-  url_launcher_macos: 5f437abeda8c85500ceb03f5c1938a8c5a705399
+  url_launcher_macos: c82c93949963e55b228a30115bd219499a6fe404
   window_manager: 3a1844359a6295ab1e47659b1a777e36773cd6e8
 
 PODFILE CHECKSUM: 16208599a12443d53889ba2270a4985981cfb204

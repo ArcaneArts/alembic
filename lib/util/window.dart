@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:alembic/main.dart';
 import 'package:fast_log/fast_log.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_acrylic/flutter_acrylic.dart';
@@ -12,6 +13,10 @@ class WindowUtil {
   static bool iconIsDark = true;
 
   static Future<void> init() async {
+    if (windowMode) {
+      return;
+    }
+
     verbose("  Starting Window Manager");
     await windowManager.ensureInitialized();
     verbose("  Starting System tray");
@@ -41,6 +46,9 @@ class WindowUtil {
   }
 
   static Future<void> initSystemTray() async {
+    if (windowMode) {
+      return;
+    }
     await trayManager.setIcon('assets/tray.png', isTemplate: true);
     Menu menu = Menu(
       items: [
@@ -71,6 +79,9 @@ class WindowUtil {
   );
 
   static Future<void> show() async {
+    if (windowMode) {
+      return;
+    }
     Offset cursor = await screenRetriever.getCursorScreenPoint();
     Size windowSize = windowOptions.size!;
     await windowManager.setPosition(Offset(
@@ -82,6 +93,9 @@ class WindowUtil {
   }
 
   static Future<void> hide() async {
+    if (windowMode) {
+      return;
+    }
     await windowManager.hide();
   }
 }
