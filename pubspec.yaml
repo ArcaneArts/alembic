@@ -1,7 +1,7 @@
 name: alembic
 description: "A new Flutter project."
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
-version: 1.0.2
+version: 1.0.3
 environment:
   sdk: '>=3.4.4 <4.0.0'
 dependencies:
@@ -28,6 +28,7 @@ dependencies:
   arcane: ^3.10.2
   launch_at_startup: ^0.3.1
   package_info_plus: ^8.1.2
+  http: ^1.2.2
 dev_dependencies:
   flutter_launcher_icons: ^0.14.2
   flutter_test:
@@ -50,7 +51,6 @@ flutter_launcher_icons:
     generate: true
     image_path: "assets/launcher.png"
 scripts:
-  ping: grep '^version:' pubspec.yaml | sed -E 's/^version:\s*//; s/^[[:space:]]+//; s/[[:space:]]+$//' > version
   codesign: cd build/macos/Build/Products/Release && codesign --deep --force --verify --sign "Alembic" alembic.app
   launcher_icons: flutter pub get && dart run flutter_launcher_icons
-  distrib: rm -rf dist && dart pub global activate flutter_distributor && npm install -g appdmg && flutter_distributor package --platform macos --targets dmg --skip-clean
+  distrib: grep '^version:' pubspec.yaml | sed -E 's/^version:\s*//; s/^[[:space:]]+//; s/[[:space:]]+$//' > version && rm -rf dist && dart pub global activate flutter_distributor && npm install -g appdmg && flutter_distributor package --platform macos --targets dmg --skip-clean

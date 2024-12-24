@@ -12,7 +12,12 @@ import 'package:alembic/widget/organization_section.dart';
 import 'package:alembic/widget/personal_section.dart';
 import 'package:arcane/arcane.dart';
 import 'package:fast_log/fast_log.dart';
+import 'package:flutter/foundation.dart';
 import 'package:github/github.dart';
+import 'package:http/http.dart' as http;
+import 'package:package_info_plus/package_info_plus.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:window_manager/window_manager.dart';
 
 BehaviorSubject<int> update = BehaviorSubject.seeded(0);
 
@@ -36,7 +41,56 @@ class _AlembicHomeState extends State<AlembicHome> {
   TextEditingController searchController = TextEditingController();
   BehaviorSubject<double?> progress = BehaviorSubject.seeded(null);
 
-  void checkForUpdates() {}
+  Future<void> checkForUpdates(BuildContext context) async {
+    if (kDebugMode || kProfileMode) return;
+
+    try {
+      final response = await http.get(Uri.parse(
+          'https://raw.githubusercontent.com/ArcaneArts/alembic/refs/heads/main/version'));
+      if (response.statusCode == 200) {
+        String liveVersion = response.body.trim(); // e.g. "1.0.2+3"
+        PackageInfo inf = await PackageInfo.fromPlatform();
+        String currentVersion = inf.version.trim(); // e.g. "1.0.2+3"
+
+        if (liveVersion != currentVersion) {
+          success(
+              'A new version is available! Live version: $liveVersion, Current: $currentVersion');
+          DialogConfirm(
+            title: "Alembic $liveVersion Available",
+            description:
+                "A new version of Alembic is available. Would you like to download it?",
+            confirmText: "Download",
+            onConfirm: () async {
+              TextToast("Downloading Alembic $liveVersion").open(context);
+              String url =
+                  "https://github.com/ArcaneArts/alembic/raw/refs/heads/main/dist/$liveVersion/alembic-$liveVersion+$liveVersion-macos.dmg";
+              String path =
+                  "${(await getTemporaryDirectory()).absolute.path}/Alembic/alembic-$liveVersion+$liveVersion-macos.dmg"
+                      .replaceAll("//", "/");
+              File(path).absolute.parent.createSync(recursive: true);
+              verbose("Downloading $url to $path");
+              http.Request request = http.Request('GET', Uri.parse(url));
+              http.StreamedResponse streamedResponse =
+                  await http.Client().send(request);
+              IOSink file = File(path).openWrite();
+              await streamedResponse.stream.pipe(file);
+              await file.close();
+              await cmd("open", [path]);
+              warn("Shutting down alembic so the new version can be installed");
+              windowManager.destroy().then((_) => exit(0));
+            },
+          ).open(context);
+        } else {
+          info('The app is up to date (version: $currentVersion)');
+        }
+      } else {
+        error(
+            'Failed to fetch version file from GitHub. Status code: ${response.statusCode}');
+      }
+    } catch (e) {
+      error('Error checking for updates: $e');
+    }
+  }
 
   @override
   void initState() {
@@ -79,6 +133,7 @@ class _AlembicHomeState extends State<AlembicHome> {
         });
       }
     });
+    checkForUpdates(context);
   }
 
   @override
