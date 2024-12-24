@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:alembic/main.dart';
 import 'package:arcane/arcane.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:github/github.dart';
 import 'package:launch_at_startup/launch_at_startup.dart';
 
@@ -48,6 +49,16 @@ extension XGitTool on GitTool {
       };
 }
 
+String? compressPath(String? path) {
+  if (path == null) return null;
+  if (path.startsWith("/Volumes/Macintosh HD/Users/")) {
+    List<String> p = path.substring(1).split("/");
+    print(p);
+    return "~/${p.sublist(4).join("/")}";
+  }
+  return path;
+}
+
 AlembicRepoConfig getRepoConfig(Repository repo) =>
     AlembicRepoConfig.fromJson(boxSettings.get("config/${repo.fullName}",
         defaultValue: AlembicRepoConfig().json));
@@ -59,79 +70,180 @@ AlembicConfig get config => AlembicConfig.fromJson(
     boxSettings.get("config", defaultValue: AlembicConfig().json));
 void setConfig(AlembicConfig c) => boxSettings.put("config", c.json);
 
-class Settings extends StatelessWidget {
+class Settings extends StatefulWidget {
   const Settings({super.key});
 
   @override
-  Widget build(BuildContext context) => SettingsScreen(
-          options: OptionScreen(name: "Settings", options: [
-        OptionGroup(name: "Application", options: [
-          BoolOption(
-              name: "Launch at Startup",
-              icon: Icons.open_ionic,
-              reader: () => boxSettings.get("autolaunch", defaultValue: true),
-              writer: (b) {
-                boxSettings.put("autolaunch", b);
+  State<Settings> createState() => _SettingsState();
+}
 
-                if (b == true) {
-                  launchAtStartup.enable();
-                } else {
-                  launchAtStartup.disable();
-                }
-              })
-        ]),
-        OptionGroup(name: "Tools", options: [
-          StringOption(
-            name: "Workspace Directory",
-            reader: () => config.workspaceDirectory,
-            writer: (v) => setConfig(config..workspaceDirectory = v ?? ""),
-            icon: Icons.folder_fill,
-            description: "The directory to store projects",
-          ),
-          StringOption(
-            name: "Archive Directory",
-            reader: () => config.archiveDirectory,
-            writer: (v) => setConfig(config..archiveDirectory = v ?? ""),
-            icon: Icons.archive_fill,
-            description:
-                "The directory to archive images of active projects. Used for iCloud syncing projects safely.",
-          ),
-          EnumOption<ApplicationTool>(
-              name: "Editor Tool",
-              options: ApplicationTool.values,
-              reader: () => config.editorTool,
-              writer: (v) =>
-                  setConfig(config..editorTool = v ?? ApplicationTool.intellij),
-              icon: Icons.app_window,
-              description: "The IDE to use for opening projects",
-              defaultValue: ApplicationTool.intellij,
-              decorator: (v) => Basic(
-                    title: Text(v.displayName).withTooltip(v.help ?? ""),
-                  )),
-          EnumOption<GitTool>(
-              name: "Git Tool",
-              options: GitTool.values,
-              reader: () => config.gitTool,
-              writer: (v) =>
-                  setConfig(config..gitTool = v ?? GitTool.gitkraken),
-              icon: Icons.git_branch,
-              description: "The tool to use for opening repositories",
-              defaultValue: GitTool.gitkraken,
-              decorator: (v) => Basic(
-                    title: Text(v.displayName),
-                  )),
-        ]),
-        OptionGroup(name: "Archive", options: [
-          IntOption(
-            name: "Days to Archive",
-            reader: () => config.daysToArchive,
-            writer: (v) => setConfig(config..daysToArchive = v ?? 30),
-            icon: Icons.calendar_fill,
-            description:
-                "The number of days to keep a project in the active list before archiving.",
-          ),
-        ]),
-      ]));
+class _SettingsState extends State<Settings> {
+  @override
+  Widget build(BuildContext context) => SliverScreen(
+        header: Bar(
+          titleText: "Settings",
+        ),
+        sliver: MultiSliver(
+          children: [
+            BarSection(
+                subtitleText: "Application",
+                sliver: SListView(
+                  children: [
+                    CheckboxTile(
+                      title: Text("Launch at Startup"),
+                      leading: Icon(Icons.open_ionic),
+                      subtitle: Text("Add / Remove Alembic from Login Items"),
+                      value: boxSettings.get("autolaunch", defaultValue: true),
+                      onChanged: (b) {
+                        boxSettings.put("autolaunch", b);
+
+                        if (b == true) {
+                          launchAtStartup.enable();
+                        } else {
+                          launchAtStartup.disable();
+                        }
+
+                        setState(() {});
+                      },
+                    ),
+                    CheckboxTile(
+                      title: Text("Check for Updates on Launch"),
+                      leading: Icon(Icons.arrow_circle_up),
+                      subtitle: Text(
+                          "Allow Alembic to check for updates when launched"),
+                      value: boxSettings.get("achup", defaultValue: true),
+                      onChanged: (b) {
+                        boxSettings.put("achup", b);
+                        setState(() {});
+                      },
+                    )
+                  ],
+                )),
+            BarSection(
+                subtitleText: "Tools",
+                sliver: SListView(
+                  children: [
+                    ListTile(
+                      title: Text("Workspace Directory"),
+                      subtitle: Text(config.workspaceDirectory),
+                      leading: Icon(Icons.folder_fill),
+                      onPressed: () => FilePicker.platform
+                          .getDirectoryPath(
+                            initialDirectory:
+                                expandPath(config.workspaceDirectory),
+                            dialogTitle: "Select Workspace Directory",
+                          )
+                          .then((v) => compressPath(v))
+                          .then((v) {
+                        if (v == null) {
+                          return;
+                        }
+
+                        setConfig(config..workspaceDirectory = v);
+                        setState(() {});
+                      }),
+                    ),
+                    ListTile(
+                      title: Text("Archive Directory"),
+                      subtitle: Text(config.archiveDirectory),
+                      leading: Icon(Icons.archive_fill),
+                      onPressed: () => FilePicker.platform
+                          .getDirectoryPath(
+                            initialDirectory:
+                                expandPath(config.archiveDirectory),
+                            dialogTitle: "Select Archive Directory",
+                          )
+                          .then((v) => compressPath(v))
+                          .then((v) {
+                        if (v == null) {
+                          return;
+                        }
+
+                        setConfig(config..archiveDirectory = v);
+                        setState(() {});
+                      }),
+                    ),
+                    ListTile(
+                      leading: Icon(Icons.app_window),
+                      title: Text("Editor Tool"),
+                      subtitle: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Gap(8),
+                          CardCarousel(
+                            children: [
+                              RadioCards<ApplicationTool>(
+                                items: ApplicationTool.values,
+                                value: config.editorTool ??
+                                    ApplicationTool.intellij,
+                                builder: (v) => Basic(
+                                  title: Text(v.displayName)
+                                      .withTooltip(v.help ?? ""),
+                                ),
+                                onChanged: (v) {
+                                  setConfig(config..editorTool = v);
+                                  setState(() {});
+                                },
+                              )
+                            ],
+                          ),
+                          Gap(8),
+                          Text("The IDE to use for opening projects")
+                        ],
+                      ),
+                    ),
+                    ListTile(
+                      leading: Icon(Icons.git_branch),
+                      title: Text("Git Tool"),
+                      subtitle: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Gap(8),
+                          CardCarousel(
+                            children: [
+                              RadioCards<GitTool>(
+                                items: GitTool.values,
+                                value: config.gitTool ?? GitTool.gitkraken,
+                                builder: (v) => Basic(
+                                  title: Text(v.displayName),
+                                ),
+                                onChanged: (v) {
+                                  setConfig(config..gitTool = v);
+                                  setState(() {});
+                                },
+                              )
+                            ],
+                          ),
+                          Gap(8),
+                          Text("he tool to use for opening repositories")
+                        ],
+                      ),
+                    )
+                  ],
+                )),
+            BarSection(
+                subtitleText: "About",
+                sliver: SListView(
+                  children: [
+                    ListTile(
+                      leading: Icon(Icons.folder_fill),
+                      title: Text("Config Path"),
+                      subtitle: Text(configPath),
+                      onPressed: () => cmd("open", [configPath]),
+                    ),
+                    ListTile(
+                      leading: Icon(Icons.list),
+                      title: Text("View Logs"),
+                      subtitle: Text(configPath),
+                      onPressed: () => cmd("open", ["$configPath/alembic.log"]),
+                    )
+                  ],
+                ))
+          ],
+        ),
+      );
 }
 
 class AlembicConfig {

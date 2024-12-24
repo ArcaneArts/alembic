@@ -41,8 +41,12 @@ class _AlembicHomeState extends State<AlembicHome> {
   TextEditingController searchController = TextEditingController();
   BehaviorSubject<double?> progress = BehaviorSubject.seeded(null);
 
-  Future<void> checkForUpdates(BuildContext context) async {
-    if (kDebugMode || kProfileMode) return;
+  Future<bool> checkForUpdates(BuildContext context,
+      {bool force = false}) async {
+    if (!force) {
+      if (kDebugMode || kProfileMode) return false;
+      if (!boxSettings.get("achup", defaultValue: true)) return false;
+    }
 
     try {
       final response = await http.get(Uri.parse(
@@ -80,6 +84,7 @@ class _AlembicHomeState extends State<AlembicHome> {
               windowManager.destroy().then((_) => exit(0));
             },
           ).open(context);
+          return true;
         } else {
           info('The app is up to date (version: $currentVersion)');
         }
@@ -90,6 +95,8 @@ class _AlembicHomeState extends State<AlembicHome> {
     } catch (e) {
       error('Error checking for updates: $e');
     }
+
+    return false;
   }
 
   @override
@@ -210,6 +217,7 @@ class _AlembicHomeState extends State<AlembicHome> {
               SearchBox(
                 leading: Icon(Icons.search_ionic),
                 controller: searchController,
+                placeholder: "Search Repositories",
                 key: const ValueKey("search"),
                 onChanged: (s) {
                   search.add(s.trim() == "" ? null : s.trim());
@@ -387,6 +395,19 @@ class _AlembicHomeState extends State<AlembicHome> {
                           leading: const Icon(Icons.gear_six),
                           onPressed: () => Arcane.push(context, Settings()),
                           child: const Text("Settings"),
+                        ),
+                        MenuDivider(),
+                        MenuButton(
+                          leading: const Icon(Icons.arrow_circle_up),
+                          onPressed: () => checkForUpdates(context).then((g) {
+                            if (!g) {
+                              TextToast(
+                                "Alembic is up to date!\n\nIf there really is an update, switch to a vpn or different network to propagate the cache faster.",
+                                showDuration: 5.seconds,
+                              ).open(context);
+                            }
+                          }),
+                          child: const Text("Check for Updates"),
                         )
                       ]));
               })

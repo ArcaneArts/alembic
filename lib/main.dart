@@ -15,13 +15,14 @@ late Box box;
 late Box boxSettings;
 late PackageInfo packageInfo;
 late bool windowMode = false;
+late String configPath;
 
 void main() async {
   try {
     lDebugMode = true;
     WidgetsFlutterBinding.ensureInitialized();
-    File logFile =
-        File("${(await getApplicationDocumentsDirectory()).path}/alembic.log");
+    configPath = "${(await getApplicationDocumentsDirectory()).path}/Alembic";
+    File logFile = File("$configPath/alembic.log");
     IOSink logSink = logFile.openWrite(
       mode: FileMode.writeOnlyAppend,
     );
