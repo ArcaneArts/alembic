@@ -50,6 +50,7 @@ flutter_launcher_icons:
     generate: true
     image_path: "assets/launcher.png"
 scripts:
+  ping: grep '^version:' pubspec.yaml | sed -E 's/^version:\s*//; s/^[[:space:]]+//; s/[[:space:]]+$//' > version
   codesign: cd build/macos/Build/Products/Release && codesign --deep --force --verify --sign "Alembic" alembic.app
   launcher_icons: flutter pub get && dart run flutter_launcher_icons
   distrib: rm -rf dist && dart pub global activate flutter_distributor && npm install -g appdmg && flutter_distributor package --platform macos --targets dmg --skip-clean

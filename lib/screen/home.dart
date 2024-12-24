@@ -36,6 +36,8 @@ class _AlembicHomeState extends State<AlembicHome> {
   TextEditingController searchController = TextEditingController();
   BehaviorSubject<double?> progress = BehaviorSubject.seeded(null);
 
+  void checkForUpdates() {}
+
   @override
   void initState() {
     active.clear();
