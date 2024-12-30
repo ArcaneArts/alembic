@@ -34,7 +34,8 @@ class _RepositoryTileState extends State<RepositoryTile>
                   .distinct()
                   .build((loading) => context.arepository
                       .streamWork()
-                      .buildNullable((work) => ListTile(
+                      .buildNullable(
+                        (work) => ListTile(
                             subtitle: work?.isNotEmpty ?? false
                                 ? Row(
                                     mainAxisSize: MainAxisSize.min,
@@ -66,9 +67,8 @@ class _RepositoryTileState extends State<RepositoryTile>
                                     loading: const CircularProgressIndicator()),
                             onPressed: () => context.arepository
                                 .open(context.github, context),
-                            title: OverflowMarquee(
-                                child: Text(context.repository.name)),
-                          ))))),
+                            title: Text(context.repository.name)),
+                      )))),
     );
   }
 
