@@ -5,10 +5,10 @@ packages:
     dependency: "direct main"
     description:
       name: arcane
-      sha256: "30ab6a393d0c6ef13cf50352e0e4f1ac433fdaf3a0f1ff43f4c6f2908bd43690"
+      sha256: "1a2064f6056b1d4ad1f011b7826da5565be7f721ac7ba8fe43bd2858b125dbde"
       url: "https://pub.dev"
     source: hosted
-    version: "3.10.8"
+    version: "3.10.11"
   archive:
     dependency: transitive
     description:
@@ -752,6 +752,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.0.3"
+  pigment:
+    dependency: transitive
+    description:
+      name: pigment
+      sha256: b8c56059e21ecb9379a304c78a4f20e399d41e54384a7f64de21103b4b5c38dd
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.0.4"
   platform:
     dependency: transitive
     description:
@@ -1029,6 +1037,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.1.0+1"
+  tinycolor2:
+    dependency: transitive
+    description:
+      name: tinycolor2
+      sha256: "81850c32ac8d4dcff37299bf3e52bcad4f4db6bc73d4b06727c9922de3766390"
+      url: "https://pub.dev"
+    source: hosted
+    version: "3.0.1"
   toxic:
     dependency: "direct main"
     description:

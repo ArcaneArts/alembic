@@ -1,7 +1,7 @@
 name: alembic
 description: "A new Flutter project."
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
-version: 1.0.8
+version: 1.0.9
 environment:
   sdk: '>=3.4.4 <4.0.0'
 dependencies:
@@ -25,7 +25,7 @@ dependencies:
   crypto: ^3.0.6
   encrypt: ^5.0.3
   oauth2: ^2.0.3
-  arcane: ^3.10.8
+  arcane: ^3.10.11
   launch_at_startup: ^0.3.1
   package_info_plus: ^8.1.2
   http: ^1.2.2
@@ -36,6 +36,18 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^5.0.0
 flutter:
+  shaders:
+    - packages/arcane/resources/shaders/frost.frag
+    - packages/arcane/resources/shaders/pixelate.frag
+    - packages/arcane/resources/shaders/pixelate_blur.frag
+    - packages/arcane/resources/shaders/rgb.frag
+    - packages/arcane/resources/shaders/loader.frag
+    - packages/arcane/resources/shaders/glyph.frag
+    - packages/arcane/resources/shaders/invert.frag
+    - packages/arcane/resources/shaders/warp.frag
+    - packages/arcane/resources/shaders/black_hole.frag
+    - packages/arcane/resources/shaders/lux.frag
+    - packages/arcane/resources/shaders/cascade.frag
   uses-material-design: true
   assets:
     - assets/
