@@ -20,6 +20,7 @@ late String configPath;
 void main() async {
   try {
     lDebugMode = true;
+    setupArcaneDebug();
     WidgetsFlutterBinding.ensureInitialized();
     configPath = "${(await getApplicationDocumentsDirectory()).path}/Alembic";
     File logFile = File("$configPath/alembic.log");
