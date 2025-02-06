@@ -41,6 +41,7 @@ class _LoginScreenState extends State<LoginScreen> {
             PaddingHorizontal(
                 padding: 32,
                 child: TextField(
+                  placeholder: "Github-Auth Token (Classic)",
                   focusNode: fToken,
                   controller: tokenController,
                   obscureText: true,

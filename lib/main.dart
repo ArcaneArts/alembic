@@ -14,7 +14,7 @@ import 'package:path_provider/path_provider.dart';
 late Box box;
 late Box boxSettings;
 late PackageInfo packageInfo;
-late bool windowMode = false;
+bool windowMode = false;
 late String configPath;
 
 void main() async {
@@ -22,8 +22,18 @@ void main() async {
     lDebugMode = true;
     setupArcaneDebug();
     WidgetsFlutterBinding.ensureInitialized();
-    configPath = "${(await getApplicationDocumentsDirectory()).path}/Alembic";
+
+    Directory appDocDir = await getApplicationDocumentsDirectory();
+    configPath = "${appDocDir.path}/Alembic";
+    await Directory(configPath).create(recursive: true);
     File logFile = File("$configPath/alembic.log");
+    if (await logFile.exists()) {
+      final fileSize = await logFile.length();
+      if (fileSize > 1024 * 1024) {
+        await logFile.delete();
+        verbose("Log file deleted because it exceeded 1MB");
+      }
+    }
     IOSink logSink = logFile.openWrite(
       mode: FileMode.writeOnlyAppend,
     );
@@ -33,15 +43,15 @@ void main() async {
     verbose("Getting package info");
     Future<PackageInfo> pinf = PackageInfo.fromPlatform();
     windowMode = Directory(
-            "${(await getApplicationDocumentsDirectory()).path}/Alembic/WINDOW_MODE")
+        "${appDocDir.path}/Alembic/WINDOW_MODE")
         .existsSync();
-    info("${(await getApplicationDocumentsDirectory()).path}/Alembic");
-    Hive.init("${(await getApplicationDocumentsDirectory()).path}/Alembic");
+    info("${appDocDir.path}/Alembic");
+    Hive.init("$configPath");
     verbose("Opening Hive boxes");
     Random r = Random(384858582220);
     box = await Hive.openBox("d",
         encryptionCipher:
-            HiveAesCipher(List.generate(32, (_) => r.nextInt(256))));
+        HiveAesCipher(List.generate(32, (_) => r.nextInt(256))));
     verbose("Opening settings box");
     boxSettings = await Hive.openBox("s");
     verbose("Init Window");
@@ -58,7 +68,6 @@ void main() async {
     });
 
     verbose("Checking if autolaunch is enabled");
-
     if (boxSettings.get("autolaunch", defaultValue: true) == true) {
       launchAtStartup.enable();
       verbose("Autolaunch enabled");
@@ -72,7 +81,6 @@ void main() async {
   }
 
   success("=====================================");
-
   runApp(const Alembic());
 }
 
