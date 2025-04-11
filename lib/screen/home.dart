@@ -189,67 +189,44 @@ class _AlembicHomeState extends State<AlembicHome> {
   }
 
   Future<List<Repository>> _fetchAllRepos() async {
-    // Clear existing collections to prevent duplication
+    // Clear existing collections
     personalRepos.clear();
     orgRepos.clear();
 
-    List<Repository> allRepositories = [];
+    Map<String, List<Repository>> ownerRepos = {};
+    Map<String, Organization> ownerOrgs = {};
 
     try {
-      // First, fetch all organizations
-      List<Organization> organizations = await widget.github.organizations
-          .list()
-          .where((org) => org.login != null)
-          .toList();
+      // Fetch all repositories
+      List<Repository> allRepos = await listRepositoriesAggressive(type: 'all').toList();
 
-      // Initialize organization map
-      for (var org in organizations) {
-        orgRepos[org] = <Repository>[];
-      }
+      // Group repositories by owner
+      for (var repo in allRepos) {
+        String ownerLogin = repo.owner?.login ?? "unknown";
 
-      // Fetch personal repositories
-      List<Repository> personalList = await listRepositoriesAggressive(type: 'all').toList();
-      for (var repo in personalList) {
-        // Check if repository belongs to user or to an organization
-        String? ownerLogin = repo.owner?.login;
-        bool isOrgRepo = false;
+        // Create owner entry if doesn't exist
+        if (!ownerRepos.containsKey(ownerLogin)) {
+          ownerRepos[ownerLogin] = [];
 
-        for (var org in organizations) {
-          if (org.login == ownerLogin) {
-            // This is an org repo
-            orgRepos[org]!.add(repo);
-            isOrgRepo = true;
-            break;
-          }
+          // Create pseudo-organization for this owner
+          ownerOrgs[ownerLogin] = Organization()..login = ownerLogin;
+          orgRepos[ownerOrgs[ownerLogin]!] = [];
         }
 
-        // If not an org repo, it's a personal repo
-        if (!isOrgRepo) {
-          personalRepos.add(repo);
-        }
+        // Add repository to this owner's list
+        ownerRepos[ownerLogin]!.add(repo);
+        orgRepos[ownerOrgs[ownerLogin]!]!.add(repo);
 
-        allRepositories.add(repo);
         _fetching.add(_fetching.value + 1);
       }
 
-      // For completeness, also fetch repositories directly from organizations
-      // to ensure we get all repositories
-      for (var org in organizations) {
-        List<Repository> orgList = await listOrganizationRepositoriesAggressive(org.login!).toList();
-        for (var repo in orgList) {
-          // Only add if not already added
-          if (!allRepositories.any((r) => r.fullName == repo.fullName)) {
-            orgRepos[org]!.add(repo);
-            allRepositories.add(repo);
-            _fetching.add(_fetching.value + 1);
-          }
-        }
-      }
+      // Personal section will be empty - all repos are categorized by owner
+      personalRepos = [];
 
-      return allRepositories;
+      return allRepos;
     } catch (e, stack) {
-      error("Error fetching repositories: $e");
-      error(stack);
+      error("Error in _fetchAllRepos: $e");
+      error(stack.toString());
       return [];
     }
   }
