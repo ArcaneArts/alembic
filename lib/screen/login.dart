@@ -2,7 +2,6 @@ import 'package:alembic/main.dart';
 import 'package:alembic/screen/splash.dart';
 import 'package:arcane/arcane.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:github/github.dart';
 import 'package:url_launcher/url_launcher_string.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -13,119 +12,153 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  late TextEditingController tokenController;
-  late FocusNode fToken;
-  bool isTokenValid = false;
+  // Controllers and state
+  late final TextEditingController _tokenController;
+  late final FocusNode _tokenFocusNode;
+  bool _isTokenValid = false;
+
+  // Constants
+  static const String _tokenCreationUrl =
+      'https://github.com/settings/tokens/new?scopes=repo,read:org,admin:org';
 
   @override
   void initState() {
-    tokenController = TextEditingController();
-    fToken = FocusNode();
-    tokenController.addListener(_validateToken);
     super.initState();
+    _tokenController = TextEditingController();
+    _tokenFocusNode = FocusNode();
+    _tokenController.addListener(_validateToken);
   }
 
   @override
   void dispose() {
-    tokenController.removeListener(_validateToken);
-    tokenController.dispose();
-    fToken.dispose();
+    _tokenController.removeListener(_validateToken);
+    _tokenController.dispose();
+    _tokenFocusNode.dispose();
     super.dispose();
   }
 
-  // Validate token format for both classic and fine-grained tokens
+  /// Validate token format for all GitHub token types
   void _validateToken() {
-    final text = tokenController.text;
+    final String text = _tokenController.text;
     setState(() {
-      // Support all token types:
-      // - Classic tokens are 40-character hexadecimal strings
-      // - Fine-grained tokens start with github_pat_
-      // - Personal access tokens start with ghp_
-      isTokenValid = text.isNotEmpty &&
-          (text.startsWith('github_pat_') ||
+      _isTokenValid = text.isNotEmpty && (
+          text.startsWith('github_pat_') ||
               text.startsWith('ghp_') ||
-              (text.length == 40 && RegExp(r'^[a-f0-9]+$').hasMatch(text)));
+              (text.length == 40 && RegExp(r'^[a-f0-9]+$').hasMatch(text))
+      );
     });
   }
 
-  void _doLogin(String? g) async {
-    final token = g ?? tokenController.text.trim();
+  /// Process login with the provided token
+  Future<void> _doLogin(String? providedToken) async {
+    final String token = providedToken ?? _tokenController.text.trim();
+    final String tokenType = _detectTokenType(token);
 
-    // Detect token type
-    String tokenType = "classic";
-    if (token.startsWith('github_pat_')) {
-      tokenType = "fine_grained";
-    }
-
+    // Save token information
     await box.put("1", token);
     await box.put("token_type", tokenType);
     await box.put("authenticated", true);
 
+    // Navigate to splash screen
     Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(builder: (context) => const SplashScreen()),
-            (route) => false);
+            (route) => false
+    );
   }
 
-  void _openTokenCreationPage() async {
-    await launchUrlString('https://github.com/settings/tokens/new?scopes=repo,read:org,admin:org');
+  /// Determine token type from its format
+  String _detectTokenType(String token) {
+    if (token.startsWith('github_pat_')) {
+      return "fine_grained";
+    }
+    return "classic";
+  }
+
+  /// Open GitHub token creation page in browser
+  Future<void> _openTokenCreationPage() async {
+    await launchUrlString(_tokenCreationUrl);
   }
 
   @override
-  Widget build(BuildContext context) => FillScreen(
-    child: Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.center,
+  Widget build(BuildContext context) {
+    return FillScreen(
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            _buildLogoSection(),
+            _buildHeaderSection(),
+            _buildTokenInputSection(),
+            _buildActionButtonsSection(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLogoSection() {
+    return SvgPicture.asset(
+        "assets/login.svg",
+        width: 100,
+        height: 100
+    );
+  }
+
+  Widget _buildHeaderSection() {
+    return Column(
+      children: [
+        const Gap(24),
+        const Text(
+          "GitHub Personal Access Token",
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const Gap(8),
+        const Text(
+          "Supports both classic and fine-grained tokens",
+          style: TextStyle(
+            fontSize: 14,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTokenInputSection() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+      child: TextField(
+        placeholder: const Text("github_pat_... or classic token"),
+        focusNode: _tokenFocusNode,
+        controller: _tokenController,
+        obscureText: true,
+        leading: const Icon(Icons.lock_fill),
+        onSubmitted: _isTokenValid ? _doLogin : null,
+        textAlign: TextAlign.left,
+      ),
+    );
+  }
+
+  Widget _buildActionButtonsSection() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 32),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          SvgPicture.asset("assets/login.svg", width: 100, height: 100),
-          const Gap(24),
-          const Text(
-            "GitHub Personal Access Token",
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-            ),
+          TextButton(
+            onPressed: _openTokenCreationPage,
+            child: const Text("Create New Token"),
           ),
-          const Gap(8),
-          Text(
-            "Supports both classic and fine-grained tokens",
-            style: TextStyle(
-              fontSize: 14,
-            ),
-          ),
-          const Gap(16),
-          PaddingHorizontal(
-            padding: 32,
-            child: TextField(
-              placeholder: Text("github_pat_... or classic token"),
-              focusNode: fToken,
-              controller: tokenController,
-              obscureText: true,
-              leading: Icon(Icons.lock_fill),
-              onSubmitted: isTokenValid ? _doLogin : null,
-              textAlign: TextAlign.left,
-            ),
-          ),
-          const Gap(16),
-          PaddingHorizontal(
-            padding: 32,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                TextButton(
-                  onPressed: _openTokenCreationPage,
-                  child: Text("Create New Token"),
-                ),
-                GhostButton(
-                  onPressed: isTokenValid ? () => _doLogin(null) : null,
-                  child: Text("Login"),
-                ),
-              ],
-            ),
+          GhostButton(
+            onPressed: _isTokenValid ? () => _doLogin(null) : null,
+            child: const Text("Login"),
           ),
         ],
       ),
-    ),
-  );
+    );
+  }
 }
