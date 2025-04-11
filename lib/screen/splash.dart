@@ -2,6 +2,7 @@ import 'package:alembic/main.dart';
 import 'package:alembic/screen/home.dart';
 import 'package:alembic/screen/login.dart';
 import 'package:arcane/arcane.dart';
+import 'package:fast_log/fast_log.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:github/github.dart';
 
@@ -18,7 +19,7 @@ class SplashScreenState extends State<SplashScreen> {
       Navigator.pushAndRemoveUntil(
           context,
           MaterialPageRoute(builder: (context) => const LoginScreen()),
-          (route) => false);
+              (route) => false);
     });
   }
 
@@ -27,49 +28,62 @@ class SplashScreenState extends State<SplashScreen> {
     if (!box.get("authenticated", defaultValue: false)) {
       doLogin();
     } else {
+      // Check if token needs migration or if a warning should be shown
+      checkTokenMigration();
+
       WidgetsBinding.instance.addPostFrameCallback((_) {
         Navigator.pushAndRemoveUntil(
             context,
             MaterialPageRoute(
                 builder: (context) => AlembicHome(github: auth())),
-            (route) => false);
+                (route) => false);
       });
     }
 
     super.initState();
   }
 
-  // Add to SplashScreen initState or create a separate method
+// You should also update the token type detection in checkTokenMigration in lib/screen/splash.dart
   void checkTokenMigration() {
     if (box.get("authenticated", defaultValue: false)) {
       final token = box.get("1", defaultValue: "");
       final tokenType = box.get("token_type", defaultValue: "unknown");
 
-      // If there's a token but no type is stored, check if it's a classic token
+      // If there's a token but no type is stored, determine the type
       if (tokenType == "unknown" && token.isNotEmpty) {
-        if (!token.startsWith("github_pat_")) {
-          // It's likely a classic token, mark it as such
+        if (token.startsWith("github_pat_")) {
+          // It's a fine-grained token
+          box.put("token_type", "fine_grained");
+        } else if (token.startsWith("ghp_")) {
+          // It's a personal access token
+          box.put("token_type", "personal");
+        } else {
+          // It's likely a classic token
           box.put("token_type", "classic");
 
-          // Optionally show a migration dialog on next screen
+          // Show warning about classic token deprecation
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            showTokenMigrationDialog(context);
+            showTokenMigrationWarning(context);
           });
-        } else {
-          // It's already a fine-grained token
-          box.put("token_type", "fine_grained");
         }
+      } else if (tokenType == "classic") {
+        // Show warning for classic tokens
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          showTokenMigrationWarning(context);
+        });
       }
     }
   }
 
-  void showTokenMigrationDialog(BuildContext context) {
+  void showTokenMigrationWarning(BuildContext context) {
     DialogConfirm(
-      title: "GitHub Token Update Required",
+      title: "GitHub Token Update Recommended",
       description:
-      "GitHub is deprecating classic tokens. Please create a new fine-grained token with 'repo' permissions and update your login.",
+      "GitHub is deprecating classic tokens. While they still work, we recommend creating a new fine-grained token with 'repo' and 'read:org' permissions for better security.",
       confirmText: "Update Token",
+      cancelText: "Continue",
       onConfirm: () {
+        // Clear token and go to login screen
         box.deleteAll(["1", "authenticated", "token_type"]).then((_) {
           Navigator.pushAndRemoveUntil(
               context,
@@ -80,10 +94,12 @@ class SplashScreenState extends State<SplashScreen> {
     ).open(context);
   }
 
-
   GitHub auth() {
     final token = box.get("1");
     final tokenType = box.get("token_type", defaultValue: "classic");
+
+    // Log the token type being used (for debugging)
+    info("Using $tokenType token for authentication");
 
     // Authenticate with the token
     return GitHub(auth: Authentication.withToken(token));

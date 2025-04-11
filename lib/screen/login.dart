@@ -1,4 +1,3 @@
-// Modifications to lib/screen/login.dart
 import 'package:alembic/main.dart';
 import 'package:alembic/screen/splash.dart';
 import 'package:arcane/arcane.dart';
@@ -34,21 +33,34 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  // Simple validation for GitHub token format
+  // Validate token format for both classic and fine-grained tokens
   void _validateToken() {
     final text = tokenController.text;
-    // New tokens start with github_pat_ 
     setState(() {
-      isTokenValid = text.isNotEmpty && text.startsWith('github_pat_');
+      // Support all token types:
+      // - Classic tokens are 40-character hexadecimal strings
+      // - Fine-grained tokens start with github_pat_
+      // - Personal access tokens start with ghp_
+      isTokenValid = text.isNotEmpty &&
+          (text.startsWith('github_pat_') ||
+              text.startsWith('ghp_') ||
+              (text.length == 40 && RegExp(r'^[a-f0-9]+$').hasMatch(text)));
     });
   }
 
-
   void _doLogin(String? g) async {
     final token = g ?? tokenController.text.trim();
+
+    // Detect token type
+    String tokenType = "classic";
+    if (token.startsWith('github_pat_')) {
+      tokenType = "fine_grained";
+    }
+
     await box.put("1", token);
-    await box.put("token_type", "fine_grained");
+    await box.put("token_type", tokenType);
     await box.put("authenticated", true);
+
     Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(builder: (context) => const SplashScreen()),
@@ -77,7 +89,7 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
           const Gap(8),
           Text(
-            "Use a fine-grained token with repo access",
+            "Supports both classic and fine-grained tokens",
             style: TextStyle(
               fontSize: 14,
             ),
@@ -86,7 +98,7 @@ class _LoginScreenState extends State<LoginScreen> {
           PaddingHorizontal(
             padding: 32,
             child: TextField(
-              placeholder: "github_pat_...",
+              placeholder: "github_pat_... or classic token",
               focusNode: fToken,
               controller: tokenController,
               obscureText: true,

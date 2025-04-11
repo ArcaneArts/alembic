@@ -47,6 +47,9 @@ class ArcaneRepository {
 
   String get authenticatedCloneUrl {
     final token = box.get("1");
+    final tokenType = box.get("token_type", defaultValue: "fine_grained");
+
+    // Use the appropriate URL format based on token type
     return "https://$token@github.com/${repository.owner?.login}/${repository.name}.git";
   }
 
@@ -89,17 +92,23 @@ class ArcaneRepository {
       if (currentUrl == null || currentUrl.isEmpty) return false;
 
       // Check if URL contains a token (https://TOKEN@github.com)
-      if (currentUrl.contains("@github.com") && !currentUrl.contains(latestToken)) {
-        // We need to update the token
-        info("Updating token for repository ${repository.fullName}");
+      if (currentUrl.contains("@github.com")) {
+        // Extract the current token from the URL
+        final RegExp tokenRegex = RegExp(r'https://([^@]+)@github\.com');
+        final match = tokenRegex.firstMatch(currentUrl);
 
-        // Create updated URL with new token
-        String updatedUrl = "https://$latestToken@github.com/${repository.owner?.login}/${repository.name}.git";
+        if (match != null && match.group(1) != latestToken) {
+          // We need to update the token
+          info("Updating token for repository ${repository.fullName}");
 
-        // Set the new URL
-        int exitCode = await cmd('git', ['-C', repoPath, 'remote', 'set-url', 'origin', updatedUrl]);
+          // Create updated URL with new token
+          String updatedUrl = "https://$latestToken@github.com/${repository.owner?.login}/${repository.name}.git";
 
-        return exitCode == 0;
+          // Set the new URL
+          int exitCode = await cmd('git', ['-C', repoPath, 'remote', 'set-url', 'origin', updatedUrl]);
+
+          return exitCode == 0;
+        }
       }
 
       return false; // No update needed
