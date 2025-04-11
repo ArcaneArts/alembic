@@ -225,7 +225,7 @@ class _SettingsState extends State<Settings> {
                     ListTile(
                       title: Text("Archive Duration (Days)"),
                       subtitle: TextField(
-                        placeholder: "${config.daysToArchive} days",
+                        placeholder: Text("${config.daysToArchive} days"),
                         initialValue: "${config.daysToArchive}",
                         keyboardType: TextInputType.number,
                         minLines: 1,

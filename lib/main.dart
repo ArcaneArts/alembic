@@ -80,7 +80,7 @@ void main() async {
   }
 
   success("=====================================");
-  runApp(const Alembic());
+  runApp("alembic", const Alembic());
 }
 
 class Alembic extends StatefulWidget {

@@ -285,7 +285,7 @@ class _AlembicHomeState extends State<AlembicHome> {
               SearchBox(
                 leading: Icon(Icons.search_ionic),
                 controller: searchController,
-                placeholder: "Search Repositories",
+                placeholder: Text("Search Repositories"),
                 key: const ValueKey("search"),
                 onChanged: (s) {
                   search.add(s.trim() == "" ? null : s.trim());
