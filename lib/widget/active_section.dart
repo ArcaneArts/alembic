@@ -3,7 +3,7 @@ import 'package:alembic/widget/repository_list.dart';
 import 'package:arcane/arcane.dart';
 
 class ActiveSection extends StatelessWidget {
-  ActiveSection({super.key});
+  const ActiveSection({super.key});
 
   @override
   Widget build(BuildContext context) => context.repositories.isEmpty

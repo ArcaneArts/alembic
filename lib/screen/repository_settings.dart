@@ -15,7 +15,7 @@ class RepositorySettings extends StatelessWidget {
               StringOption(
                 name: "Workspace Directory",
                 reader: () => getRepoConfig(context.repository).openDirectory,
-                writer: (v) => setRepoConfig(context.repository,
+                writer: (String? v) => setRepoConfig(context.repository,
                     getRepoConfig(context.repository)..openDirectory = v ?? ""),
                 icon: Icons.folder_fill,
                 description:
@@ -25,7 +25,7 @@ class RepositorySettings extends StatelessWidget {
                   name: "Editor Tool",
                   options: ApplicationTool.values,
                   reader: () => getRepoConfig(context.repository).editorTool,
-                  writer: (v) => setRepoConfig(
+                  writer: (ApplicationTool? v) => setRepoConfig(
                       context.repository,
                       getRepoConfig(context.repository)
                         ..editorTool = v ?? ApplicationTool.intellij),
@@ -33,14 +33,14 @@ class RepositorySettings extends StatelessWidget {
                   description:
                       "Overrides The default IDE to use for opening projects",
                   defaultValue: ApplicationTool.intellij,
-                  decorator: (v) => Basic(
+                  decorator: (ApplicationTool v) => Basic(
                         title: Text(v.displayName).withTooltip(v.help ?? ""),
                       )),
               EnumOption<GitTool>(
                   name: "Git Tool",
                   options: GitTool.values,
                   reader: () => getRepoConfig(context.repository).gitTool,
-                  writer: (v) => setRepoConfig(
+                  writer: (GitTool? v) => setRepoConfig(
                       context.repository,
                       getRepoConfig(context.repository)
                         ..gitTool = v ?? GitTool.gitkraken),

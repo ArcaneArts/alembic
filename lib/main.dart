@@ -28,7 +28,7 @@ void main() async {
     await Directory(configPath).create(recursive: true);
     File logFile = File("$configPath/alembic.log");
     if (await logFile.exists()) {
-      final fileSize = await logFile.length();
+      int fileSize = await logFile.length();
       if (fileSize > 1024 * 1024) {
         await logFile.delete();
         verbose("Log file deleted because it exceeded 1MB");
@@ -37,7 +37,7 @@ void main() async {
     IOSink logSink = logFile.openWrite(
       mode: FileMode.writeOnlyAppend,
     );
-    lLogHandler = (cat, l) {
+    lLogHandler = (LogCategory cat, String l) {
       logSink.writeln("${cat.name}: $l");
     };
     verbose("Getting package info");
@@ -46,7 +46,7 @@ void main() async {
         "${appDocDir.path}/Alembic/WINDOW_MODE")
         .existsSync();
     info("${appDocDir.path}/Alembic");
-    Hive.init("$configPath");
+    Hive.init(configPath);
     verbose("Opening Hive boxes");
     Random r = Random(384858582220);
     box = await Hive.openBox("d",
@@ -108,7 +108,7 @@ class _AlembicState extends State<Alembic> {
 
 String expandPath(String path) {
   if (path.startsWith('~')) {
-    final home = Platform.environment['HOME'] ?? '';
+    String home = Platform.environment['HOME'] ?? '';
     return path.replaceFirst('~', home);
   }
   return path;

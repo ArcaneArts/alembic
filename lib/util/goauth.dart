@@ -9,9 +9,9 @@ class GitHubOAuth {
   static const String scope = 'repo,read:org';
 
   static Future<GitHub> createGitHubClient() async {
-    final authorizationEndpoint =
+    Uri authorizationEndpoint =
         Uri.parse('https://github.com/login/oauth/authorize');
-    final tokenEndpoint =
+    Uri tokenEndpoint =
         Uri.parse('https://github.com/login/oauth/access_token');
 
     final grant = oauth2.AuthorizationCodeGrant(
@@ -21,7 +21,7 @@ class GitHubOAuth {
       secret: clientSecret,
     );
 
-    final authorizationUrl =
+    Uri authorizationUrl =
         grant.getAuthorizationUrl(Uri.parse(redirectUrl), scopes: [scope]);
 
     // Open the authorization URL in a web browser

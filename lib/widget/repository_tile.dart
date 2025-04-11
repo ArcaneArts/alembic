@@ -11,7 +11,7 @@ BehaviorSubject<List<Repository>> syncingRepositories =
     BehaviorSubject.seeded([]);
 
 class RepositoryTile extends StatefulWidget {
-  RepositoryTile({super.key});
+  const RepositoryTile({super.key});
 
   @override
   State<RepositoryTile> createState() => _RepositoryTileState();
@@ -21,6 +21,47 @@ class _RepositoryTileState extends State<RepositoryTile>
     with AutomaticKeepAliveClientMixin {
   @override
   Widget build(BuildContext context) {
+
+    Widget buildArchivalIndicator(int days) {
+      Color color;
+      if (days > 20) {
+        color = Colors.green;
+      } else if (days >= 10) {
+        color = Colors.yellow;
+      } else if (days >= 5) {
+        color = Colors.orange;
+      } else {
+        color = Colors.red;
+      }
+
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        margin: const EdgeInsets.only(right: 8),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.2),
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: HoverCard(
+          hoverBuilder: (context) {
+            return SurfaceCard(
+              child: Basic(
+                leading: Icon(Icons.calendar_clear_outline_ionic),
+                content: Text("$days days until archival"),
+              ),
+            ).ih.iw;
+          },
+          child: Text(
+            '$days',
+            style: TextStyle(
+              color: color,
+              fontWeight: FontWeight.bold,
+              fontSize: 12,
+            ),
+          ),
+        )
+      );
+    }
+
     super.build(context);
 
     return Pylon<ArcaneRepository>(
@@ -54,22 +95,35 @@ class _RepositoryTileState extends State<RepositoryTile>
                                 ? const CircularProgressIndicator()
                                 : context.arepository.state.build(
                                     (state) => switch (state) {
-                                          RepoState.active => Clickable(
-                                              child:
-                                                  const Icon(Icons.folder_fill),
-                                              onPressed: () => open(context),
-                                            ),
-                                          RepoState.cloud =>
-                                            const Icon(Icons.cloud),
-                                          RepoState.archived =>
-                                            const Icon(Icons.archive),
-                                        },
-                                    loading: const CircularProgressIndicator()),
+                                  RepoState.active => FutureBuilder<int>(
+                                    future: context.arepository.daysUntilArchival,
+                                    builder: (context, snapshot) {
+                                      return Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          if (snapshot.hasData)
+                                            buildArchivalIndicator(snapshot.data!)
+                                          else
+                                            const SizedBox(width: 24, height: 24),
+                                          Clickable(
+                                            child: const Icon(Icons.folder_fill),
+                                            onPressed: () => open(context),
+                                          ),
+                                        ],
+                                      );
+                                    },
+                                  ),
+                                  RepoState.cloud => const Icon(Icons.cloud),
+                                  RepoState.archived => const Icon(Icons.archive),
+                                },
+                                loading: const CircularProgressIndicator()),
                             onPressed: () => context.arepository
                                 .open(context.github, context),
                             title: Text(context.repository.name)),
                       )))),
+
     );
+
   }
 
   void open(BuildContext context) {

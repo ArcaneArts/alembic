@@ -4,7 +4,7 @@ import 'package:arcane/arcane.dart';
 import 'package:github/github.dart';
 
 class RepositoryListView extends StatelessWidget {
-  RepositoryListView({super.key});
+  const RepositoryListView({super.key});
 
   @override
   Widget build(BuildContext context) => SliverList.builder(

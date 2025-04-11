@@ -9,7 +9,7 @@ class OrganizationSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) =>
-      context.search.buildNullable((query) => Pylon<List<Repository>>(
+      context.search.buildNullable((String? query) => Pylon<List<Repository>>(
             key: ValueKey("org.${context.organization.login}.${query ?? ""}"),
             value: context.organizations[context.organization]!.filterBy(query),
             builder: (context) => context.repositories.isEmpty

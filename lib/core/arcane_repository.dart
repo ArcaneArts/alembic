@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math';
 
 import 'package:alembic/main.dart';
 import 'package:alembic/screen/home.dart';
@@ -49,16 +50,55 @@ class ArcaneRepository {
 
   Future<bool> get isStaleActive async {
     if (!await isActive) return false;
+
+    // Get the last time the repo was opened through the app
     int? lastOpen = getRepoConfig(repository).lastOpen;
     if (lastOpen == null) return false;
 
-    if (DateTime.timestamp().millisecondsSinceEpoch - lastOpen >
+    // Get the latest file modification time in the repo
+    int? latestModification = await getLatestFileModificationTime();
+
+    // Use the most recent activity time (either open or file modification)
+    int lastActivityTime = max(lastOpen, latestModification ?? 0);
+
+    // Check if the repo is stale based on the last activity time
+    if (DateTime.timestamp().millisecondsSinceEpoch - lastActivityTime >
         Duration(days: config.daysToArchive).inMilliseconds) {
       return true;
     }
 
     return false;
   }
+
+  Future<int?> getLatestFileModificationTime() async {
+    if (!await isActive) return null;
+
+    int? latestTime;
+    try {
+      await for (FileSystemEntity entity in Directory(repoPath).list(
+        recursive: true,
+        followLinks: false,
+      )) {
+        // Skip .git directory to improve performance
+        if (entity.path.contains('/.git/')) continue;
+
+        if (entity is File) {
+          DateTime modTime = await entity.lastModified();
+          int modTimeMs = modTime.millisecondsSinceEpoch;
+
+          if (latestTime == null || modTimeMs > latestTime) {
+            latestTime = modTimeMs;
+          }
+        }
+      }
+    } catch (e) {
+      // Handle potential errors during directory traversal
+      error("Error scanning repository files: $e");
+    }
+
+    return latestTime;
+  }
+
 
   Future<void> archiveFromCloud(GitHub github) => doWork("Archiving", () async {
         if (await isArchived) return;
@@ -264,4 +304,29 @@ class ArcaneRepository {
         success("Pulled ${repository.fullName}");
         update.add(update.value + 1);
       });
+
+  Future<int> get daysUntilArchival async {
+    if (!await isActive) return 0;
+
+    // Get the last time the repo was opened through the app
+    int? lastOpen = getRepoConfig(repository).lastOpen;
+    if (lastOpen == null) return config.daysToArchive; // Default to config value if never opened
+
+    // Get the latest file modification time
+    int? latestModification = await getLatestFileModificationTime();
+
+    // Use the most recent activity time (either open or file modification)
+    int lastActivityTime = max(lastOpen, latestModification ?? 0);
+
+    // Calculate days elapsed since last activity
+    int daysElapsed = Duration(
+        milliseconds: DateTime.timestamp().millisecondsSinceEpoch - lastActivityTime
+    ).inDays;
+
+    // Calculate days remaining until archival
+    int daysRemaining = config.daysToArchive - daysElapsed;
+
+    // Ensure we don't return negative days
+    return max(0, daysRemaining);
+  }
 }

@@ -220,7 +220,32 @@ class _SettingsState extends State<Settings> {
                           Text("he tool to use for opening repositories")
                         ],
                       ),
-                    )
+                    ),
+                    ListTile(
+                      title:  Text("Archive Duration (Days)"),
+                      subtitle: TextField(
+                        placeholder: "${config.daysToArchive} days",
+                        initialValue: "${config.daysToArchive}",
+                        keyboardType: TextInputType.number,
+                        minLines: 1,
+                        maxLines: 2,
+                        leading: Icon(Icons.calendar_clear_outline_ionic),
+                        maxLength: 3,
+                        onChanged: (v) {
+                          int? days = int.tryParse(v);
+                          if (days != null && days > 0) {
+                            setConfig(config..daysToArchive = days);
+                            setState(() {});
+                          } else {
+                            setConfig(config..daysToArchive = 30);
+                            setState(() {});
+                          }
+                        },
+
+                      ),
+                      leading: Icon(Icons.timer),
+
+                    ),
                   ],
                 )),
             BarSection(

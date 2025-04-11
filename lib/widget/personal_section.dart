@@ -4,7 +4,7 @@ import 'package:alembic/widget/repository_list.dart';
 import 'package:arcane/arcane.dart';
 
 class PersonalSection extends StatelessWidget {
-  PersonalSection({super.key});
+  const PersonalSection({super.key});
 
   @override
   Widget build(BuildContext context) => context.repositories.isEmpty
