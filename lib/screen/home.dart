@@ -40,6 +40,37 @@ class _AlembicHomeState extends State<AlembicHome> {
   BehaviorSubject<String?> search = BehaviorSubject.seeded(null);
   TextEditingController searchController = TextEditingController();
   BehaviorSubject<double?> progress = BehaviorSubject.seeded(null);
+  Future<void> updateAllRepositoryTokens() async {
+    if (!box.containsKey("1")) return;
+
+    String latestToken = box.get("1");
+    progress.add(0.0);
+
+    List<Repository> repositories = await allRepos;
+    int total = repositories.length;
+    int current = 0;
+    int updated = 0;
+
+    for (var repo in repositories) {
+      ArcaneRepository aRepo = ArcaneRepository(repository: repo);
+      if (await aRepo.isActive) {
+        bool wasUpdated = await aRepo.checkAndUpdateToken(latestToken);
+        if (wasUpdated) {
+          updated++;
+          success("Updated token for ${repo.fullName}");
+        }
+      }
+
+      current++;
+      progress.add(current / total);
+    }
+
+    progress.add(null);
+
+    if (updated > 0) {
+      TextToast("Updated tokens for $updated repositories").open(context);
+    }
+  }
 
   Future<bool> checkForUpdates(BuildContext context,
       {bool force = false}) async {
@@ -47,6 +78,9 @@ class _AlembicHomeState extends State<AlembicHome> {
       if (kDebugMode || kProfileMode) return false;
       if (!boxSettings.get("achup", defaultValue: true)) return false;
     }
+
+
+
 
     try {
       final response = await http.get(Uri.parse(
@@ -128,6 +162,11 @@ class _AlembicHomeState extends State<AlembicHome> {
       updateActive();
     });
 
+    // Add token check after repositories are loaded
+    allRepos.then((_) {
+      updateAllRepositoryTokens();
+    });
+
     Future.delayed(const Duration(milliseconds: 10000), () {
       for (Repository i in active) {
         verbose("Checking staleness of ${i.fullName}");
@@ -142,7 +181,6 @@ class _AlembicHomeState extends State<AlembicHome> {
     });
     checkForUpdates(context);
   }
-
   @override
   void dispose() {
     _fetching.close();
@@ -150,18 +188,71 @@ class _AlembicHomeState extends State<AlembicHome> {
     super.dispose();
   }
 
-  Future<List<Repository>> _fetchAllRepos() async => (await Future.wait([
-        listRepositoriesAggressive().sip((i) => personalRepos.add(i)),
-        ...(await widget.github.organizations
-                .list()
-                .where((i) => i.login != null)
-                .sip((i) => orgRepos[i] = <Repository>[])
-                .toList())
-            .map((i) => listOrganizationRepositoriesAggressive(i.login!)
-                .sip((j) => orgRepos[i]!.add(j)))
-      ].map((i) => i.sip((j) => _fetching.add(_fetching.value + 1)).toList())))
-          .expand((i) => i)
+  Future<List<Repository>> _fetchAllRepos() async {
+    // Clear existing collections to prevent duplication
+    personalRepos.clear();
+    orgRepos.clear();
+
+    List<Repository> allRepositories = [];
+
+    try {
+      // First, fetch all organizations
+      List<Organization> organizations = await widget.github.organizations
+          .list()
+          .where((org) => org.login != null)
           .toList();
+
+      // Initialize organization map
+      for (var org in organizations) {
+        orgRepos[org] = <Repository>[];
+      }
+
+      // Fetch personal repositories
+      List<Repository> personalList = await listRepositoriesAggressive(type: 'all').toList();
+      for (var repo in personalList) {
+        // Check if repository belongs to user or to an organization
+        String? ownerLogin = repo.owner?.login;
+        bool isOrgRepo = false;
+
+        for (var org in organizations) {
+          if (org.login == ownerLogin) {
+            // This is an org repo
+            orgRepos[org]!.add(repo);
+            isOrgRepo = true;
+            break;
+          }
+        }
+
+        // If not an org repo, it's a personal repo
+        if (!isOrgRepo) {
+          personalRepos.add(repo);
+        }
+
+        allRepositories.add(repo);
+        _fetching.add(_fetching.value + 1);
+      }
+
+      // For completeness, also fetch repositories directly from organizations
+      // to ensure we get all repositories
+      for (var org in organizations) {
+        List<Repository> orgList = await listOrganizationRepositoriesAggressive(org.login!).toList();
+        for (var repo in orgList) {
+          // Only add if not already added
+          if (!allRepositories.any((r) => r.fullName == repo.fullName)) {
+            orgRepos[org]!.add(repo);
+            allRepositories.add(repo);
+            _fetching.add(_fetching.value + 1);
+          }
+        }
+      }
+
+      return allRepositories;
+    } catch (e, stack) {
+      error("Error fetching repositories: $e");
+      error(stack);
+      return [];
+    }
+  }
 
   Stream<Repository> listOrganizationRepositoriesAggressive(String org,
       {String type = 'all'}) {
@@ -186,15 +277,15 @@ class _AlembicHomeState extends State<AlembicHome> {
     });
   }
 
-  Stream<Repository> listRepositoriesAggressive(
-      {String type = 'owner',
-      String sort = 'full_name',
-      String direction = 'asc'}) {
+  Stream<Repository> listRepositoriesAggressive({
+    String type = 'all',
+    String sort = 'full_name',
+    String direction = 'asc'}) {
     final params = <String, dynamic>{
       'type': type,
       'sort': sort,
       'direction': direction,
-      "per_page": 100,
+      'per_page': 100
     };
 
     return PaginationHelper(widget.github)
@@ -364,25 +455,21 @@ class _AlembicHomeState extends State<AlembicHome> {
                             leading: Icon(Icons.list),
                             child: Text("Bulk Actions")),
                         const MenuDivider(),
-                        MenuButton(
-                            leading: const Icon(Icons.log_out_outline_ionic),
-                            child: const Text("Log Out"),
-                            onPressed: () => DialogConfirm(
-                                  title: "Log Out?",
-                                  description:
-                                      "Are you sure you want to log out? Your PAT will be deleted from this device.",
-                                  destructive: true,
-                                  onConfirm: () => box.deleteAll(
-                                      ["1", "authenticated"]).then((_) {
-                                    widget.github.dispose();
-                                    Navigator.pushAndRemoveUntil(
-                                        context,
-                                        MaterialPageRoute(
-                                            builder: (context) =>
-                                                const SplashScreen()),
-                                        (route) => false);
-                                  }),
-                                ).open(context)),
+                  MenuButton(
+                      leading: const Icon(Icons.log_out_outline_ionic),
+                      child: const Text("Log Out"),
+                      onPressed: () => DialogConfirm(
+                        title: "Log Out?",
+                        description: "Are you sure you want to log out? Your token will be deleted from this device.",
+                        destructive: true,
+                        onConfirm: () => box.deleteAll(["1", "authenticated", "token_type"]).then((_) {
+                          widget.github.dispose();
+                          Navigator.pushAndRemoveUntil(
+                              context,
+                              MaterialPageRoute(builder: (context) => const SplashScreen()),
+                                  (route) => false);
+                        }),
+                      ).open(context)),
                         MenuButton(
                             leading: const Icon(Icons.refresh_ionic),
                             onPressed: () => Navigator.pushAndRemoveUntil(

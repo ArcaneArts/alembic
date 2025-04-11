@@ -45,8 +45,10 @@ class ArcaneRepository {
   String get imagePath => expandPath(
       "${config.archiveDirectory}/archives/${repository.owner?.login ?? 'unknown'}/${repository.name}.zip");
 
-  String get authenticatedCloneUrl =>
-      "https://${box.get("1")}:x-oauth-basic@github.com/${repository.owner?.login}/${repository.name}.git";
+  String get authenticatedCloneUrl {
+    final token = box.get("1");
+    return "https://$token@github.com/${repository.owner?.login}/${repository.name}.git";
+  }
 
   Future<bool> get isStaleActive async {
     if (!await isActive) return false;
@@ -68,6 +70,43 @@ class ArcaneRepository {
     }
 
     return false;
+  }
+
+  Future<bool> checkAndUpdateToken(String latestToken) async {
+    if (!await isActive) return false;
+
+    try {
+      // Read the git config to check current token
+      final Directory gitDir = Directory("$repoPath/.git");
+      if (!await gitDir.exists()) return false;
+
+      // Get the remote URL
+      BehaviorSubject<String> stdout = BehaviorSubject();
+      await cmd('git', ['-C', repoPath, 'config', '--get', 'remote.origin.url'],
+          stdout: stdout);
+
+      String? currentUrl = stdout.valueOrNull;
+      if (currentUrl == null || currentUrl.isEmpty) return false;
+
+      // Check if URL contains a token (https://TOKEN@github.com)
+      if (currentUrl.contains("@github.com") && !currentUrl.contains(latestToken)) {
+        // We need to update the token
+        info("Updating token for repository ${repository.fullName}");
+
+        // Create updated URL with new token
+        String updatedUrl = "https://$latestToken@github.com/${repository.owner?.login}/${repository.name}.git";
+
+        // Set the new URL
+        int exitCode = await cmd('git', ['-C', repoPath, 'remote', 'set-url', 'origin', updatedUrl]);
+
+        return exitCode == 0;
+      }
+
+      return false; // No update needed
+    } catch (e) {
+      error("Error checking token for ${repository.fullName}: $e");
+      return false;
+    }
   }
 
   Future<int?> getLatestFileModificationTime() async {

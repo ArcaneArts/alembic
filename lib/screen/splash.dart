@@ -39,7 +39,56 @@ class SplashScreenState extends State<SplashScreen> {
     super.initState();
   }
 
-  GitHub auth() => GitHub(auth: Authentication.withToken(box.get("1")));
+  // Add to SplashScreen initState or create a separate method
+  void checkTokenMigration() {
+    if (box.get("authenticated", defaultValue: false)) {
+      final token = box.get("1", defaultValue: "");
+      final tokenType = box.get("token_type", defaultValue: "unknown");
+
+      // If there's a token but no type is stored, check if it's a classic token
+      if (tokenType == "unknown" && token.isNotEmpty) {
+        if (!token.startsWith("github_pat_")) {
+          // It's likely a classic token, mark it as such
+          box.put("token_type", "classic");
+
+          // Optionally show a migration dialog on next screen
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            showTokenMigrationDialog(context);
+          });
+        } else {
+          // It's already a fine-grained token
+          box.put("token_type", "fine_grained");
+        }
+      }
+    }
+  }
+
+  void showTokenMigrationDialog(BuildContext context) {
+    DialogConfirm(
+      title: "GitHub Token Update Required",
+      description:
+      "GitHub is deprecating classic tokens. Please create a new fine-grained token with 'repo' permissions and update your login.",
+      confirmText: "Update Token",
+      onConfirm: () {
+        // Log out and redirect to login screen
+        box.deleteAll(["1", "authenticated", "token_type"]).then((_) {
+          Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(builder: (context) => const LoginScreen()),
+                  (route) => false);
+        });
+      },
+    ).open(context);
+  }
+
+
+  GitHub auth() {
+    final token = box.get("1");
+    final tokenType = box.get("token_type", defaultValue: "classic");
+
+    // Authenticate with the token
+    return GitHub(auth: Authentication.withToken(token));
+  }
 
   @override
   Widget build(BuildContext context) {
