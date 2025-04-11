@@ -70,7 +70,6 @@ class SplashScreenState extends State<SplashScreen> {
       "GitHub is deprecating classic tokens. Please create a new fine-grained token with 'repo' permissions and update your login.",
       confirmText: "Update Token",
       onConfirm: () {
-        // Log out and redirect to login screen
         box.deleteAll(["1", "authenticated", "token_type"]).then((_) {
           Navigator.pushAndRemoveUntil(
               context,
