@@ -99,7 +99,6 @@ class ArcaneRepository {
     return latestTime;
   }
 
-
   Future<void> archiveFromCloud(GitHub github) => doWork("Archiving", () async {
         if (await isArchived) return;
         if (await isActive) return;
@@ -189,6 +188,7 @@ class ArcaneRepository {
   }
 
   Future<bool> get isArchived => File(imagePath).exists();
+
   bool get isArchivedSync => File(imagePath).existsSync();
 
   Future<RepoState> get state =>
@@ -250,6 +250,7 @@ class ArcaneRepository {
       });
 
   Future<bool> get isActive => Directory("$repoPath/.git").exists();
+
   bool get isActiveSync => Directory("$repoPath/.git").existsSync();
 
   Future<void> ensureRepositoryActive(GitHub github,
@@ -310,7 +311,8 @@ class ArcaneRepository {
 
     // Get the last time the repo was opened through the app
     int? lastOpen = getRepoConfig(repository).lastOpen;
-    if (lastOpen == null) return config.daysToArchive; // Default to config value if never opened
+    if (lastOpen == null)
+      return config.daysToArchive; // Default to config value if never opened
 
     // Get the latest file modification time
     int? latestModification = await getLatestFileModificationTime();
@@ -320,8 +322,9 @@ class ArcaneRepository {
 
     // Calculate days elapsed since last activity
     int daysElapsed = Duration(
-        milliseconds: DateTime.timestamp().millisecondsSinceEpoch - lastActivityTime
-    ).inDays;
+            milliseconds:
+                DateTime.timestamp().millisecondsSinceEpoch - lastActivityTime)
+        .inDays;
 
     // Calculate days remaining until archival
     int daysRemaining = config.daysToArchive - daysElapsed;

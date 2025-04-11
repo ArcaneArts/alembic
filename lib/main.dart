@@ -42,16 +42,15 @@ void main() async {
     };
     verbose("Getting package info");
     Future<PackageInfo> pinf = PackageInfo.fromPlatform();
-    windowMode = Directory(
-        "${appDocDir.path}/Alembic/WINDOW_MODE")
-        .existsSync();
+    windowMode =
+        Directory("${appDocDir.path}/Alembic/WINDOW_MODE").existsSync();
     info("${appDocDir.path}/Alembic");
     Hive.init(configPath);
     verbose("Opening Hive boxes");
     Random r = Random(384858582220);
     box = await Hive.openBox("d",
         encryptionCipher:
-        HiveAesCipher(List.generate(32, (_) => r.nextInt(256))));
+            HiveAesCipher(List.generate(32, (_) => r.nextInt(256))));
     verbose("Opening settings box");
     boxSettings = await Hive.openBox("s");
     verbose("Init Window");

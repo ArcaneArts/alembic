@@ -257,7 +257,6 @@ class _AlembicHomeState extends State<AlembicHome> {
                             child: const Text("Archives Folder"),
                           ),
                         MenuButton(
-                            child: Text("Bulk Actions"),
                             subMenu: [
                               if (active.isNotEmpty)
                                 MenuButton(
@@ -362,7 +361,8 @@ class _AlembicHomeState extends State<AlembicHome> {
                                 child: const Text("Activate Everything"),
                               ),
                             ],
-                            leading: Icon(Icons.list)),
+                            leading: Icon(Icons.list),
+                            child: Text("Bulk Actions")),
                         const MenuDivider(),
                         MenuButton(
                             leading: const Icon(Icons.log_out_outline_ionic),

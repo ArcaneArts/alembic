@@ -68,6 +68,7 @@ void setRepoConfig(Repository repo, AlembicRepoConfig c) =>
 
 AlembicConfig get config => AlembicConfig.fromJson(
     boxSettings.get("config", defaultValue: AlembicConfig().json));
+
 void setConfig(AlembicConfig c) => boxSettings.put("config", c.json);
 
 class Settings extends StatefulWidget {
@@ -222,7 +223,7 @@ class _SettingsState extends State<Settings> {
                       ),
                     ),
                     ListTile(
-                      title:  Text("Archive Duration (Days)"),
+                      title: Text("Archive Duration (Days)"),
                       subtitle: TextField(
                         placeholder: "${config.daysToArchive} days",
                         initialValue: "${config.daysToArchive}",
@@ -241,10 +242,8 @@ class _SettingsState extends State<Settings> {
                             setState(() {});
                           }
                         },
-
                       ),
                       leading: Icon(Icons.timer),
-
                     ),
                   ],
                 )),

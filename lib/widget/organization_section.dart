@@ -5,7 +5,7 @@ import 'package:arcane/arcane.dart';
 import 'package:github/github.dart';
 
 class OrganizationSection extends StatelessWidget {
-  OrganizationSection({super.key});
+  const OrganizationSection({super.key});
 
   @override
   Widget build(BuildContext context) =>
