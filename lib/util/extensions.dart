@@ -51,7 +51,8 @@ extension XApplicationTool on ApplicationTool {
     ApplicationTool.intellij => "Install via JetBrains Toolbox",
     ApplicationTool.vscode =>
     "To use, open Command Palette > Install 'code' command",
-    ApplicationTool.zed => "To use, open Command Palette > cli:install",
+    ApplicationTool.zed =>
+    "To use Zed, open the app, press Cmd+Shift+P, search for 'CLI: Install zed CLI command', and select it",
     ApplicationTool.xcode => "Works out of the box",
   };
 
