@@ -152,8 +152,8 @@ class _AlembicState extends State<Alembic> {
     theme: ArcaneTheme(
       themeMode: ThemeMode.system,
       scheme: ContrastedColorScheme(
-        dark: ColorSchemes.darkZinc(),
-        light: ColorSchemes.lightZinc(),
+        dark: ColorSchemes.darkDefaultColor,
+        light: ColorSchemes.lightDefaultColor
       ),
     ),
     home: const SplashScreen(),

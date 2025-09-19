@@ -8,32 +8,32 @@ dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.8
-  window_manager: ^0.4.3
-  tray_manager: ^0.4.0
+  window_manager: ^0.5.1
+  tray_manager: ^0.5.1
   screen_retriever: ^0.2.0
   flutter_acrylic: ^1.1.4
-  github: ^9.24.0
-  git: ^2.3.1
+  github: ^9.25.0
+  git: ^2.3.2
   hive_flutter: ^1.1.0
-  toxic: ^1.3.2
+  toxic: ^1.3.6
   path_provider: ^2.1.5
-  url_launcher: ^6.3.1
+  url_launcher: ^6.3.2
   fast_log: ^1.0.7
-  flutter_svg: ^2.0.17
+  flutter_svg: ^2.2.1
   padded: ^1.0.1
   crypto: ^3.0.6
   encrypt: ^5.0.3
   oauth2: ^2.0.3
-  arcane: ^5.3.4
+  arcane: ^6.2.2
   launch_at_startup: ^0.5.1
-  package_info_plus: ^8.3.0
-  http: ^1.3.0
-  file_picker: ^10.1.0
+  package_info_plus: ^9.0.0
+  http: ^1.5.0
+  file_picker: ^10.3.3
 dev_dependencies:
-  flutter_launcher_icons: ^0.14.3
+  flutter_launcher_icons: ^0.14.4
   flutter_test:
     sdk: flutter
-  flutter_lints: ^5.0.0
+  flutter_lints: ^6.0.0
 flutter:
   shaders:
     - packages/arcane/resources/shaders/frost.frag
@@ -63,6 +63,7 @@ flutter_launcher_icons:
     generate: true
     image_path: "assets/launcher.png"
 scripts:
+  pod_install_mac: cd macos && rm Podfile.lock && pod install --repo-update
   codesign: cd build/macos/Build/Products/Release && codesign --deep --force --verify --sign "Alembic" alembic.app
   launcher_icons: flutter pub get && dart run flutter_launcher_icons
   distrib: grep '^version:' pubspec.yaml | sed -E 's/^version:\s*//; s/^[[:space:]]+//; s/[[:space:]]+$//' > version && rm -rf dist && dart pub global activate flutter_distributor && npm install -g appdmg && flutter_distributor package --platform macos --targets dmg --skip-clean

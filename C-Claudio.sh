@@ -75,6 +75,7 @@ while IFS= read -r -d '' filepath; do
   fi
 
   # Start new output file if current exceeds size threshold
+  # shellcheck disable=SC2046
   if [ -f "$current_output" ] && [ $(wc -c < "$current_output") -gt $((TARGET_SIZE_KB * 1024)) ]; then
     part=$((part + 1))
     current_output=$(printf "%s-%03d.txt" "$OUTPUT_PREFIX" "$part")
