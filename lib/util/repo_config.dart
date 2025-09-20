@@ -49,15 +49,15 @@ class AlembicConfig {
   AlembicConfig({
     this.editorTool = ApplicationTool.intellij,
     this.gitTool = GitTool.gitkraken,
-    this.workspaceDirectory = "~/development/workspace",
-    this.archiveDirectory = "~/Documents/Alembic",
+    this.workspaceDirectory = "~/Developer/RemoteGit",
+    this.archiveDirectory = "~/Developer/AlembicArchive",
     this.daysToArchive = 30,
   });
 
   /// Create config from JSON string
   AlembicConfig.fromJson(String jsonString) :
-        workspaceDirectory = "~/development/workspace",
-        archiveDirectory = "~/Documents/Alembic",
+        workspaceDirectory = "~/Developer/RemoteGit",
+        archiveDirectory = "~/Developer/AlembicArchive",
         daysToArchive = 30 {
 
     try {
