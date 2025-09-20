@@ -45,3 +45,7 @@ app.*.map.json
 /android/app/release
 
 Alembic-001.txt
+
+AlembicSource-001.txt
+
+C-Claudio.sh
