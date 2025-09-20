@@ -69,7 +69,7 @@ class _WorkspaceDirectoryTileState extends State<_WorkspaceDirectoryTile> {
       title: const Text("Workspace Directory"),
       subtitle: const Text("The subdirectory to open the project in with tools"),
       trailing: SizedBox(
-        width: 300,
+        width: 200,
         child: TextField(controller: _controller),
       ),
     );
