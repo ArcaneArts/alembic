@@ -12,7 +12,7 @@ class RepositorySettings extends StatelessWidget {
   Widget build(BuildContext context) {
     final Repository repository = context.repository;
 
-    return ArcaneScreen(
+    return Screen(
       header: Bar(titleText: "Settings", subtitleText: repository.fullName),
       child: Collection(
         children: [

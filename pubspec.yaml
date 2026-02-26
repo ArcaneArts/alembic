@@ -9,20 +9,20 @@ dependencies:
     sdk: flutter
   cupertino_icons: ^1.0.8
   window_manager: ^0.5.1
-  tray_manager: ^0.5.1
+  tray_manager: ^0.5.2
   screen_retriever: ^0.2.0
   flutter_acrylic: ^1.1.4
   github: ^9.25.0
   path_provider: ^2.1.5
   url_launcher: ^6.3.2
   fast_log: ^1.0.7
-  flutter_svg: ^2.2.1
-  oauth2: ^2.0.3
-  arcane: ^6.2.2
+  flutter_svg: ^2.2.3
+  oauth2: ^2.0.5
+  arcane: ^6.5.12
   launch_at_startup: ^0.5.1
   package_info_plus: ^9.0.0
-  http: ^1.5.0
-  file_picker: ^10.3.3
+  http: ^1.6.0
+  file_picker: ^10.3.10
 dev_dependencies:
   flutter_test:
     sdk: flutter
