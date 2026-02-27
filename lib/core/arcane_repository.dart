@@ -1,99 +1,133 @@
 import 'dart:io';
 import 'dart:math';
 
+import 'package:alembic/core/repository_runtime.dart';
 import 'package:alembic/main.dart';
-import 'package:alembic/screen/home.dart';
-import 'package:alembic/screen/settings.dart';
+import 'package:alembic/util/clone_transport.dart';
 import 'package:alembic/util/extensions.dart';
+import 'package:alembic/util/git_signing.dart';
 import 'package:alembic/util/repo_config.dart';
-import 'package:alembic/widget/repository_tile.dart';
-import 'package:arcane/arcane.dart';
 import 'package:fast_log/fast_log.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:github/github.dart';
+import 'package:rxdart/rxdart.dart';
 
 enum RepoState { active, archived, cloud }
-final BehaviorSubject<List<(Repository, String)>> repoWork = BehaviorSubject.seeded([]);
+
 class ArcaneRepository {
   final Repository repository;
+  final RepositoryRuntime runtime;
+  final CommandRunner commandRunner;
+  final GitSigningManager signingManager;
   bool? _specific;
 
-  ArcaneRepository({required this.repository});
-  // ======== PATH PROPERTIES ========
-  /// Path to the repository on the local filesystem
+  ArcaneRepository({
+    required this.repository,
+    required this.runtime,
+    CommandRunner? commandRunner,
+    GitSigningManager? signingManager,
+  })  : commandRunner = commandRunner ?? cmd,
+        signingManager = signingManager ??
+            GitSigningManager(commandRunner: commandRunner ?? cmd);
+
   String get repoPath => expandPath(
       "${config.workspaceDirectory}/${repository.owner?.login}/${repository.name}");
-  /// Path to the repository archive zip file
+
   String get imagePath => expandPath(
       "${config.archiveDirectory}/archives/${repository.owner?.login ?? 'unknown'}/${repository.name}.zip");
-  /// GitHub clone URL with authentication token
+
   String get authenticatedCloneUrl {
     final String token = box.get("1");
     return "https://$token@github.com/${repository.owner?.login}/${repository.name}.git";
   }
 
-  // ======== STATE CHECKING ========
-  /// Determines if the repository name should be displayed with owner prefix
+  String get publicCloneUrl {
+    return "https://github.com/${repository.owner?.login}/${repository.name}.git";
+  }
+
+  String get sshCloneUrl {
+    return "git@github.com:${repository.owner?.login}/${repository.name}.git";
+  }
+
   bool shouldBeSpecific() {
-    _specific ??= active.where((i) => i.name == repository.name).length > 1;
+    _specific ??= runtime.activeRepositories
+            .where((Repository i) => i.name == repository.name)
+            .length >
+        1;
     return _specific!;
   }
 
-  /// Checks if repository is active (exists on local filesystem)
   Future<bool> get isActive => Directory("$repoPath/.git").exists();
-  /// Synchronously checks if repository is active
-  bool get isActiveSync => Directory("$repoPath/.git").existsSync();
-  /// Checks if repository is archived (exists as zip archive)
-  Future<bool> get isArchived => File(imagePath).exists();
-  /// Synchronously checks if repository is archived
-  bool get isArchivedSync => File(imagePath).existsSync();
-  /// Gets the current state of the repository
-  Future<RepoState> get state => Future.wait([isActive, isArchived])
-      .then((List<bool> statuses) {
-    final bool isActiveStatus = statuses[0];
-    final bool isArchivedStatus = statuses[1];
 
-    if (isActiveStatus) return RepoState.active;
-    if (isArchivedStatus) return RepoState.archived;
-    return RepoState.cloud;
-  });
-  /// Checks if an active repository is stale (inactive for too long)
+  bool get isActiveSync => Directory("$repoPath/.git").existsSync();
+
+  Future<bool> get isArchived => File(imagePath).exists();
+
+  bool get isArchivedSync => File(imagePath).existsSync();
+
+  Future<RepoState> get state =>
+      Future.wait(<Future<bool>>[isActive, isArchived]).then((statuses) {
+        final bool isActiveStatus = statuses[0];
+        final bool isArchivedStatus = statuses[1];
+
+        if (isActiveStatus) {
+          return RepoState.active;
+        }
+        if (isArchivedStatus) {
+          return RepoState.archived;
+        }
+        return RepoState.cloud;
+      });
+
   Future<bool> get isStaleActive async {
-    if (!await isActive) return false;
+    if (!await isActive) {
+      return false;
+    }
     final int? lastOpen = getRepoConfig(repository).lastOpen;
-    if (lastOpen == null) return false;
+    if (lastOpen == null) {
+      return false;
+    }
     final int? latestModification = await getLatestFileModificationTime();
     final int lastActivityTime = max(lastOpen, latestModification ?? 0);
-    final int inactiveTime = DateTime.timestamp().millisecondsSinceEpoch - lastActivityTime;
-    final int staleThreshold = Duration(days: config.daysToArchive).inMilliseconds;
+    final int inactiveTime =
+        DateTime.timestamp().millisecondsSinceEpoch - lastActivityTime;
+    final int staleThreshold =
+        Duration(days: config.daysToArchive).inMilliseconds;
     return inactiveTime > staleThreshold;
   }
 
-  /// Calculates days remaining until repository will be automatically archived
   Future<int> get daysUntilArchival async {
-    if (!await isActive) return 0;
+    if (!await isActive) {
+      return 0;
+    }
     final int? lastOpen = getRepoConfig(repository).lastOpen;
-    if (lastOpen == null) return config.daysToArchive;
+    if (lastOpen == null) {
+      return config.daysToArchive;
+    }
     final int? latestModification = await getLatestFileModificationTime();
     final int lastActivityTime = max(lastOpen, latestModification ?? 0);
     final int daysElapsed = Duration(
-        milliseconds: DateTime.timestamp().millisecondsSinceEpoch - lastActivityTime
+      milliseconds:
+          DateTime.timestamp().millisecondsSinceEpoch - lastActivityTime,
     ).inDays;
     final int daysRemaining = config.daysToArchive - daysElapsed;
     return max(0, daysRemaining);
   }
 
-  // ======== FILE OPERATIONS ========
-  /// Gets the latest modification time of any file in the repository
   Future<int?> getLatestFileModificationTime() async {
-    if (!await isActive) return null;
+    if (!await isActive) {
+      return null;
+    }
+
     int? latestTime;
     try {
       await for (FileSystemEntity entity in Directory(repoPath).list(
         recursive: true,
         followLinks: false,
       )) {
-        // Skip .git directory for performance
-        if (entity.path.contains('/.git/')) continue;
+        if (entity.path.contains('/.git/')) {
+          continue;
+        }
         if (entity is File) {
           final DateTime modTime = await entity.lastModified();
           final int modTimeMs = modTime.millisecondsSinceEpoch;
@@ -107,263 +141,467 @@ class ArcaneRepository {
     }
     return latestTime;
   }
-  /// Gets repository size in kilobytes
-  Future<int> get sizeKB async {
-    final BehaviorSubject<String> stdout = BehaviorSubject<String>();
-    int? kb;
-    stdout.listen((String e) => kb ??= int.tryParse(e.split("\t").first));
-    await cmd('du', ['-sk', repoPath], stdout: stdout);
-    return kb ?? -1;
-  }
 
-  // ======== WORK TRACKING ========
-  /// Tracks work being done on this repository
   Future<T> doWork<T>(String message, Future<T> Function() workFn) async {
-    final (Repository, String) job = (repository, message);
-    // Add job to global work tracking
-    repoWork.add([...repoWork.value, job]);
-    T result;
+    (Repository, String) job = runtime.beginWork(repository, message);
     try {
-      result = await workFn();
+      return await workFn();
     } finally {
-      // Remove job from tracking regardless of success/failure
-      repoWork.add([
-        ...repoWork.value.where((i) => i != job),
-      ]);
+      runtime.endWork(job);
     }
-    return result;
   }
 
-  /// Get stream of current work happening on this repository
-  Stream<List<String>> streamWork() => repoWork.stream
-      .map((List<(Repository, String)> work) =>
-      work.where((item) => item.$1 == repository)
-          .map((item) => item.$2)
-          .toList());
-  // ======== REPOSITORY OPERATIONS ========
-  /// Checks and updates the git remote URL with a new token if needed
+  Stream<List<String>> streamWork() {
+    return runtime.streamWork(repository);
+  }
+
   Future<bool> checkAndUpdateToken(String latestToken) async {
-    if (!await isActive) return false;
+    if (!await isActive) {
+      return false;
+    }
+
     try {
       final Directory gitDir = Directory("$repoPath/.git");
-      if (!await gitDir.exists()) return false;
-      // Get current remote URL
+      if (!await gitDir.exists()) {
+        return false;
+      }
+
       final BehaviorSubject<String> stdout = BehaviorSubject<String>();
-      await cmd(
-          'git',
-          ['-C', repoPath, 'config', '--get', 'remote.origin.url'],
-          stdout: stdout
+      final BehaviorSubject<String> stderr = BehaviorSubject<String>();
+      await commandRunner(
+        'git',
+        <String>['-C', repoPath, 'config', '--get', 'remote.origin.url'],
+        stdout: stdout,
+        stderr: stderr,
+        redactOutput: false,
       );
       final String? currentUrl = stdout.valueOrNull;
-      if (currentUrl == null || currentUrl.isEmpty) return false;
-      // Check if URL contains a token
+      await stdout.close();
+      await stderr.close();
+      if (currentUrl == null || currentUrl.isEmpty) {
+        return false;
+      }
+
       if (currentUrl.contains("@github.com")) {
         final RegExp tokenRegex = RegExp(r'https://([^@]+)@github\.com');
-        final match = tokenRegex.firstMatch(currentUrl);
+        final RegExpMatch? match = tokenRegex.firstMatch(currentUrl);
         if (match != null && match.group(1) != latestToken) {
-          // Update the token in the remote URL
           info("Updating token for repository ${repository.fullName}");
-          final String updatedUrl = "https://$latestToken@github.com/${repository.owner?.login}/${repository.name}.git";
-          final int exitCode = await cmd(
-              'git',
-              ['-C', repoPath, 'remote', 'set-url', 'origin', updatedUrl]
+          final String updatedUrl =
+              "https://$latestToken@github.com/${repository.owner?.login}/${repository.name}.git";
+          final int exitCode = await commandRunner(
+            'git',
+            <String>['-C', repoPath, 'remote', 'set-url', 'origin', updatedUrl],
           );
           return exitCode == 0;
         }
       }
-      return false; // No update needed
+
+      return false;
     } catch (e) {
       error("Error checking token for ${repository.fullName}: $e");
       return false;
     }
   }
-  /// Ensure repository is cloned and available locally
-  Future<void> ensureRepositoryActive(GitHub github, {bool updateActive = true}) =>
-      doWork("Activating", () async {
-        final Directory repoDir = Directory(repoPath);
-        if (!await repoDir.exists()) {
-          if (await isArchived) {
-            await unarchive(github, waitForPull: false, notifyActive: true);
-          } else {
-            await _cloneRepository(updateActive);
-          }
+
+  Future<void> ensureRepositoryActive(
+    GitHub github, {
+    bool updateActive = true,
+  }) {
+    return doWork<void>("Activating", () async {
+      final Directory repoDir = Directory(repoPath);
+      if (!await repoDir.exists()) {
+        if (await isArchived) {
+          await unarchive(github, waitForPull: false, notifyActive: true);
         } else {
-          info("Repository ${repository.fullName} already exists at $repoPath");
+          await _cloneRepository(updateActive);
         }
-        update.add(update.value + 1);
-      });
-  /// Clone repository from GitHub
-  Future<void> _cloneRepository(bool updateActive) => doWork("Cloning", () async {
-    syncingRepositories.add([...syncingRepositories.value, repository]);
-    try {
-      await Directory(repoPath).create(recursive: true);
-      final String cloneUrl = authenticatedCloneUrl;
-      info("Cloning ${repository.fullName} from $cloneUrl");
-      if (await cmd('git', ['clone', cloneUrl, repoPath]) != 0) {
-        throw Exception('Git clone failed!');
+      } else {
+        info("Repository ${repository.fullName} already exists at $repoPath");
       }
-      success("Cloned ${repository.fullName}");
-      if (updateActive) {
-        active.add(repository);
-      }
-      setRepoConfig(
+      await _ensureSigningGuard();
+      runtime.notifyChanged();
+    });
+  }
+
+  Future<void> _cloneRepository(bool updateActive) {
+    return doWork<void>("Cloning", () async {
+      runtime.addSyncingRepository(repository);
+      try {
+        await Directory(repoPath).parent.create(recursive: true);
+        final List<String> cloneCandidates = buildCloneCandidates();
+        final List<String> failures = <String>[];
+        bool cloned = false;
+        for (final String cloneUrl in cloneCandidates) {
+          final String candidateLabel = cloneUrl == publicCloneUrl
+              ? 'public'
+              : (cloneUrl == sshCloneUrl ? 'ssh' : 'authenticated');
+          final Directory target = Directory(repoPath);
+          if (await target.exists()) {
+            await target.delete(recursive: true);
+          }
+          final BehaviorSubject<String> stdout = BehaviorSubject<String>();
+          final BehaviorSubject<String> stderr = BehaviorSubject<String>();
+          final int exitCode = await commandRunner(
+            'git',
+            <String>['clone', cloneUrl, repoPath],
+            stdout: stdout,
+            stderr: stderr,
+          );
+          final String failureContext = sanitizeSecrets(
+            stderr.valueOrNull ?? stdout.valueOrNull ?? 'exit code $exitCode',
+          );
+          await stdout.close();
+          await stderr.close();
+          if (exitCode == 0) {
+            cloned = true;
+            break;
+          }
+          failures.add('$candidateLabel -> $failureContext');
+        }
+        if (!cloned) {
+          throw Exception(
+            'Git clone failed for ${repository.fullName}: ${failures.join(" | ")}',
+          );
+        }
+        success("Cloned ${repository.fullName}");
+        if (updateActive) {
+          runtime.addActiveRepository(repository);
+        }
+        setRepoConfig(
           repository,
           getRepoConfig(repository)
-            ..lastOpen = DateTime.timestamp().millisecondsSinceEpoch
-      );
-    } catch (e) {
-      error("Clone failed: $e");
-      rethrow;
-    } finally {
-      syncingRepositories.add(
-          syncingRepositories.value
-              .where((i) => i.fullName != repository.fullName)
-              .toList()
-      );
-    }
-  });
-  /// Pull latest changes from GitHub
-  Future<void> ensureRepositoryUpdated(GitHub github) =>
-      doWork("Pulling", () async {
-        info("Pulling ${repository.fullName}");
-        if (await cmd('git', ['-C', repoPath, 'pull']) != 0) {
-          throw Exception('Git pull failed!');
-        }
-        success("Pulled ${repository.fullName}");
-        update.add(update.value + 1);
-      });
-  /// Open repository in IDE and Git client
-  Future<void> open(GitHub github, BuildContext context) =>
-      doWork("Opening", () async {
-        await ensureRepositoryActive(github);
-        // Open in IDE
-        final ApplicationTool tool = getRepoConfig(repository).editorTool ??
-            config.editorTool ??
-            ApplicationTool.intellij;        info("Opening ${repository.fullName} with IDE ${tool.displayName}");
-        tool.launch("$repoPath/${getRepoConfig(repository).openDirectory}".replaceAll("//", "/"));
-        // Open in Git client
-        final GitTool gitTool = getRepoConfig(repository).gitTool ??
-            config.gitTool ??
-            GitTool.gitkraken;
-        info("Opening ${repository.fullName} with Git Client ${gitTool.displayName}");
-        gitTool.launch(repoPath);
-        // Run Flutter pub get in all dart packages
-        ensureRepositoryUpdated(github);
-        runAutoMacros();
-        // Update last open timestamp
-        setRepoConfig(
-            repository,
-            getRepoConfig(repository)
-              ..lastOpen = DateTime.timestamp().millisecondsSinceEpoch
+            ..lastOpen = DateTime.timestamp().millisecondsSinceEpoch,
         );
-      });
-  /// Open repository folder in Finder
-  Future<void> openInFinder() => cmd('open', [Directory(repoPath).absolute.path]);
-  // ======== ARCHIVE OPERATIONS ========
-  /// Create zip archive of repository
-  Future<void> archive() => doWork("Archiving", () async {
-    if (await isArchived) return;
-    if (!await isActive) return;
-    // Create parent directory if it doesn't exist
-    File(imagePath).absolute.parent.createSync(recursive: true);
-    // Create zip archive
-    final int exitCode = await cmd(
-        'zip',
-        ['-r', imagePath, '.'],
-        workingDirectory: repoPath
-    );
-    if (exitCode != 0) {
-      throw Exception('Failed to create zip archive at $imagePath');
+      } catch (e) {
+        error("Clone failed: $e");
+        rethrow;
+      } finally {
+        runtime.removeSyncingRepository(repository);
+      }
+    });
+  }
+
+  List<String> buildCloneCandidates() {
+    final List<String> candidates = <String>[];
+    final CloneTransportMode cloneMode = loadCloneTransportMode();
+    if (cloneMode == CloneTransportMode.sshPreferred) {
+      candidates.add(sshCloneUrl);
     }
-    success("Archived repository at $repoPath to $imagePath");
-    // Clean up after archiving
-    await deleteRepository();
-    active.remove(repository);
-    update.add(update.value + 1);
-  });
-  /// Extract repository from archive
-  Future<void> unarchive(
-      GitHub github,
-      {bool waitForPull = false, bool notifyActive = true}
-      ) => doWork("Extracting", () async {
-    if (!await isArchived) return;
-    if (await isActive) return;
-    await Directory(repoPath).create(recursive: true);
-    final int exitCode = await cmd('unzip', [imagePath, '-d', repoPath]);
-    if (exitCode != 0) {
-      throw Exception('Failed to unzip archive at $imagePath');
+    final String token = box.get("1", defaultValue: "").toString().trim();
+    if (token.isNotEmpty) {
+      candidates.add(authenticatedCloneUrl);
     }
-    await File(imagePath).delete();
-    success("Unarchived repository to $repoPath from $imagePath");
-    if (notifyActive) {
-      active.add(repository);
-      update.add(update.value + 1);
+    candidates.add(publicCloneUrl);
+    final Map<String, String> deduped = <String, String>{};
+    for (final String candidate in candidates) {
+      deduped[candidate] = candidate;
     }
-    setRepoConfig(
+    return deduped.values.toList();
+  }
+
+  Future<void> ensureRepositoryUpdated(GitHub github) {
+    return doWork<void>("Pulling", () async {
+      info("Pulling ${repository.fullName}");
+      if (await commandRunner('git', <String>['-C', repoPath, 'pull']) != 0) {
+        throw Exception('Git pull failed!');
+      }
+      success("Pulled ${repository.fullName}");
+      runtime.notifyChanged();
+    });
+  }
+
+  Future<void> open(GitHub github, BuildContext context) {
+    return doWork<void>("Opening", () async {
+      await ensureRepositoryActive(github);
+
+      final ApplicationTool tool = getRepoConfig(repository).editorTool ??
+          config.editorTool ??
+          ApplicationTool.intellij;
+      info("Opening ${repository.fullName} with IDE ${tool.displayName}");
+      tool.launch(
+        "$repoPath/${getRepoConfig(repository).openDirectory}"
+            .replaceAll("//", "/"),
+      );
+
+      final GitTool gitTool = getRepoConfig(repository).gitTool ??
+          config.gitTool ??
+          GitTool.gitkraken;
+      info(
+          "Opening ${repository.fullName} with Git Client ${gitTool.displayName}");
+      gitTool.launch(repoPath);
+
+      await Future.wait<void>(<Future<void>>[
+        ensureRepositoryUpdated(github),
+        runAutoMacros(),
+      ]);
+
+      setRepoConfig(
         repository,
         getRepoConfig(repository)
-          ..lastOpen = DateTime.timestamp().millisecondsSinceEpoch
-    );
-    final Future<void> pull = ensureRepositoryUpdated(github);
-    if (waitForPull) {
-      await pull;
-    }
-  });
-  /// Archive repository from cloud without activating it first
-  Future<void> archiveFromCloud(GitHub github) => doWork("Archiving", () async {
-    if (await isArchived) return;
-    if (await isActive) return;
+          ..lastOpen = DateTime.timestamp().millisecondsSinceEpoch,
+      );
+    });
+  }
 
-    await ensureRepositoryActive(github, updateActive: false);
-    await archive();
-  });
-  /// Update an archived repository by activating it, pulling, and re-archiving
-  Future<void> updateArchive(GitHub github) => doWork("Updating", () async {
-    if (!await isArchived) return;
+  Future<void> openInFinder() => commandRunner(
+        'open',
+        <String>[Directory(repoPath).absolute.path],
+      );
 
-    await unarchive(github, waitForPull: true, notifyActive: false);
-    await archive();
-  });
-  /// Delete repository from local filesystem
-  Future<void> deleteRepository() => doWork("Deleting", () async {
-    final int exitCode = await cmd('rm', ['-rf', repoPath]);
-    if (exitCode != 0) {
-      throw Exception('Failed to delete repository at $repoPath');
+  Future<void> archive() {
+    return doWork<void>("Archiving", () async {
+      if (await isArchived || !await isActive) {
+        return;
+      }
+
+      File(imagePath).absolute.parent.createSync(recursive: true);
+      final int exitCode = await commandRunner(
+        'zip',
+        <String>['-r', imagePath, '.'],
+        workingDirectory: repoPath,
+      );
+      if (exitCode != 0) {
+        throw Exception('Failed to create zip archive at $imagePath');
+      }
+
+      success("Archived repository at $repoPath to $imagePath");
+      await deleteRepository();
+    });
+  }
+
+  Future<void> unarchive(
+    GitHub github, {
+    bool waitForPull = false,
+    bool notifyActive = true,
+  }) {
+    return doWork<void>("Extracting", () async {
+      if (!await isArchived || await isActive) {
+        return;
+      }
+
+      await Directory(repoPath).create(recursive: true);
+      final int exitCode =
+          await commandRunner('unzip', <String>[imagePath, '-d', repoPath]);
+      if (exitCode != 0) {
+        throw Exception('Failed to unzip archive at $imagePath');
+      }
+
+      await File(imagePath).delete();
+      success("Unarchived repository to $repoPath from $imagePath");
+      if (notifyActive) {
+        runtime.addActiveRepository(repository);
+      }
+      setRepoConfig(
+        repository,
+        getRepoConfig(repository)
+          ..lastOpen = DateTime.timestamp().millisecondsSinceEpoch,
+      );
+      await _ensureSigningGuard();
+
+      final Future<void> pull = ensureRepositoryUpdated(github);
+      if (waitForPull) {
+        await pull;
+      }
+    });
+  }
+
+  Future<void> archiveFromCloud(GitHub github) {
+    return doWork<void>("Archiving", () async {
+      if (await isArchived || await isActive) {
+        return;
+      }
+      await ensureRepositoryActive(github, updateActive: false);
+      await archive();
+    });
+  }
+
+  Future<void> updateArchive(GitHub github) {
+    return doWork<void>("Updating", () async {
+      if (!await isArchived) {
+        return;
+      }
+      await unarchive(github, waitForPull: true, notifyActive: false);
+      await archive();
+    });
+  }
+
+  Future<void> deleteRepository() {
+    return doWork<void>("Deleting", () async {
+      final int exitCode = await commandRunner('rm', <String>['-rf', repoPath]);
+      if (exitCode != 0) {
+        throw Exception('Failed to delete repository at $repoPath');
+      }
+      info("Deleted repository at $repoPath");
+      runtime.removeActiveRepository(repository);
+    });
+  }
+
+  Future<void> deleteArchive() {
+    return doWork<void>("Deleting Archive", () async {
+      if (!await isArchived) {
+        return;
+      }
+      await File(imagePath).delete();
+      info("Deleted archive at $imagePath");
+      runtime.notifyChanged();
+    });
+  }
+
+  Future<void> forkAndClone(GitHub github) {
+    return doWork<void>("Forking", () async {
+      final CurrentUser currentUser = await github.users.getCurrentUser();
+      final String currentLogin = (currentUser.login ?? '').trim();
+      if (currentLogin.isEmpty) {
+        throw Exception('Unable to determine current user login');
+      }
+
+      final String sourceOwner = (repository.owner?.login ?? '').trim();
+      if (sourceOwner.isEmpty) {
+        throw Exception('Repository owner is unknown');
+      }
+
+      if (sourceOwner.toLowerCase() == currentLogin.toLowerCase()) {
+        await ensureRepositoryActive(github);
+        return;
+      }
+
+      final RepositorySlug sourceSlug =
+          RepositorySlug(sourceOwner, repository.name);
+      final RepositorySlug forkSlug =
+          RepositorySlug(currentLogin, repository.name);
+
+      Repository forkRepository;
+      try {
+        forkRepository = await github.repositories.getRepository(forkSlug);
+      } catch (_) {
+        await github.repositories.createFork(sourceSlug);
+        forkRepository = await _waitForFork(github, forkSlug);
+      }
+
+      final ArcaneRepository forkArcane = ArcaneRepository(
+        repository: forkRepository,
+        runtime: runtime,
+        commandRunner: commandRunner,
+        signingManager: signingManager,
+      );
+      await forkArcane.ensureRepositoryActive(github);
+
+      final int removeExitCode = await commandRunner(
+        'git',
+        <String>['-C', forkArcane.repoPath, 'remote', 'remove', 'upstream'],
+      );
+      if (removeExitCode != 0) {
+        final int setExitCode = await commandRunner(
+          'git',
+          <String>[
+            '-C',
+            forkArcane.repoPath,
+            'remote',
+            'set-url',
+            'upstream',
+            publicCloneUrl,
+          ],
+        );
+        if (setExitCode != 0) {
+          final int addExitCode = await commandRunner(
+            'git',
+            <String>[
+              '-C',
+              forkArcane.repoPath,
+              'remote',
+              'add',
+              'upstream',
+              publicCloneUrl,
+            ],
+          );
+          if (addExitCode != 0) {
+            throw Exception('Unable to configure upstream remote');
+          }
+        }
+      } else {
+        final int addExitCode = await commandRunner(
+          'git',
+          <String>[
+            '-C',
+            forkArcane.repoPath,
+            'remote',
+            'add',
+            'upstream',
+            publicCloneUrl,
+          ],
+        );
+        if (addExitCode != 0) {
+          final int setExitCode = await commandRunner(
+            'git',
+            <String>[
+              '-C',
+              forkArcane.repoPath,
+              'remote',
+              'set-url',
+              'upstream',
+              publicCloneUrl,
+            ],
+          );
+          if (setExitCode != 0) {
+            throw Exception('Unable to configure upstream remote');
+          }
+        }
+      }
+
+      runtime.notifyChanged();
+    });
+  }
+
+  Future<Repository> _waitForFork(GitHub github, RepositorySlug slug) async {
+    const int maxAttempts = 15;
+    for (int attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        return await github.repositories.getRepository(slug);
+      } catch (_) {}
+      await Future<void>.delayed(const Duration(seconds: 2));
     }
-    info("Deleted repository at $repoPath");
-    active.remove(repository);
-    update.add(update.value + 1);
-  });
-  /// Delete repository archive
-  Future<void> deleteArchive() => doWork("Deleting Archive", () async {
-    if (!await isArchived) return;
-    await File(imagePath).delete();
-    info("Deleted archive at $imagePath");
-  });
-  // ======== DEPENDENCY MANAGEMENT ========
-  /// Find all Dart packages in the repository
+    throw Exception('Timed out waiting for fork ${slug.fullName}');
+  }
+
+  Future<void> _ensureSigningGuard() async {
+    try {
+      await signingManager.ensureRepoSigningGuard(repoPath);
+    } catch (e) {
+      warn("Signing guard failed for ${repository.fullName}: $e");
+    }
+  }
+
   Stream<String> findDartPackages(String path) async* {
     if (await File("$path/pubspec.yaml").exists()) {
       yield path;
     }
-    for (FileSystemEntity entity in Directory(path).listSync(followLinks: false)) {
+    for (FileSystemEntity entity
+        in Directory(path).listSync(followLinks: false)) {
       if (entity is Directory) {
-        if (entity.path.endsWith(".plugin_symlinks")) continue;
+        if (entity.path.endsWith(".plugin_symlinks")) {
+          continue;
+        }
         yield* findDartPackages(entity.path);
       }
     }
   }
-  /// Run Flutter pub get in all Dart packages
+
   Future<void> runAutoMacros() async {
-    final List<String> packagePaths = [
+    final List<String> packagePaths = <String>[
       ...await findDartPackages(
-          "$repoPath/${getRepoConfig(repository).openDirectory}".replaceAll("//", "/")
+        "$repoPath/${getRepoConfig(repository).openDirectory}"
+            .replaceAll("//", "/"),
       ).toList(),
-      ...await findDartPackages(repoPath).toList()
+      ...await findDartPackages(repoPath).toList(),
     ];
     for (String path in packagePaths) {
       warn("Running pub get in $path");
-      await cmd("flutter", ["pub", "get"], workingDirectory: path);
+      await commandRunner(
+        "flutter",
+        <String>["pub", "get"],
+        workingDirectory: path,
+      );
     }
   }
 }

@@ -1,29 +1,44 @@
-import 'package:arcane/arcane.dart';
-
 extension XFutureListSem on Iterable<Future Function()> {
   Future<List<T>> waitSemaphore<T>(
     int maxSimultaneous, {
     void Function(double)? progress,
   }) async {
-    progress?.call(0.0);
-    List<Future Function()> tx = toList();
-    assert(maxSimultaneous > 0);
-    int working = 0;
-    List<Future<T>> t = [];
-    for (int i = 0; i < length; i++) {
-      while (working >= maxSimultaneous) {
-        await Future.delayed(const Duration(milliseconds: 100));
-      }
-
-      if (working < maxSimultaneous) {
-        working++;
-        t.add(tx[i]().thenRun((result) => working--) as Future<T>);
-      }
-
-      progress?.call((i + 1) / length);
+    List<Future Function()> tasks = toList();
+    int total = tasks.length;
+    if (total == 0) {
+      progress?.call(1);
+      return <T>[];
     }
 
-    progress?.call(1.0);
-    return await Future.wait(t);
+    int cursor = 0;
+    int completed = 0;
+    List<T> results = <T>[];
+
+    progress?.call(0);
+
+    Future<void> worker() async {
+      while (true) {
+        Future Function()? task;
+        if (cursor < total) {
+          task = tasks[cursor];
+          cursor++;
+        } else {
+          return;
+        }
+
+        T result = await task() as T;
+        results.add(result);
+        completed++;
+        progress?.call(completed / total);
+      }
+    }
+
+    int workers = maxSimultaneous < 1 ? 1 : maxSimultaneous;
+    await Future.wait(
+      List<Future<void>>.generate(workers, (_) => worker()),
+    );
+
+    progress?.call(1);
+    return results;
   }
 }

@@ -2,20 +2,34 @@ import 'dart:io';
 
 import 'package:alembic/main.dart';
 import 'package:fast_log/fast_log.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter_acrylic/flutter_acrylic.dart';
+import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart';
 import 'package:screen_retriever/screen_retriever.dart';
 import 'package:tray_manager/tray_manager.dart';
 import 'package:window_manager/window_manager.dart';
 
 class WindowUtil {
+  static const double minWidth = 380;
+  static const double minHeight = 620;
+  static const double defaultWidth = 440;
+  static const double defaultHeight = 760;
+  static const double maxWidth = 900;
+  static const double maxHeight = 1200;
+
   static bool isDark = false;
   static bool iconIsDark = true;
+  static Size _windowSize = const Size(defaultWidth, defaultHeight);
+  static bool _hideOnBlur = false;
+
+  static bool get hideOnBlurEnabled => _hideOnBlur;
 
   static Future<void> init() async {
     if (windowMode) {
       return;
     }
+
+    _windowSize = _loadWindowSize();
+    _hideOnBlur = boxSettings.get('hide_on_blur', defaultValue: false) == true;
 
     verbose("  Starting Window Manager");
     await windowManager.ensureInitialized();
@@ -23,26 +37,36 @@ class WindowUtil {
     await initSystemTray();
     verbose("  Starting Screen Retriever");
     Display d = await screenRetriever.getPrimaryDisplay();
-    verbose("  Initializing Window");
-    await Window.initialize();
     verbose("  Setup Blur Listeners");
     windowManager.addListener(HideOnBlurWindowListener());
     verbose("  Waiting for Window to be ready");
-    windowManager.waitUntilReadyToShow(windowOptions, () async {
-      verbose("Window is Ready. Hiding...");
-      await windowManager.hide();
+    windowManager.waitUntilReadyToShow(_windowOptions, () async {
       verbose("Setting Window Properties (mv=false, bg=transparent)");
-      await windowManager.setBackgroundColor(Colors.transparent);
       await windowManager.setMovable(false);
-      verbose("Setting Window Position");
       await windowManager
-          .setPosition(Offset(d.size.width - windowOptions.size!.width, 0));
-      verbose("Setting Window Effect to menu 0x0000");
-      await Window.setEffect(
-        effect: WindowEffect.menu,
-        color: const Color(0x00000000),
-      );
+          .setPosition(Offset(d.size.width - _windowSize.width, 0));
+      bool startHidden =
+          boxSettings.get('start_hidden', defaultValue: false) == true;
+      if (startHidden && !kDebugMode) {
+        verbose("Window is Ready. Starting hidden (tray mode).");
+        await windowManager.hide();
+      } else {
+        verbose("Window is Ready. Showing window.");
+        await windowManager.show();
+        await windowManager.focus();
+      }
+      await _reassertFramelessVisuals();
+      Future<void>.delayed(const Duration(milliseconds: 120), () async {
+        await _reassertFramelessVisuals();
+      });
+      await persistWindowSize();
     });
+  }
+
+  static Future<void> _reassertFramelessVisuals() async {
+    await windowManager.setAsFrameless();
+    await windowManager.setHasShadow(false);
+    await windowManager.setBackgroundColor(const Color(0x00000000));
   }
 
   static Future<void> initSystemTray() async {
@@ -65,31 +89,86 @@ class WindowUtil {
     verbose("    System Tray Ready");
   }
 
-  static const WindowOptions windowOptions = WindowOptions(
-    size: Size(400, 700),
-    maximumSize: Size(400, 700),
-    minimumSize: Size(400, 700),
-    center: false,
-    windowButtonVisibility: false,
-    title: 'Alembic',
-    alwaysOnTop: false,
-    backgroundColor: Color(0x00000000),
-    skipTaskbar: true,
-    titleBarStyle: TitleBarStyle.hidden,
-  );
+  static WindowOptions get _windowOptions => WindowOptions(
+        size: _windowSize,
+        maximumSize: const Size(maxWidth, maxHeight),
+        minimumSize: const Size(minWidth, minHeight),
+        center: false,
+        windowButtonVisibility: false,
+        title: 'Alembic',
+        alwaysOnTop: false,
+        backgroundColor: const Color(0x00000000),
+        skipTaskbar: true,
+        titleBarStyle: TitleBarStyle.hidden,
+      );
+
+  static Size _loadWindowSize() {
+    dynamic rawWidth = boxSettings.get('window_width');
+    dynamic rawHeight = boxSettings.get('window_height');
+
+    double width = _coerceDimension(
+      raw: rawWidth,
+      fallback: defaultWidth,
+      min: minWidth,
+      max: maxWidth,
+    );
+    double height = _coerceDimension(
+      raw: rawHeight,
+      fallback: defaultHeight,
+      min: minHeight,
+      max: maxHeight,
+    );
+
+    return Size(width, height);
+  }
+
+  static double _coerceDimension({
+    required dynamic raw,
+    required double fallback,
+    required double min,
+    required double max,
+  }) {
+    if (raw is num) {
+      double value = raw.toDouble();
+      return value.clamp(min, max).toDouble();
+    }
+
+    return fallback;
+  }
+
+  static Future<void> persistWindowSize() async {
+    if (windowMode) {
+      return;
+    }
+
+    Size size = await windowManager.getSize();
+    double width = size.width.clamp(minWidth, maxWidth).toDouble();
+    double height = size.height.clamp(minHeight, maxHeight).toDouble();
+
+    _windowSize = Size(width, height);
+    await boxSettings.put('window_width', width);
+    await boxSettings.put('window_height', height);
+  }
 
   static Future<void> show() async {
     if (windowMode) {
       return;
     }
     Offset cursor = await screenRetriever.getCursorScreenPoint();
-    Size windowSize = windowOptions.size!;
-    await windowManager.setPosition(Offset(
+    Size windowSize = _windowSize;
+    await windowManager.setPosition(
+      Offset(
         cursor.dx - windowSize.width / 2 > 0
             ? cursor.dx - windowSize.width / 2
             : 0,
-        0));
+        0,
+      ),
+    );
     await windowManager.show();
+    await _reassertFramelessVisuals();
+    Future<void>.delayed(const Duration(milliseconds: 120), () async {
+      await _reassertFramelessVisuals();
+    });
   }
 
   static Future<void> hide() async {
@@ -128,7 +207,15 @@ class AlembicTrayListener implements TrayListener {
 class HideOnBlurWindowListener implements WindowListener {
   @override
   void onWindowBlur() {
+    if (!WindowUtil.hideOnBlurEnabled) {
+      return;
+    }
     WindowUtil.hide();
+  }
+
+  @override
+  void onWindowResized() {
+    WindowUtil.persistWindowSize();
   }
 
   @override
@@ -163,9 +250,6 @@ class HideOnBlurWindowListener implements WindowListener {
 
   @override
   void onWindowResize() {}
-
-  @override
-  void onWindowResized() {}
 
   @override
   void onWindowRestore() {}

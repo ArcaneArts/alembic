@@ -6,23 +6,18 @@ import 'package:github/github.dart';
 import 'extensions.dart';
 
 /// Functions for working with repository configurations
-AlembicRepoConfig getRepoConfig(Repository repo) => AlembicRepoConfig.fromJson(
-    boxSettings.get(
-        "config/${repo.fullName}",
-        defaultValue: AlembicRepoConfig().json
-    )
-);
+AlembicRepoConfig getRepoConfig(Repository repo) =>
+    AlembicRepoConfig.fromJson(boxSettings.get("config/${repo.fullName}",
+        defaultValue: AlembicRepoConfig().json));
 
 void setRepoConfig(Repository repo, AlembicRepoConfig config) =>
     boxSettings.put("config/${repo.fullName}", config.json);
 
 /// Functions for working with global app configuration
 AlembicConfig get config => AlembicConfig.fromJson(
-    boxSettings.get("config", defaultValue: AlembicConfig().json)
-);
+    boxSettings.get("config", defaultValue: AlembicConfig().json));
 
-void setConfig(AlembicConfig config) =>
-    boxSettings.put("config", config.json);
+void setConfig(AlembicConfig config) => boxSettings.put("config", config.json);
 
 /// Helper function to compress macOS paths to use ~ for home directory
 String? compressPath(String? path) {
@@ -55,11 +50,10 @@ class AlembicConfig {
   });
 
   /// Create config from JSON string
-  AlembicConfig.fromJson(String jsonString) :
-        workspaceDirectory = "~/Developer/RemoteGit",
+  AlembicConfig.fromJson(String jsonString)
+      : workspaceDirectory = "~/Developer/RemoteGit",
         archiveDirectory = "~/Developer/AlembicArchive",
         daysToArchive = 30 {
-
     try {
       final Map<String, dynamic> data = jsonDecode(jsonString);
 
@@ -67,7 +61,7 @@ class AlembicConfig {
       final String? editorToolName = data["editorTool"] as String?;
       if (editorToolName != null) {
         editorTool = ApplicationTool.values.firstWhere(
-              (tool) => tool.name == editorToolName,
+          (tool) => tool.name == editorToolName,
           orElse: () => ApplicationTool.intellij,
         );
       } else {
@@ -78,7 +72,7 @@ class AlembicConfig {
       final String? gitToolName = data["gitTool"] as String?;
       if (gitToolName != null) {
         gitTool = GitTool.values.firstWhere(
-              (tool) => tool.name == gitToolName,
+          (tool) => tool.name == gitToolName,
           orElse: () => GitTool.gitkraken,
         );
       } else {
@@ -86,8 +80,10 @@ class AlembicConfig {
       }
 
       // Load other settings
-      workspaceDirectory = data["workspaceDirectory"] as String? ?? workspaceDirectory;
-      archiveDirectory = data["archiveDirectory"] as String? ?? archiveDirectory;
+      workspaceDirectory =
+          data["workspaceDirectory"] as String? ?? workspaceDirectory;
+      archiveDirectory =
+          data["archiveDirectory"] as String? ?? archiveDirectory;
       daysToArchive = data["daysToArchive"] as int? ?? daysToArchive;
     } catch (e) {
       // Failed to parse JSON, use defaults
@@ -98,12 +94,12 @@ class AlembicConfig {
 
   /// Convert config to JSON string
   String get json => jsonEncode({
-    "editorTool": editorTool?.name,
-    "gitTool": gitTool?.name,
-    "workspaceDirectory": workspaceDirectory,
-    "archiveDirectory": archiveDirectory,
-    "daysToArchive": daysToArchive,
-  });
+        "editorTool": editorTool?.name,
+        "gitTool": gitTool?.name,
+        "workspaceDirectory": workspaceDirectory,
+        "archiveDirectory": archiveDirectory,
+        "daysToArchive": daysToArchive,
+      });
 }
 
 /// Repository-specific configuration
@@ -122,9 +118,7 @@ class AlembicRepoConfig {
   });
 
   /// Create config from JSON string
-  AlembicRepoConfig.fromJson(String jsonString) :
-        openDirectory = "/" {
-
+  AlembicRepoConfig.fromJson(String jsonString) : openDirectory = "/" {
     try {
       final Map<String, dynamic> data = jsonDecode(jsonString);
 
@@ -132,7 +126,7 @@ class AlembicRepoConfig {
       final String? editorToolName = data["editorTool"] as String?;
       if (editorToolName != null) {
         editorTool = ApplicationTool.values.firstWhere(
-              (tool) => tool.name == editorToolName,
+          (tool) => tool.name == editorToolName,
           orElse: () => config.editorTool ?? ApplicationTool.intellij,
         );
       }
@@ -141,7 +135,7 @@ class AlembicRepoConfig {
       final String? gitToolName = data["gitTool"] as String?;
       if (gitToolName != null) {
         gitTool = GitTool.values.firstWhere(
-              (tool) => tool.name == gitToolName,
+          (tool) => tool.name == gitToolName,
           orElse: () => config.gitTool ?? GitTool.gitkraken,
         );
       }
@@ -156,12 +150,11 @@ class AlembicRepoConfig {
 
   /// Convert config to JSON string - only includes non-default values
   String get json => jsonEncode({
-    if (editorTool != null && editorTool != config.editorTool)
-      "editorTool": editorTool!.name,
-    if (gitTool != null && gitTool != config.gitTool)
-      "gitTool": gitTool!.name,
-    "openDirectory": openDirectory,
-    if (lastOpen != null)
-      "lastOpen": lastOpen,
-  });
+        if (editorTool != null && editorTool != config.editorTool)
+          "editorTool": editorTool!.name,
+        if (gitTool != null && gitTool != config.gitTool)
+          "gitTool": gitTool!.name,
+        "openDirectory": openDirectory,
+        if (lastOpen != null) "lastOpen": lastOpen,
+      });
 }

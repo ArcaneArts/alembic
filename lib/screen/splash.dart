@@ -1,12 +1,16 @@
 import 'package:alembic/main.dart';
+import 'package:alembic/core/repository_runtime.dart';
 import 'package:alembic/screen/home.dart';
 import 'package:alembic/screen/login.dart';
-import 'package:arcane/arcane.dart';
+import 'package:alembic/theme/alembic_tokens.dart';
+import 'package:alembic/widget/glass_drag_strip.dart';
+import 'package:alembic/widget/glass_panel.dart';
+import 'package:alembic/widget/glass_shell.dart';
 import 'package:fast_log/fast_log.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:github/github.dart';
 
-/// Splash screen displayed on app launch that handles authentication flow
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
@@ -14,119 +18,192 @@ class SplashScreen extends StatefulWidget {
   State<SplashScreen> createState() => SplashScreenState();
 }
 
-class SplashScreenState extends State<SplashScreen> {
+class SplashScreenState extends State<SplashScreen>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _fade;
+  late Animation<double> _scale;
+
   @override
   void initState() {
     super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 820),
+    );
+    _fade = CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic);
+    _scale = Tween<double>(begin: 0.92, end: 1).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeOutBack),
+    );
+    _controller.forward();
     _handleAuthentication();
   }
 
-  /// Determines whether to show login screen or main app
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
   void _handleAuthentication() {
-    if (!box.get("authenticated", defaultValue: false)) {
+    if (!box.get('authenticated', defaultValue: false)) {
       _navigateToLogin();
     } else {
-      _checkTokenMigration();
+      _ensureTokenType();
       _navigateToHome();
     }
   }
 
-  /// Navigates to login screen
   void _navigateToLogin() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (context) => const LoginScreen()),
-            (route) => false,
+      if (!mounted) {
+        return;
+      }
+      Navigator.of(context).pushAndRemoveUntil(
+        CupertinoPageRoute<void>(builder: (_) => const LoginScreen()),
+        (_) => false,
       );
     });
   }
 
-  /// Navigates to home screen with authenticated GitHub instance
   void _navigateToHome() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(
-          builder: (context) => AlembicHome(github: _createGitHubInstance()),
+      if (!mounted) {
+        return;
+      }
+      Navigator.of(context).pushAndRemoveUntil(
+        CupertinoPageRoute<void>(
+          builder: (_) => AlembicHome(
+            github: _createGitHubInstance(),
+            runtime: RepositoryRuntime(),
+          ),
         ),
-            (route) => false,
+        (_) => false,
       );
     });
   }
 
-  /// Creates an authenticated GitHub instance
   GitHub _createGitHubInstance() {
-    final String token = box.get("1");
-    final String tokenType = box.get("token_type", defaultValue: "classic");
-
-    info("Using $tokenType token for authentication");
+    String token = box.get('1');
+    String tokenType = box.get('token_type', defaultValue: 'classic');
+    info('Using $tokenType token for authentication');
     return GitHub(auth: Authentication.withToken(token));
   }
 
-  /// Checks if token needs migration and identifies token type
-  void _checkTokenMigration() {
-    if (!box.get("authenticated", defaultValue: false)) return;
+  void _ensureTokenType() {
+    if (!box.get('authenticated', defaultValue: false)) {
+      return;
+    }
 
-    final String token = box.get("1", defaultValue: "");
-    final String tokenType = box.get("token_type", defaultValue: "unknown");
+    String token = box.get('1', defaultValue: '');
+    String tokenType = box.get('token_type', defaultValue: 'unknown');
 
-    // Handle unknown token type by detecting it
-    if (tokenType == "unknown" && token.isNotEmpty) {
+    if (tokenType == 'unknown' && token.isNotEmpty) {
       _identifyAndStoreTokenType(token);
-    } else if (tokenType == "classic") {
-      // Show warning for classic tokens
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _showTokenMigrationWarning();
-      });
     }
   }
 
-  /// Identifies token type from format and stores it
   void _identifyAndStoreTokenType(String token) {
-    if (token.startsWith("github_pat_")) {
-      box.put("token_type", "fine_grained");
-    } else if (token.startsWith("ghp_")) {
-      box.put("token_type", "personal");
+    if (token.startsWith('github_pat_')) {
+      box.put('token_type', 'fine_grained');
+    } else if (token.startsWith('ghp_')) {
+      box.put('token_type', 'personal');
     } else {
-      // It's likely a classic token
-      box.put("token_type", "classic");
-
-      // Show warning about classic token deprecation
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _showTokenMigrationWarning();
-      });
+      box.put('token_type', 'classic');
     }
-  }
-
-  /// Shows warning dialog about classic token deprecation
-  void _showTokenMigrationWarning() {
-    DialogConfirm(
-      title: "GitHub Token Update Recommended",
-      description:
-      "GitHub is deprecating classic tokens. While they still work, we recommend creating a new fine-grained token with 'repo' and 'read:org' permissions for better security.",
-      confirmText: "Update Token",
-      cancelText: "Continue",
-      onConfirm: () => _clearTokenAndNavigateToLogin(),
-    ).open(context);
-  }
-
-  /// Clears stored token data and navigates to login screen
-  void _clearTokenAndNavigateToLogin() {
-    box.deleteAll(["1", "authenticated", "token_type"]).then((_) {
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (context) => const LoginScreen()),
-            (route) => false,
-      );
-    });
   }
 
   @override
   Widget build(BuildContext context) {
-    return FillScreen(
-      child: Center(
-        child: SvgPicture.asset("assets/icon.svg", width: 150, height: 150),
+    AlembicTokens tokens = context.alembicTokens;
+
+    return GlassShell(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 2, 16, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            const GlassDragStrip(height: 14),
+            Expanded(
+              child: Center(
+                child: AnimatedBuilder(
+                  animation: _controller,
+                  builder: (context, child) {
+                    return Opacity(
+                      opacity: _fade.value,
+                      child: Transform.scale(
+                        scale: _scale.value,
+                        child: child,
+                      ),
+                    );
+                  },
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 430),
+                    child: GlassPanel(
+                      role: GlassPanelRole.control,
+                      borderRadius: BorderRadius.circular(tokens.radiusLarge),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 22,
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          SizedBox(
+                            width: 168,
+                            height: 168,
+                            child: GlassPanel(
+                              role: GlassPanelRole.control,
+                              padding: const EdgeInsets.all(0),
+                              borderRadius: BorderRadius.circular(36),
+                              child: Center(
+                                child: SvgPicture.asset(
+                                  'assets/icon.svg',
+                                  width: 92,
+                                  height: 92,
+                                  colorFilter: ColorFilter.mode(
+                                    tokens.textSecondary
+                                        .withValues(alpha: 0.92),
+                                    BlendMode.srcIn,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'Alembic',
+                            style: TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: -0.2,
+                              color: tokens.textPrimary,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Preparing your workspace',
+                            style: TextStyle(
+                              color:
+                                  tokens.textSecondary.withValues(alpha: 0.86),
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(height: 18),
+                          const SizedBox(
+                            width: 30,
+                            height: 30,
+                            child: CupertinoActivityIndicator(radius: 10),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

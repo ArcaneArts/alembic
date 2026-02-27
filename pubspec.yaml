@@ -18,31 +18,33 @@ dependencies:
   fast_log: ^1.0.7
   flutter_svg: ^2.2.3
   oauth2: ^2.0.5
-  arcane: ^6.5.12
   launch_at_startup: ^0.5.1
   package_info_plus: ^9.0.0
   http: ^1.6.0
   file_picker: ^10.3.10
+  hive_flutter: ^1.1.0
+  liquid_glass_easy: ^1.1.1
+  rxdart: ^0.28.0
+  liquid_glass_renderer: ^0.2.0-dev.4
+  liquid_glass_widgets: ^0.3.0-dev.1
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
 flutter:
-  shaders:
-    - packages/arcane/resources/shaders/frost.frag
-    - packages/arcane/resources/shaders/pixelate.frag
-    - packages/arcane/resources/shaders/pixelate_blur.frag
-    - packages/arcane/resources/shaders/rgb.frag
-    - packages/arcane/resources/shaders/loader.frag
-    - packages/arcane/resources/shaders/glyph.frag
-    - packages/arcane/resources/shaders/invert.frag
-    - packages/arcane/resources/shaders/warp.frag
-    - packages/arcane/resources/shaders/black_hole.frag
-    - packages/arcane/resources/shaders/lux.frag
-    - packages/arcane/resources/shaders/cascade.frag
-  uses-material-design: true
   assets:
     - assets/
+  fonts:
+    - family: PlusJakartaSans
+      fonts:
+        - asset: assets/fonts/PlusJakartaSans-Variable.ttf
+        - asset: assets/fonts/PlusJakartaSans-Italic-Variable.ttf
+          style: italic
+    - family: JetBrainsMono
+      fonts:
+        - asset: assets/fonts/JetBrainsMono-Variable.ttf
+        - asset: assets/fonts/JetBrainsMono-Italic-Variable.ttf
+          style: italic
 flutter_launcher_icons:
   android: "launcher_icon"
   ios: false

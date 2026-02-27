@@ -1,25 +1,42 @@
 import 'package:alembic/main.dart';
+import 'package:alembic/core/token_validator.dart';
 import 'package:alembic/screen/splash.dart';
-import 'package:arcane/arcane.dart';
+import 'package:alembic/theme/alembic_motion.dart';
+import 'package:alembic/theme/alembic_tokens.dart';
+import 'package:alembic/widget/glass_button.dart';
+import 'package:alembic/widget/glass_drag_strip.dart';
+import 'package:alembic/widget/glass_panel.dart';
+import 'package:alembic/widget/glass_shell.dart';
+import 'package:alembic/widget/glass_text_field.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:url_launcher/url_launcher_string.dart';
 
+Widget _defaultLoginSuccessRoute(BuildContext context) => const SplashScreen();
+
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+  final TokenValidator tokenValidator;
+  final WidgetBuilder nextScreenBuilder;
+
+  const LoginScreen({
+    super.key,
+    this.tokenValidator = const TokenValidator(),
+    this.nextScreenBuilder = _defaultLoginSuccessRoute,
+  });
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  // Controllers and state
-  late final TextEditingController _tokenController;
-  late final FocusNode _tokenFocusNode;
-  bool _isTokenValid = false;
-
-  // Constants
   static const String _tokenCreationUrl =
       'https://github.com/settings/tokens/new?scopes=repo,read:org,admin:org';
+
+  late TextEditingController _tokenController;
+  late FocusNode _tokenFocusNode;
+  bool _isTokenValid = false;
+  bool _isSubmitting = false;
+  String? _validationMessage;
 
   @override
   void initState() {
@@ -37,127 +54,244 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  /// Validate token format for all GitHub token types
   void _validateToken() {
-    final String text = _tokenController.text;
+    String text = _tokenController.text.trim();
+    bool isValid = text.isNotEmpty &&
+        (text.startsWith('github_pat_') ||
+            text.startsWith('ghp_') ||
+            (text.length == 40 && RegExp(r'^[a-f0-9]+$').hasMatch(text)));
+
+    if (isValid == _isTokenValid && _validationMessage == null) {
+      return;
+    }
+
     setState(() {
-      _isTokenValid = text.isNotEmpty && (
-          text.startsWith('github_pat_') ||
-              text.startsWith('ghp_') ||
-              (text.length == 40 && RegExp(r'^[a-f0-9]+$').hasMatch(text))
-      );
+      _isTokenValid = isValid;
+      _validationMessage = null;
     });
   }
 
-  /// Process login with the provided token
+  String _detectTokenType(String token) {
+    if (token.startsWith('github_pat_')) {
+      return 'fine_grained';
+    }
+    if (token.startsWith('ghp_')) {
+      return 'personal';
+    }
+    return 'classic';
+  }
+
   Future<void> _doLogin(String? providedToken) async {
-    final String token = providedToken ?? _tokenController.text.trim();
-    final String tokenType = _detectTokenType(token);
+    if (_isSubmitting) {
+      return;
+    }
 
-    // Save token information
-    await box.put("1", token);
-    await box.put("token_type", tokenType);
-    await box.put("authenticated", true);
+    String token = (providedToken ?? _tokenController.text).trim();
+    setState(() {
+      _isSubmitting = true;
+      _validationMessage = null;
+    });
 
-    // Navigate to splash screen
-    Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (context) => const SplashScreen()),
-            (route) => false
+    TokenValidationResult validationResult =
+        await widget.tokenValidator.validate(token);
+    if (!validationResult.isValid) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _isSubmitting = false;
+        _validationMessage = validationResult.message;
+      });
+      return;
+    }
+
+    String tokenType = _detectTokenType(token);
+
+    await box.put('1', token);
+    await box.put('token_type', tokenType);
+    await box.put('authenticated', true);
+
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _isSubmitting = false;
+    });
+
+    Navigator.of(context).pushAndRemoveUntil(
+      CupertinoPageRoute<void>(
+        builder: widget.nextScreenBuilder,
+      ),
+      (_) => false,
     );
   }
 
-  /// Determine token type from its format
-  String _detectTokenType(String token) {
-    if (token.startsWith('github_pat_')) {
-      return "fine_grained";
-    }
-    return "classic";
-  }
-
-  /// Open GitHub token creation page in browser
   Future<void> _openTokenCreationPage() async {
     await launchUrlString(_tokenCreationUrl);
   }
 
   @override
   Widget build(BuildContext context) {
-    return FillScreen(
-      child: Center(
+    AlembicTokens tokens = context.alembicTokens;
+
+    return GlassShell(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 2, 16, 12),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            _buildLogoSection(),
-            _buildHeaderSection(),
-            _buildTokenInputSection(),
-            _buildActionButtonsSection(),
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            const GlassDragStrip(height: 15),
+            Expanded(
+              child: Center(
+                child: AnimatedContainer(
+                  duration: AlembicMotion.panel,
+                  curve: AlembicMotion.emphasized,
+                  width: 520,
+                  constraints: const BoxConstraints(maxWidth: 560),
+                  margin: const EdgeInsets.symmetric(horizontal: 20),
+                  child: GlassPanel(
+                    role: GlassPanelRole.control,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 26, vertical: 24),
+                    borderRadius: BorderRadius.circular(tokens.radiusLarge),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Row(
+                          children: <Widget>[
+                            SvgPicture.asset(
+                              'assets/login.svg',
+                              width: 48,
+                              height: 48,
+                              colorFilter: ColorFilter.mode(
+                                tokens.textSecondary.withValues(alpha: 0.92),
+                                BlendMode.srcIn,
+                              ),
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: <Widget>[
+                                  Text(
+                                    'Connect GitHub',
+                                    style: TextStyle(
+                                      fontSize: 24,
+                                      fontWeight: FontWeight.w800,
+                                      letterSpacing: -0.2,
+                                      color: tokens.textPrimary,
+                                    ),
+                                  ),
+                                  Text(
+                                    'Use a Personal Access Token to unlock your repository workspace.',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: tokens.textSecondary
+                                          .withValues(alpha: 0.9),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 22),
+                        GlassTextField(
+                          controller: _tokenController,
+                          focusNode: _tokenFocusNode,
+                          placeholder: 'github_pat_... or classic token',
+                          obscureText: true,
+                          onSubmitted:
+                              _isTokenValid && !_isSubmitting ? _doLogin : null,
+                          prefix: Icon(
+                            CupertinoIcons.lock_fill,
+                            size: 15,
+                            color: tokens.textSecondary,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        AnimatedDefaultTextStyle(
+                          duration: AlembicMotion.content,
+                          curve: AlembicMotion.standard,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: _validationMessage == null
+                                ? (_isTokenValid
+                                    ? tokens.textSecondary
+                                    : tokens.textSecondary
+                                        .withValues(alpha: 0.72))
+                                : CupertinoColors.systemRed
+                                    .resolveFrom(context),
+                          ),
+                          child: Text(
+                            _validationMessage ??
+                                (_isTokenValid
+                                    ? 'Token format looks valid.'
+                                    : 'Supported: github_pat_..., ghp_..., or 40-char classic token.'),
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+                        LayoutBuilder(
+                          builder: (context, constraints) {
+                            bool compact = constraints.maxWidth < 480;
+                            if (compact) {
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: <Widget>[
+                                  GlassButton(
+                                    label: 'Create New Token',
+                                    onPressed: _openTokenCreationPage,
+                                    kind: GlassButtonKind.secondary,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  GlassButton(
+                                    label: _isSubmitting
+                                        ? 'Validating...'
+                                        : 'Continue',
+                                    onPressed: _isTokenValid && !_isSubmitting
+                                        ? () => _doLogin(null)
+                                        : null,
+                                    kind: GlassButtonKind.primary,
+                                  ),
+                                ],
+                              );
+                            }
+
+                            return Row(
+                              children: <Widget>[
+                                Expanded(
+                                  child: GlassButton(
+                                    label: 'Create New Token',
+                                    onPressed: _openTokenCreationPage,
+                                    kind: GlassButtonKind.secondary,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: GlassButton(
+                                    label: _isSubmitting
+                                        ? 'Validating...'
+                                        : 'Continue',
+                                    onPressed: _isTokenValid && !_isSubmitting
+                                        ? () => _doLogin(null)
+                                        : null,
+                                    kind: GlassButtonKind.primary,
+                                  ),
+                                ),
+                              ],
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildLogoSection() {
-    return SvgPicture.asset(
-        "assets/login.svg",
-        width: 100,
-        height: 100
-    );
-  }
-
-  Widget _buildHeaderSection() {
-    return Column(
-      children: [
-        const Gap(24),
-        const Text(
-          "GitHub Personal Access Token",
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const Gap(8),
-        const Text(
-          "Supports both classic and fine-grained tokens",
-          style: TextStyle(
-            fontSize: 14,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildTokenInputSection() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-      child: TextField(
-        placeholder: const Text("github_pat_... or classic token"),
-        focusNode: _tokenFocusNode,
-        controller: _tokenController,
-        obscureText: true,
-        leading: const Icon(Icons.lock_fill),
-        onSubmitted: _isTokenValid ? _doLogin : null,
-        textAlign: TextAlign.left,
-      ),
-    );
-  }
-
-  Widget _buildActionButtonsSection() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 32),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          TextButton(
-            onPressed: _openTokenCreationPage,
-            child: const Text("Create New Token"),
-          ),
-          GhostButton(
-            onPressed: _isTokenValid ? () => _doLogin(null) : null,
-            child: const Text("Login"),
-          ),
-        ],
       ),
     );
   }

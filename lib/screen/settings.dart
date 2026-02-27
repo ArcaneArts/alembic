@@ -1,256 +1,409 @@
 import 'package:alembic/main.dart';
+import 'package:alembic/util/clone_transport.dart';
 import 'package:alembic/util/extensions.dart';
-import 'package:arcane/arcane.dart';
+import 'package:alembic/util/git_signing.dart';
+import 'package:alembic/util/repo_config.dart';
+import 'package:alembic/widget/glass_context_menu.dart';
+import 'package:alembic/widget/glass_modal_overlay.dart';
+import 'package:alembic/widget/glass_settings_sheet.dart';
+import 'package:alembic/widget/glass_shell.dart';
+import 'package:alembic/widget/glass_text_field.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:launch_at_startup/launch_at_startup.dart';
 
-import 'package:alembic/util/repo_config.dart';
+Future<void> showSettingsModal(BuildContext context) async {
+  await showGeneralDialog<void>(
+    context: context,
+    useRootNavigator: true,
+    barrierDismissible: true,
+    barrierLabel: 'Dismiss',
+    barrierColor: const Color(0x00000000),
+    transitionDuration: const Duration(milliseconds: 220),
+    pageBuilder: (dialogContext, _, __) {
+      return SafeArea(
+        child: GlassModalOverlay(
+          mode: GlassModalFocusMode.blurAndDim,
+          blurSigmaMultiplier: 2.40,
+          dimStrengthOverride: 0.04,
+          whiteLiftStrengthOverride: 0.30,
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(
+              maxWidth: 680,
+              maxHeight: 720,
+            ),
+            child: const Settings(modal: true),
+          ),
+        ),
+      );
+    },
+    transitionBuilder: (context, animation, _, child) {
+      CurvedAnimation fadeCurve = CurvedAnimation(
+        parent: animation,
+        curve: Curves.easeOutCubic,
+        reverseCurve: Curves.easeInCubic,
+      );
+      CurvedAnimation scaleCurve = CurvedAnimation(
+        parent: animation,
+        curve: Curves.easeOutBack,
+        reverseCurve: Curves.easeInCubic,
+      );
 
-/// Main settings screen for the application
+      return FadeTransition(
+        opacity: fadeCurve,
+        child: ScaleTransition(
+          scale: Tween<double>(begin: 0.93, end: 1).animate(scaleCurve),
+          child: child,
+        ),
+      );
+    },
+  );
+}
+
 class Settings extends StatefulWidget {
-  const Settings({super.key});
+  final bool modal;
+
+  const Settings({
+    super.key,
+    this.modal = false,
+  });
 
   @override
   State<Settings> createState() => _SettingsState();
 }
 
 class _SettingsState extends State<Settings> {
+  late final TextEditingController _archiveDaysController;
+  late final GitSigningManager _signingManager;
+  late CloneTransportMode _cloneTransportMode;
+  GitSigningStatus? _signingStatus;
+  bool _signingBusy = false;
+
   @override
-  Widget build(BuildContext context) => SliverScreen(
-    header: const Bar(titleText: "Settings"),
-    sliver: MultiSliver(
-      children: [
-        _buildApplicationSection(),
-        _buildToolsSection(),
-        _buildAboutSection(),
-      ],
-    ),
-  );
+  void initState() {
+    super.initState();
+    _signingManager = const GitSigningManager();
+    _cloneTransportMode = loadCloneTransportMode();
+    _archiveDaysController = TextEditingController(
+      text: '${config.daysToArchive}',
+    );
+    _refreshSigningStatus();
+  }
 
-  /// Builds the application settings section
-  Widget _buildApplicationSection() => BarSection(
-    subtitleText: "Application",
-    sliver: SListView(
-      children: [
-        _buildAutoLaunchSetting(),
-        _buildUpdateCheckSetting(),
-      ],
-    ),
-  );
+  @override
+  void dispose() {
+    _archiveDaysController.dispose();
+    super.dispose();
+  }
 
-  /// Builds the tools settings section
-  Widget _buildToolsSection() => BarSection(
-    subtitleText: "Tools",
-    sliver: SListView(
-      children: [
-        _buildWorkspaceDirectorySetting(),
-        _buildArchiveDirectorySetting(),
-        _buildEditorToolSetting(),
-        _buildGitToolSetting(),
-        _buildArchiveDurationSetting(),
-      ],
-    ),
-  );
+  Future<void> _pickEditorTool() async {
+    ApplicationTool? selected = await GlassContextMenu.show<ApplicationTool>(
+      context,
+      title: 'Editor Tool',
+      actions: ApplicationTool.values.map((tool) {
+        return GlassMenuAction<ApplicationTool>(
+          value: tool,
+          title: tool.displayName,
+        );
+      }).toList(),
+    );
+    if (selected == null) {
+      return;
+    }
+    setConfig(config..editorTool = selected);
+    if (mounted) {
+      setState(() {});
+    }
+  }
 
-  /// Builds the about section
-  Widget _buildAboutSection() => BarSection(
-    subtitleText: "About",
-    sliver: SListView(
-      children: [
-        _buildConfigPathInfo(),
-        _buildViewLogsOption(),
-      ],
-    ),
-  );
+  Future<void> _pickGitTool() async {
+    GitTool? selected = await GlassContextMenu.show<GitTool>(
+      context,
+      title: 'Git Tool',
+      actions: GitTool.values.map((tool) {
+        return GlassMenuAction<GitTool>(
+          value: tool,
+          title: tool.displayName,
+        );
+      }).toList(),
+    );
+    if (selected == null) {
+      return;
+    }
+    setConfig(config..gitTool = selected);
+    if (mounted) {
+      setState(() {});
+    }
+  }
 
-  /// Auto-launch setting checkbox
-  Widget _buildAutoLaunchSetting() => CheckboxTile(
-    title: const Text("Launch at Startup"),
-    leading: const Icon(Icons.open_ionic),
-    subtitle: const Text("Add / Remove Alembic from Login Items"),
-    value: boxSettings.get("autolaunch", defaultValue: true),
-    onChanged: (bool? value) {
-      if (value != null) {
-        boxSettings.put("autolaunch", value);
+  Future<void> _pickCloneTransport() async {
+    CloneTransportMode? selected =
+        await GlassContextMenu.show<CloneTransportMode>(
+      context,
+      title: 'Clone Transport',
+      actions: CloneTransportMode.values.map((mode) {
+        return GlassMenuAction<CloneTransportMode>(
+          value: mode,
+          title: mode.label,
+        );
+      }).toList(),
+    );
+    if (selected == null) {
+      return;
+    }
+    await saveCloneTransportMode(selected);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _cloneTransportMode = selected;
+    });
+  }
 
-        if (value) {
-          launchAtStartup.enable();
-        } else {
-          launchAtStartup.disable();
-        }
-
-        setState(() {});
-      }
-    },
-  );
-
-  /// Update check setting checkbox
-  Widget _buildUpdateCheckSetting() => CheckboxTile(
-    title: const Text("Check for Updates on Launch"),
-    leading: const Icon(Icons.arrow_circle_up),
-    subtitle: const Text("Allow Alembic to check for updates when launched"),
-    value: boxSettings.get("achup", defaultValue: true),
-    onChanged: (bool? value) {
-      if (value != null) {
-        boxSettings.put("achup", value);
-        setState(() {});
-      }
-    },
-  );
-
-  /// Workspace directory picker
-  Widget _buildWorkspaceDirectorySetting() => ListTile(
-    title: const Text("Workspace Directory"),
-    subtitle: Text(config.workspaceDirectory),
-    leading: const Icon(Icons.folder_fill),
-    onPressed: () => _selectDirectory(
-      initialDirectory: expandPath(config.workspaceDirectory),
-      dialogTitle: "Select Workspace Directory",
-      onSelected: (String path) {
-        setConfig(config..workspaceDirectory = path);
-        setState(() {});
-      },
-    ),
-  );
-
-  /// Archive directory picker
-  Widget _buildArchiveDirectorySetting() => ListTile(
-    title: const Text("Archive Directory"),
-    subtitle: Text(config.archiveDirectory),
-    leading: const Icon(Icons.archive_fill),
-    onPressed: () => _selectDirectory(
-      initialDirectory: expandPath(config.archiveDirectory),
-      dialogTitle: "Select Archive Directory",
-      onSelected: (String path) {
-        setConfig(config..archiveDirectory = path);
-        setState(() {});
-      },
-    ),
-  );
-
-  /// Editor tool selection
-  Widget _buildEditorToolSetting() => ListTile(
-    leading: const Icon(Icons.app_window),
-    title: const Text("Editor Tool"),
-    subtitle: Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Gap(8),
-        CardCarousel(
-          children: [
-            RadioCards<ApplicationTool>(
-              items: ApplicationTool.values,
-              value: config.editorTool ?? ApplicationTool.intellij,
-              builder: (ApplicationTool tool) => Basic(
-                title: Text(tool.displayName)
-                    .withTooltip(tool.help ?? ""),
-              ),
-              onChanged: (ApplicationTool tool) {
-                setConfig(config..editorTool = tool);
-                setState(() {});
-              },
-            )
-          ],
-        ),
-        const Gap(8),
-        const Text("The IDE to use for opening projects")
-      ],
-    ),
-  );
-
-  /// Git tool selection
-  Widget _buildGitToolSetting() => ListTile(
-    leading: const Icon(Icons.git_branch),
-    title: const Text("Git Tool"),
-    subtitle: Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Gap(8),
-        CardCarousel(
-          children: [
-            RadioCards<GitTool>(
-              items: GitTool.values,
-              value: config.gitTool ?? GitTool.gitkraken,
-              builder: (GitTool tool) => Basic(
-                title: Text(tool.displayName),
-              ),
-              onChanged: (GitTool tool) {
-                setConfig(config..gitTool = tool);
-                setState(() {});
-              },
-            )
-          ],
-        ),
-        const Gap(8),
-        const Text("The tool to use for opening repositories")
-      ],
-    ),
-  );
-
-  /// Archive duration setting
-  Widget _buildArchiveDurationSetting() => ListTile(
-    title: const Text("Archive Duration (Days)"),
-    subtitle: TextField(
-      placeholder: Text("${config.daysToArchive} days"),
-      initialValue: "${config.daysToArchive}",
-      keyboardType: TextInputType.number,
-      minLines: 1,
-      maxLines: 2,
-      leading: const Icon(Icons.calendar_clear_outline_ionic),
-      maxLength: 3,
-      onChanged: (String value) {
-        final int? days = int.tryParse(value);
-
-        if (days != null && days > 0) {
-          setConfig(config..daysToArchive = days);
-        } else {
-          setConfig(config..daysToArchive = 30);
-        }
-
-        setState(() {});
-      },
-    ),
-    leading: const Icon(Icons.timer),
-  );
-
-  /// Config path info
-  Widget _buildConfigPathInfo() => ListTile(
-    leading: const Icon(Icons.folder_fill),
-    title: const Text("Config Path"),
-    subtitle: Text(configPath),
-    onPressed: () => cmd("open", [configPath]),
-  );
-
-  /// View logs option
-  Widget _buildViewLogsOption() => ListTile(
-    leading: const Icon(Icons.list),
-    title: const Text("View Logs"),
-    subtitle: Text(configPath),
-    onPressed: () => cmd("open", ["$configPath/alembic.log"]),
-  );
-
-  /// Helper method to handle directory selection
   Future<void> _selectDirectory({
     required String initialDirectory,
     required String dialogTitle,
-    required Function(String) onSelected,
+    required ValueChanged<String> onSelected,
   }) async {
     try {
-      final String? selectedPath = await FilePicker.platform.getDirectoryPath(
+      String? selectedPath = await FilePicker.platform.getDirectoryPath(
         initialDirectory: initialDirectory,
         dialogTitle: dialogTitle,
       );
-
-      final String? compressedPath = compressPath(selectedPath);
-
+      String? compressedPath = compressPath(selectedPath);
       if (compressedPath != null) {
         onSelected(compressedPath);
       }
     } catch (e) {
-      // Handle directory picker errors
-      TextToast("Error selecting directory: $e").open(context);
+      if (!mounted) {
+        return;
+      }
+      await showGlassInfoDialog(
+        context,
+        title: 'Directory Error',
+        message: 'Error selecting directory: $e',
+      );
     }
+  }
+
+  Future<void> _refreshSigningStatus() async {
+    try {
+      GitSigningStatus status = await _signingManager.inspectGlobalSigning();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _signingStatus = status;
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _configureCommitSigning() async {
+    if (_signingBusy) {
+      return;
+    }
+    setState(() {
+      _signingBusy = true;
+    });
+    try {
+      GitSigningStatus status =
+          await _signingManager.ensureGlobalIntrinsicSigning();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _signingStatus = status;
+      });
+      await showGlassInfoDialog(
+        context,
+        title: 'Commit Signing',
+        message: status.label,
+      );
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+      await showGlassInfoDialog(
+        context,
+        title: 'Commit Signing Failed',
+        message: '$e',
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _signingBusy = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    String commitSigningLabel = _signingBusy
+        ? 'Configuring...'
+        : (_signingStatus?.label ?? 'Checking...');
+
+    Widget sheet = GlassSettingsSheetScaffold(
+      title: 'Settings',
+      subtitle: 'Application and workspace preferences',
+      onClosePressed: () => Navigator.of(context).pop(),
+      onFooterPressed: () => Navigator.of(context).pop(),
+      footerLabel: 'Done',
+      showDragStrip: !widget.modal,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          GlassSettingsSection(
+            title: 'General',
+            children: <Widget>[
+              GlassSettingsToggleRow(
+                label: 'Launch at Startup',
+                supportingText: 'Add or remove Alembic from Login Items.',
+                value: boxSettings.get('autolaunch', defaultValue: true),
+                onChanged: (value) {
+                  boxSettings.put('autolaunch', value);
+                  if (value) {
+                    launchAtStartup.enable();
+                  } else {
+                    launchAtStartup.disable();
+                  }
+                  setState(() {});
+                },
+              ),
+              GlassSettingsToggleRow(
+                label: 'Check for Updates on Launch',
+                supportingText:
+                    'Allow Alembic to check for updates every time it starts.',
+                value: boxSettings.get('achup', defaultValue: true),
+                onChanged: (value) {
+                  boxSettings.put('achup', value);
+                  setState(() {});
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          GlassSettingsSection(
+            title: 'Workspace',
+            children: <Widget>[
+              GlassSettingsActionRow(
+                label: 'Workspace Directory',
+                value: config.workspaceDirectory,
+                supportingText: 'Base directory used for active repositories.',
+                onPressed: () => _selectDirectory(
+                  initialDirectory: expandPath(config.workspaceDirectory),
+                  dialogTitle: 'Select Workspace Directory',
+                  onSelected: (path) {
+                    setConfig(config..workspaceDirectory = path);
+                    setState(() {});
+                  },
+                ),
+              ),
+              GlassSettingsActionRow(
+                label: 'Archive Directory',
+                value: config.archiveDirectory,
+                supportingText: 'Where repository archives are stored.',
+                onPressed: () => _selectDirectory(
+                  initialDirectory: expandPath(config.archiveDirectory),
+                  dialogTitle: 'Select Archive Directory',
+                  onSelected: (path) {
+                    setConfig(config..archiveDirectory = path);
+                    setState(() {});
+                  },
+                ),
+              ),
+              GlassSettingsFieldRow(
+                label: 'Archive Duration (Days)',
+                supportingText:
+                    'Automatically archive active repos after N days.',
+                child: GlassTextField(
+                  controller: _archiveDaysController,
+                  placeholder: '30',
+                  keyboardType: TextInputType.number,
+                  prefix: const Icon(
+                    CupertinoIcons.time,
+                    size: 15,
+                  ),
+                  maxLength: 3,
+                  onChanged: (value) {
+                    int? days = int.tryParse(value);
+                    setConfig(
+                      config..daysToArchive = (days ?? 30).clamp(1, 3650),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          GlassSettingsSection(
+            title: 'Tools',
+            children: <Widget>[
+              GlassSettingsActionRow(
+                label: 'Editor Tool',
+                value:
+                    (config.editorTool ?? ApplicationTool.intellij).displayName,
+                supportingText: 'Default editor for opening repositories.',
+                onPressed: _pickEditorTool,
+              ),
+              GlassSettingsActionRow(
+                label: 'Git Tool',
+                value: (config.gitTool ?? GitTool.gitkraken).displayName,
+                supportingText: 'Default Git client integration.',
+                onPressed: _pickGitTool,
+              ),
+              GlassSettingsActionRow(
+                label: 'Clone Transport',
+                value: _cloneTransportMode.label,
+                supportingText: 'HTTPS or SSH for repository clone URLs.',
+                onPressed: _pickCloneTransport,
+              ),
+              GlassSettingsActionRow(
+                label: 'Commit Signing',
+                value: commitSigningLabel,
+                supportingText:
+                    'Configure global intrinsic SSH commit signing.',
+                onPressed: _configureCommitSigning,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          GlassSettingsSection(
+            title: 'Diagnostics',
+            children: <Widget>[
+              GlassSettingsActionRow(
+                label: 'Config Path',
+                value: configPath,
+                supportingText: 'Open Alembic local configuration directory.',
+                onPressed: () => cmd('open', <String>[configPath]),
+              ),
+              GlassSettingsActionRow(
+                label: 'View Logs',
+                value: '$configPath/alembic.log',
+                supportingText: 'Open the current Alembic log file.',
+                onPressed: () =>
+                    cmd('open', <String>['$configPath/alembic.log']),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    if (widget.modal) {
+      return sheet;
+    }
+
+    return CupertinoPageScaffold(
+      backgroundColor: CupertinoColors.transparent,
+      child: GlassShell(
+        safeArea: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 2, 16, 12),
+          child: sheet,
+        ),
+      ),
+    );
   }
 }
