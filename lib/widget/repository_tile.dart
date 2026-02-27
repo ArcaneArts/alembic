@@ -377,7 +377,7 @@ class _RepositoryTileState extends State<RepositoryTile>
     required RepoState state,
     required List<String> work,
   }) {
-    double rowHeight = state == RepoState.active ? 80 : 64;
+    double rowHeight = state == RepoState.active ? 84 : 68;
     Widget rowContent = Column(
       children: <Widget>[
         Row(

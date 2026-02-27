@@ -1,4 +1,3 @@
-import 'package:alembic/widget/glass_panel.dart';
 import 'package:flutter/cupertino.dart';
 
 class GlassShell extends StatelessWidget {
@@ -20,11 +19,6 @@ class GlassShell extends StatelessWidget {
       padding: insetPadding,
       child: content,
     );
-
-    if (alembicIsFlutterTestEnvironment()) {
-      return content;
-    }
-
     return content;
   }
 }

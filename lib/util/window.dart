@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:alembic/main.dart';
 import 'package:fast_log/fast_log.dart';
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/foundation.dart';
 import 'package:screen_retriever/screen_retriever.dart';
 import 'package:tray_manager/tray_manager.dart';
 import 'package:window_manager/window_manager.dart';
@@ -19,7 +18,7 @@ class WindowUtil {
   static bool isDark = false;
   static bool iconIsDark = true;
   static Size _windowSize = const Size(defaultWidth, defaultHeight);
-  static bool _hideOnBlur = false;
+  static bool _hideOnBlur = true;
 
   static bool get hideOnBlurEnabled => _hideOnBlur;
 
@@ -29,7 +28,15 @@ class WindowUtil {
     }
 
     _windowSize = _loadWindowSize();
-    _hideOnBlur = boxSettings.get('hide_on_blur', defaultValue: false) == true;
+
+    if (!boxSettings.containsKey('hide_on_blur')) {
+      await boxSettings.put('hide_on_blur', true);
+    }
+    if (!boxSettings.containsKey('start_hidden')) {
+      await boxSettings.put('start_hidden', true);
+    }
+
+    _hideOnBlur = boxSettings.get('hide_on_blur', defaultValue: true) == true;
 
     verbose("  Starting Window Manager");
     await windowManager.ensureInitialized();
@@ -46,8 +53,8 @@ class WindowUtil {
       await windowManager
           .setPosition(Offset(d.size.width - _windowSize.width, 0));
       bool startHidden =
-          boxSettings.get('start_hidden', defaultValue: false) == true;
-      if (startHidden && !kDebugMode) {
+          boxSettings.get('start_hidden', defaultValue: true) == true;
+      if (startHidden) {
         verbose("Window is Ready. Starting hidden (tray mode).");
         await windowManager.hide();
       } else {

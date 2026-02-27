@@ -40,9 +40,9 @@ class MainFlutterWindow: NSWindow {
       glassView.state = .active
       glassView.isEmphasized = false
       glassView.appearance = NSAppearance(named: .aqua)
-      glassView.alphaValue = 0.5
+      glassView.alphaValue = 1.0
       glassView.wantsLayer = true
-      glassView.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.09).cgColor
+      glassView.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.10).cgColor
       glassView.layer?.cornerRadius = hostCornerRadius
       glassView.layer?.masksToBounds = true
       flutterRootView.addSubview(glassView, positioned: .below, relativeTo: nil)
