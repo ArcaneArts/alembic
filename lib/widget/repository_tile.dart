@@ -52,13 +52,26 @@ class RepositoryTile extends StatefulWidget {
 
 class _RepositoryTileState extends State<RepositoryTile>
     with AutomaticKeepAliveClientMixin {
-  late final ArcaneRepository _repository;
+  late ArcaneRepository _repository;
   bool _hovered = false;
-  late final Future<int> _daysUntilArchiveFuture;
+  late Future<int> _daysUntilArchiveFuture;
 
   @override
   void initState() {
     super.initState();
+    _bindRepository();
+  }
+
+  @override
+  void didUpdateWidget(covariant RepositoryTile oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.repository.fullName != widget.repository.fullName ||
+        oldWidget.runtime != widget.runtime) {
+      _bindRepository();
+    }
+  }
+
+  void _bindRepository() {
     _repository = ArcaneRepository(
       repository: widget.repository,
       runtime: widget.runtime,

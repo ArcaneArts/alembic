@@ -949,8 +949,10 @@ class _AlembicHomeState extends State<AlembicHome> {
                           itemCount: repositories.length,
                           padding: const EdgeInsets.only(bottom: 4),
                           itemBuilder: (context, index) {
+                            Repository repository = repositories[index];
                             return RepositoryTile(
-                              repository: repositories[index],
+                              key: ValueKey<String>(repository.fullName),
+                              repository: repository,
                               github: widget.github,
                               runtime: widget.runtime,
                               onChanged: () {
