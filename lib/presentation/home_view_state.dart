@@ -32,3 +32,27 @@ class OrganizationFilter {
     return OrganizationFilter.organization(value);
   }
 }
+
+class HomeSelectionState {
+  final HomeTab tab;
+  final OrganizationFilter organizationFilter;
+
+  const HomeSelectionState({
+    required this.tab,
+    required this.organizationFilter,
+  });
+
+  const HomeSelectionState.initial()
+      : tab = HomeTab.active,
+        organizationFilter = const OrganizationFilter.all();
+
+  HomeSelectionState copyWith({
+    HomeTab? tab,
+    OrganizationFilter? organizationFilter,
+  }) {
+    return HomeSelectionState(
+      tab: tab ?? this.tab,
+      organizationFilter: organizationFilter ?? this.organizationFilter,
+    );
+  }
+}

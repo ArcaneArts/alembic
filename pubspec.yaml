@@ -7,6 +7,9 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  archive: ^4.0.7
+  arcane: ^6.5.13
+  arcane_desktop: ^2.1.0
   cupertino_icons: ^1.0.8
   window_manager: ^0.5.1
   tray_manager: ^0.5.2
@@ -23,15 +26,13 @@ dependencies:
   http: ^1.6.0
   file_picker: ^10.3.10
   hive_flutter: ^1.1.0
-  liquid_glass_easy: ^1.1.1
   rxdart: ^0.28.0
-  liquid_glass_renderer: ^0.2.0-dev.4
-  liquid_glass_widgets: ^0.3.0-dev.1
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
 flutter:
+  uses-material-design: true
   assets:
     - assets/
   fonts:

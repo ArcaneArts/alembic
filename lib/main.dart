@@ -2,18 +2,19 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:alembic/app/alembic_theme.dart';
+import 'package:alembic/platform/desktop_platform_adapter.dart';
 import 'package:alembic/screen/splash.dart';
-import 'package:alembic/theme/alembic_scroll_behavior.dart';
-import 'package:alembic/theme/alembic_theme.dart';
 import 'package:alembic/util/window.dart';
+import 'package:arcane/arcane.dart';
+import 'package:arcane_desktop/arcane_desktop.dart';
 import 'package:fast_log/fast_log.dart';
-import 'package:flutter/cupertino.dart';
+import 'package:flutter/widgets.dart' as fw;
 import 'package:hive_flutter/adapters.dart';
 import 'package:launch_at_startup/launch_at_startup.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:rxdart/rxdart.dart';
-import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
+import 'package:tray_manager/tray_manager.dart';
 
 late Box box;
 late Box boxSettings;
@@ -30,70 +31,62 @@ typedef CommandRunner = Future<int> Function(
   bool redactOutput,
 });
 
-void main() async {
+Future<void> main() async {
   try {
-    WidgetsFlutterBinding.ensureInitialized();
+    fw.WidgetsFlutterBinding.ensureInitialized();
     await _initializeApp();
-    runApp(const Alembic());
+    AWM.barTitle = _buildWindowTitle;
+    AWM.barLeading = _buildWindowLeading;
+    AWM.tray = trayManager;
+    fw.runApp(const AlembicRoot());
   } catch (e, stackTrace) {
-    error("ERROR $e");
-    error("ERROR $stackTrace");
+    error('ERROR $e');
+    error('ERROR $stackTrace');
   }
 }
 
 Future<void> _initializeApp() async {
   lDebugMode = true;
-  await LiquidGlassWidgets.initialize();
-
   await _setupDirectoriesAndLogging();
   await _setupAppSettings();
-
-  success("=====================================");
+  success('=====================================');
 }
 
 Future<void> _setupDirectoriesAndLogging() async {
   final Directory appDocDir = await getApplicationDocumentsDirectory();
-  configPath = "${appDocDir.path}/Alembic";
+  configPath = '${appDocDir.path}/Alembic';
   await Directory(configPath).create(recursive: true);
-
-  windowMode = Directory("$configPath/WINDOW_MODE").existsSync();
-  info("App directory: $configPath");
-
+  windowMode = Directory('$configPath/WINDOW_MODE').existsSync();
+  info('App directory: $configPath');
   await _setupLogging();
 }
 
 Future<void> _setupLogging() async {
-  final File logFile = File("$configPath/alembic.log");
-
+  final File logFile = File('$configPath/alembic.log');
   if (await logFile.exists()) {
     final int fileSize = await logFile.length();
     if (fileSize > 1024 * 1024) {
       await logFile.delete();
-      verbose("Log file deleted because it exceeded 1MB");
+      verbose('Log file deleted because it exceeded 1MB');
     }
   }
 
   final IOSink logSink = logFile.openWrite(mode: FileMode.writeOnlyAppend);
   lLogHandler = (LogCategory category, String message) {
-    logSink.writeln("${category.name}: $message");
+    logSink.writeln('${category.name}: $message');
   };
 }
 
 Future<void> _setupAppSettings() async {
-  verbose("Getting package info");
+  verbose('Getting package info');
   final Future<PackageInfo> packageInfoFuture = PackageInfo.fromPlatform();
-
   Hive.init(configPath);
-  verbose("Opening Hive boxes");
-
+  verbose('Opening Hive boxes');
   box = await _openEncryptedDataBox();
-
-  verbose("Opening settings box");
-  boxSettings = await Hive.openBox("s");
-
-  verbose("Init Window");
+  verbose('Opening settings box');
+  boxSettings = await Hive.openBox('s');
+  verbose('Init Window');
   await WindowUtil.init();
-
   await _configureStartup(packageInfoFuture);
 }
 
@@ -101,21 +94,21 @@ Future<Box> _openEncryptedDataBox() async {
   final List<int> secureKey = await _loadOrCreateDataKey();
   try {
     return await Hive.openBox(
-      "d",
+      'd',
       encryptionCipher: HiveAesCipher(secureKey),
     );
   } catch (_) {
     final List<int> legacyKey = _legacyHiveKey();
     final Box legacyBox = await Hive.openBox(
-      "d",
+      'd',
       encryptionCipher: HiveAesCipher(legacyKey),
     );
     final Map<dynamic, dynamic> legacyData =
         Map<dynamic, dynamic>.from(legacyBox.toMap());
     await legacyBox.close();
-    await Hive.deleteBoxFromDisk("d");
+    await Hive.deleteBoxFromDisk('d');
     final Box migratedBox = await Hive.openBox(
-      "d",
+      'd',
       encryptionCipher: HiveAesCipher(secureKey),
     );
     if (legacyData.isNotEmpty) {
@@ -123,19 +116,19 @@ Future<Box> _openEncryptedDataBox() async {
     }
     await migratedBox.close();
     return Hive.openBox(
-      "d",
+      'd',
       encryptionCipher: HiveAesCipher(secureKey),
     );
   }
 }
 
 Future<List<int>> _loadOrCreateDataKey() async {
-  final File keyFile = File("$configPath/hive_data.key");
+  final File keyFile = File('$configPath/hive_data.key');
   if (await keyFile.exists()) {
     final String encoded = (await keyFile.readAsString()).trim();
     final List<int> decoded = base64Decode(encoded);
     if (decoded.length != 32) {
-      throw Exception("Invalid Hive key length");
+      throw Exception('Invalid Hive key length');
     }
     return decoded;
   }
@@ -152,63 +145,60 @@ List<int> _legacyHiveKey() {
 }
 
 Future<void> _configureStartup(Future<PackageInfo> packageInfoFuture) async {
-  verbose("Waiting for PackageInfo");
-  await packageInfoFuture.then((value) {
+  verbose('Waiting for PackageInfo');
+  await packageInfoFuture.then((PackageInfo value) {
     packageInfo = value;
-    verbose("PackageInfo: ${packageInfo.version}");
-    verbose("Configuring launch startup mode");
-
+    verbose('PackageInfo: ${packageInfo.version}');
+    verbose('Configuring launch startup mode');
     launchAtStartup.setup(
-      appName: "Alembic",
+      appName: 'Alembic',
       appPath: Platform.resolvedExecutable,
     );
   });
 
-  verbose("Checking if autolaunch is enabled");
+  verbose('Checking if autolaunch is enabled');
   final bool autolaunchEnabled =
-      boxSettings.get("autolaunch", defaultValue: true);
-
+      boxSettings.get('autolaunch', defaultValue: true);
   if (autolaunchEnabled) {
     launchAtStartup.enable();
-    verbose("Autolaunch enabled");
+    verbose('Autolaunch enabled');
   } else {
     launchAtStartup.disable();
-    verbose("Autolaunch disabled");
+    verbose('Autolaunch disabled');
   }
 }
 
-class Alembic extends StatelessWidget {
-  const Alembic({super.key});
+class AlembicRoot extends StatelessWidget {
+  const AlembicRoot({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return CupertinoApp(
-      debugShowCheckedModeBanner: false,
-      title: 'Alembic',
-      theme: const CupertinoThemeData(
-        brightness: Brightness.light,
-        barBackgroundColor: Color(0x00000000),
-        scaffoldBackgroundColor: Color(0x00000000),
+    return ArcaneWindow(
+      child: ArcaneApp(
+        debugShowCheckedModeBanner: false,
+        title: 'Alembic',
+        theme: buildAlembicTheme(),
+        home: const SplashScreen(),
       ),
-      scrollBehavior: const AlembicScrollBehavior(),
-      builder: (context, child) {
-        CupertinoThemeData theme = AlembicThemeBuilder.light();
-        return CupertinoTheme(
-          data: theme,
-          child: child ?? const SizedBox.shrink(),
-        );
-      },
-      home: const SplashScreen(),
     );
   }
 }
 
+Widget _buildWindowLeading(BuildContext context) {
+  return const SizedBox(width: 8);
+}
+
+Widget _buildWindowTitle(BuildContext context) {
+  return Text(
+    'Alembic',
+    style: Theme.of(context).typography.small.copyWith(
+          fontWeight: FontWeight.w600,
+        ),
+  );
+}
+
 String expandPath(String path) {
-  if (path.startsWith('~')) {
-    final String home = Platform.environment['HOME'] ?? '';
-    return path.replaceFirst('~', home);
-  }
-  return path;
+  return DesktopPlatformAdapter.instance.expandHomePath(path);
 }
 
 Future<int> cmd(
@@ -219,23 +209,15 @@ Future<int> cmd(
   String? workingDirectory,
   bool redactOutput = true,
 }) async {
-  command = expandPath(command);
-  args = args.map(expandPath).toList();
-
-  final String shellCommand =
-      <String>[command, ...args].map(_shellEscape).join(" ");
-  final List<String> shellArgs = <String>[
-    "-ilc",
-    shellCommand,
-  ];
-  final String shellCmd = Platform.environment['SHELL'] ?? '/bin/bash';
-
-  _logCommand(shellCmd, shellArgs);
+  final String resolvedCommand = expandPath(command);
+  final List<String> resolvedArgs = args.map(expandPath).toList();
+  _logCommand(resolvedCommand, resolvedArgs);
 
   final Process process = await Process.start(
-    shellCmd,
-    shellArgs,
+    resolvedCommand,
+    resolvedArgs,
     workingDirectory: workingDirectory,
+    runInShell: true,
   );
 
   process.stdout
@@ -245,7 +227,7 @@ Future<int> cmd(
     final String safe = sanitizeSecrets(line);
     stdout?.add(redactOutput ? safe : line);
     return safe;
-  }).listen((line) => verbose("cmd $command stdout: $line"));
+  }).listen((String line) => verbose('cmd $resolvedCommand stdout: $line'));
 
   process.stderr
       .transform(utf8.decoder)
@@ -254,29 +236,22 @@ Future<int> cmd(
     final String safe = sanitizeSecrets(line);
     stderr?.add(redactOutput ? safe : line);
     return safe;
-  }).listen((line) => error("cmd $command stderr: $line"));
+  }).listen((String line) => error('cmd $resolvedCommand stderr: $line'));
 
   final int exitCode = await process.exitCode;
-
   if (exitCode == 0) {
-    success("cmd $command exit code: $exitCode");
+    success('cmd $resolvedCommand exit code: $exitCode');
   } else {
-    error("cmd $command exit code: $exitCode");
+    error('cmd $resolvedCommand exit code: $exitCode');
   }
-
   return exitCode;
-}
-
-String _shellEscape(String value) {
-  return "'${value.replaceAll("'", "'\"'\"'")}'";
 }
 
 void _logCommand(String command, List<String> args) {
   final String redactedArgs = args.map((String arg) {
     return sanitizeSecrets(arg);
-  }).join(" ");
-
-  verbose("cmd $command $redactedArgs");
+  }).join(' ');
+  verbose('cmd $command $redactedArgs');
 }
 
 String sanitizeSecrets(String input) {

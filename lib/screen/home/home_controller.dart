@@ -4,10 +4,10 @@ import 'dart:io';
 import 'package:alembic/core/arcane_repository.dart';
 import 'package:alembic/core/repository_runtime.dart';
 import 'package:alembic/main.dart';
+import 'package:alembic/util/environment.dart';
 import 'package:alembic/util/repository_catalog.dart';
 import 'package:alembic/util/repo_config.dart';
 import 'package:alembic/util/semaphore.dart';
-import 'package:alembic/widget/glass_panel.dart';
 import 'package:fast_log/fast_log.dart';
 import 'package:github/github.dart';
 import 'package:rxdart/rxdart.dart';
@@ -197,6 +197,26 @@ class HomeController {
         mergedRepositories[repository.fullName.toLowerCase()] = repository;
       }
 
+      List<RepositoryRef> workspaceRefs = scanWorkspaceRepositoryRefs();
+      List<RepositoryRef> unresolvedWorkspaceRefs = <RepositoryRef>[];
+      for (RepositoryRef ref in workspaceRefs) {
+        String key = ref.fullName.toLowerCase();
+        if (!mergedRepositories.containsKey(key)) {
+          unresolvedWorkspaceRefs.add(ref);
+        }
+      }
+
+      if (unresolvedWorkspaceRefs.isNotEmpty) {
+        Map<String, Repository> workspaceResolved = await resolveManualRefs(
+          refs: unresolvedWorkspaceRefs,
+          existing: mergedRepositories,
+          maxConcurrency: 4,
+          resolve: resolveRepositoryRef,
+          localFallback: localFallbackRepository,
+        );
+        mergedRepositories.addAll(workspaceResolved);
+      }
+
       List<RepositoryRef> manualRefs = loadManualRepoRefs();
       List<RepositoryRef> unresolvedManualRefs = <RepositoryRef>[];
       for (RepositoryRef ref in manualRefs) {
@@ -248,6 +268,70 @@ class HomeController {
       error(stackTrace.toString());
       return <Repository>[];
     }
+  }
+
+  List<RepositoryRef> scanWorkspaceRepositoryRefs() {
+    String workspacePath = expandPath(config.workspaceDirectory);
+    Directory workspaceDirectory = Directory(workspacePath);
+    if (!workspaceDirectory.existsSync()) {
+      return <RepositoryRef>[];
+    }
+
+    Map<String, RepositoryRef> refsByName = <String, RepositoryRef>{};
+    List<FileSystemEntity> ownerDirectories;
+    try {
+      ownerDirectories = workspaceDirectory.listSync(followLinks: false);
+    } catch (_) {
+      return <RepositoryRef>[];
+    }
+
+    for (FileSystemEntity ownerEntity in ownerDirectories) {
+      if (ownerEntity is! Directory) {
+        continue;
+      }
+
+      String ownerFolderName = _lastPathSegment(ownerEntity.path);
+      if (ownerFolderName.startsWith('.')) {
+        continue;
+      }
+
+      List<FileSystemEntity> repositoryDirectories;
+      try {
+        repositoryDirectories = ownerEntity.listSync(followLinks: false);
+      } catch (_) {
+        continue;
+      }
+
+      for (FileSystemEntity repositoryEntity in repositoryDirectories) {
+        if (repositoryEntity is! Directory) {
+          continue;
+        }
+
+        Directory gitDirectory = Directory('${repositoryEntity.path}/.git');
+        if (!gitDirectory.existsSync()) {
+          continue;
+        }
+
+        String repositoryFolderName = _lastPathSegment(repositoryEntity.path);
+        RepositoryRef? ref = _repositoryRefFromLocalDirectory(
+          repositoryEntity,
+          fallbackOwner: ownerFolderName,
+          fallbackName: repositoryFolderName,
+        );
+        if (ref == null) {
+          continue;
+        }
+
+        refsByName[ref.fullName.toLowerCase()] = ref;
+      }
+    }
+
+    List<RepositoryRef> refs = refsByName.values.toList();
+    refs.sort(
+      (RepositoryRef a, RepositoryRef b) =>
+          a.fullName.toLowerCase().compareTo(b.fullName.toLowerCase()),
+    );
+    return refs;
   }
 
   Future<Map<String, Repository>> resolveManualRefs({
@@ -339,6 +423,42 @@ class HomeController {
       },
       'private': false,
     });
+  }
+
+  RepositoryRef? _repositoryRefFromLocalDirectory(
+    Directory directory, {
+    required String fallbackOwner,
+    required String fallbackName,
+  }) {
+    File gitConfig = File('${directory.path}/.git/config');
+    if (gitConfig.existsSync()) {
+      try {
+        String contents = gitConfig.readAsStringSync();
+        RegExp urlPattern = RegExp(r'^\s*url\s*=\s*(.+)\s*$', multiLine: true);
+        for (RegExpMatch match in urlPattern.allMatches(contents)) {
+          String? rawUrl = match.group(1);
+          if (rawUrl == null) {
+            continue;
+          }
+          RepositoryRef? ref = parseRepositoryRef(rawUrl);
+          if (ref != null) {
+            return ref;
+          }
+        }
+      } catch (_) {}
+    }
+
+    return RepositoryRef(owner: fallbackOwner, name: fallbackName);
+  }
+
+  String _lastPathSegment(String path) {
+    Uri uri = Uri.file(path);
+    List<String> segments =
+        uri.pathSegments.where((String segment) => segment.isNotEmpty).toList();
+    if (segments.isEmpty) {
+      return path;
+    }
+    return segments.last;
   }
 
   Stream<Repository> listRepositoriesAggressive({

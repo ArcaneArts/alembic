@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:alembic/main.dart';
+import 'package:alembic/platform/desktop_platform_adapter.dart';
 import 'package:github/github.dart';
 
 import 'extensions.dart';
@@ -21,15 +22,10 @@ void setConfig(AlembicConfig config) => boxSettings.put("config", config.json);
 
 /// Helper function to compress macOS paths to use ~ for home directory
 String? compressPath(String? path) {
-  if (path == null) return null;
-
-  // Handle macOS paths with /Volumes/
-  if (path.startsWith("/Volumes/Macintosh HD/Users/")) {
-    final List<String> pathParts = path.substring(1).split("/");
-    return "~/${pathParts.sublist(4).join("/")}";
+  if (path == null) {
+    return null;
   }
-
-  return path;
+  return DesktopPlatformAdapter.instance.compressHomePath(path);
 }
 
 /// Global application configuration

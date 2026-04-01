@@ -3,12 +3,14 @@ import 'dart:math';
 
 import 'package:alembic/core/repository_runtime.dart';
 import 'package:alembic/main.dart';
+import 'package:alembic/platform/desktop_platform_adapter.dart';
 import 'package:alembic/util/clone_transport.dart';
 import 'package:alembic/util/extensions.dart';
 import 'package:alembic/util/git_signing.dart';
 import 'package:alembic/util/repo_config.dart';
+import 'package:archive/archive_io.dart';
 import 'package:fast_log/fast_log.dart';
-import 'package:flutter/cupertino.dart';
+import 'package:flutter/widgets.dart';
 import 'package:github/github.dart';
 import 'package:rxdart/rxdart.dart';
 
@@ -125,7 +127,8 @@ class ArcaneRepository {
         recursive: true,
         followLinks: false,
       )) {
-        if (entity.path.contains('/.git/')) {
+        final String normalizedPath = entity.path.replaceAll('\\', '/');
+        if (normalizedPath.contains('/.git/')) {
           continue;
         }
         if (entity is File) {
@@ -345,7 +348,7 @@ class ArcaneRepository {
   }
 
   Future<void> openInFinder() => commandRunner(
-        'open',
+        DesktopPlatformAdapter.instance.isWindows ? 'explorer' : 'open',
         <String>[Directory(repoPath).absolute.path],
       );
 
@@ -355,15 +358,14 @@ class ArcaneRepository {
         return;
       }
 
-      File(imagePath).absolute.parent.createSync(recursive: true);
-      final int exitCode = await commandRunner(
-        'zip',
-        <String>['-r', imagePath, '.'],
-        workingDirectory: repoPath,
+      await File(imagePath).absolute.parent.create(recursive: true);
+      final ZipFileEncoder encoder = ZipFileEncoder();
+      await encoder.zipDirectory(
+        Directory(repoPath),
+        filename: imagePath,
+        level: ZipFileEncoder.gzip,
+        followLinks: false,
       );
-      if (exitCode != 0) {
-        throw Exception('Failed to create zip archive at $imagePath');
-      }
 
       success("Archived repository at $repoPath to $imagePath");
       await deleteRepository();
@@ -381,11 +383,7 @@ class ArcaneRepository {
       }
 
       await Directory(repoPath).create(recursive: true);
-      final int exitCode =
-          await commandRunner('unzip', <String>[imagePath, '-d', repoPath]);
-      if (exitCode != 0) {
-        throw Exception('Failed to unzip archive at $imagePath');
-      }
+      await extractFileToDisk(imagePath, repoPath);
 
       await File(imagePath).delete();
       success("Unarchived repository to $repoPath from $imagePath");
@@ -428,9 +426,9 @@ class ArcaneRepository {
 
   Future<void> deleteRepository() {
     return doWork<void>("Deleting", () async {
-      final int exitCode = await commandRunner('rm', <String>['-rf', repoPath]);
-      if (exitCode != 0) {
-        throw Exception('Failed to delete repository at $repoPath');
+      final Directory repoDirectory = Directory(repoPath);
+      if (await repoDirectory.exists()) {
+        await repoDirectory.delete(recursive: true);
       }
       info("Deleted repository at $repoPath");
       runtime.removeActiveRepository(repository);

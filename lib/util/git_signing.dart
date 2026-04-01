@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:alembic/main.dart';
+import 'package:alembic/platform/desktop_platform_adapter.dart';
 import 'package:rxdart/rxdart.dart';
 
 class GitSigningStatus {
@@ -190,7 +191,7 @@ class GitSigningManager {
     if ((homeDirectory ?? '').trim().isNotEmpty) {
       return homeDirectory!.trim();
     }
-    return Platform.environment['HOME'] ?? '';
+    return DesktopPlatformAdapter.instance.defaultHomeDirectory;
   }
 
   Future<String?> _readGitConfig(List<String> args) async {

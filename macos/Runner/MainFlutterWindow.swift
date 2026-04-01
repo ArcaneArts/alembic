@@ -3,7 +3,7 @@ import FlutterMacOS
 import LaunchAtLogin
 
 class MainFlutterWindow: NSWindow {
-  private let hostCornerRadius: CGFloat = 24
+  private let hostCornerRadius: CGFloat = 14
   private var hostGlassView: NSVisualEffectView?
 
   override func awakeFromNib() {
@@ -90,6 +90,13 @@ class MainFlutterWindow: NSWindow {
   private func _applyHostMask() {
     guard let rootView = self.contentView else {
       return
+    }
+
+    if let frameView: NSView = self.contentView?.superview {
+      frameView.wantsLayer = true
+      frameView.layer?.cornerRadius = hostCornerRadius
+      frameView.layer?.masksToBounds = true
+      frameView.layer?.borderWidth = 0
     }
 
     rootView.wantsLayer = true

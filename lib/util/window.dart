@@ -2,18 +2,20 @@ import 'dart:io';
 
 import 'package:alembic/main.dart';
 import 'package:fast_log/fast_log.dart';
-import 'package:flutter/cupertino.dart';
+import 'package:flutter/widgets.dart';
 import 'package:screen_retriever/screen_retriever.dart';
 import 'package:tray_manager/tray_manager.dart';
 import 'package:window_manager/window_manager.dart';
 
 class WindowUtil {
-  static const double minWidth = 380;
-  static const double minHeight = 620;
-  static const double defaultWidth = 440;
-  static const double defaultHeight = 760;
-  static const double maxWidth = 900;
-  static const double maxHeight = 1200;
+  static const double minWidth = 1024;
+  static const double minHeight = 720;
+  static const double defaultWidth = 1380;
+  static const double defaultHeight = 860;
+  static const double maxWidth = 1800;
+  static const double maxHeight = 1400;
+  static const double trayOffset = 12;
+  static const double visibleMargin = 8;
 
   static bool isDark = false;
   static bool iconIsDark = true;
@@ -30,10 +32,10 @@ class WindowUtil {
     _windowSize = _loadWindowSize();
 
     if (!boxSettings.containsKey('hide_on_blur')) {
-      await boxSettings.put('hide_on_blur', true);
+      await boxSettings.put('hide_on_blur', Platform.isMacOS);
     }
     if (!boxSettings.containsKey('start_hidden')) {
-      await boxSettings.put('start_hidden', true);
+      await boxSettings.put('start_hidden', Platform.isMacOS);
     }
 
     _hideOnBlur = boxSettings.get('hide_on_blur', defaultValue: true) == true;
@@ -42,16 +44,13 @@ class WindowUtil {
     await windowManager.ensureInitialized();
     verbose("  Starting System tray");
     await initSystemTray();
-    verbose("  Starting Screen Retriever");
-    Display d = await screenRetriever.getPrimaryDisplay();
     verbose("  Setup Blur Listeners");
     windowManager.addListener(HideOnBlurWindowListener());
     verbose("  Waiting for Window to be ready");
     windowManager.waitUntilReadyToShow(_windowOptions, () async {
       verbose("Setting Window Properties (mv=false, bg=transparent)");
       await windowManager.setMovable(false);
-      await windowManager
-          .setPosition(Offset(d.size.width - _windowSize.width, 0));
+      await windowManager.center();
       bool startHidden =
           boxSettings.get('start_hidden', defaultValue: true) == true;
       if (startHidden) {
@@ -80,7 +79,7 @@ class WindowUtil {
     if (windowMode) {
       return;
     }
-    await trayManager.setIcon('assets/tray.png', isTemplate: true);
+    await trayManager.setIcon('assets/tray.png', isTemplate: Platform.isMacOS);
     Menu menu = Menu(
       items: [
         MenuItem(
@@ -105,7 +104,7 @@ class WindowUtil {
         title: 'Alembic',
         alwaysOnTop: false,
         backgroundColor: const Color(0x00000000),
-        skipTaskbar: true,
+        skipTaskbar: Platform.isMacOS,
         titleBarStyle: TitleBarStyle.hidden,
       );
 
@@ -161,17 +160,9 @@ class WindowUtil {
     if (windowMode) {
       return;
     }
-    Offset cursor = await screenRetriever.getCursorScreenPoint();
-    Size windowSize = _windowSize;
-    await windowManager.setPosition(
-      Offset(
-        cursor.dx - windowSize.width / 2 > 0
-            ? cursor.dx - windowSize.width / 2
-            : 0,
-        0,
-      ),
-    );
+    await _positionNearTray();
     await windowManager.show();
+    await windowManager.focus();
     await _reassertFramelessVisuals();
     Future<void>.delayed(const Duration(milliseconds: 120), () async {
       await _reassertFramelessVisuals();
@@ -184,6 +175,206 @@ class WindowUtil {
     }
     await windowManager.hide();
   }
+
+  static Future<void> setHideOnBlur(bool value) async {
+    _hideOnBlur = value;
+    await boxSettings.put('hide_on_blur', value);
+  }
+
+  static Future<void> setStartHidden(bool value) {
+    return boxSettings.put('start_hidden', value);
+  }
+
+  static Future<void> _positionNearTray() async {
+    Rect? trayBounds = await trayManager.getBounds();
+    if (trayBounds == null) {
+      return;
+    }
+
+    List<Display> displays = await screenRetriever.getAllDisplays();
+    if (displays.isEmpty) {
+      return;
+    }
+
+    Display display = _displayForTrayBounds(
+      trayBounds: trayBounds,
+      displays: displays,
+    );
+    Rect visibleBounds = _visibleBoundsForDisplay(display);
+    Size windowSize = await _currentWindowSize();
+    Offset position = _positionForTrayBounds(
+      trayBounds: trayBounds,
+      visibleBounds: visibleBounds,
+      windowSize: windowSize,
+    );
+    await windowManager.setPosition(position, animate: false);
+  }
+
+  static Future<Size> _currentWindowSize() async {
+    try {
+      return await windowManager.getSize();
+    } catch (_) {
+      return _windowSize;
+    }
+  }
+
+  static Display _displayForTrayBounds({
+    required Rect trayBounds,
+    required List<Display> displays,
+  }) {
+    Offset trayCenter = trayBounds.center;
+    Display bestDisplay = displays.first;
+    double bestDistance = double.infinity;
+
+    for (Display display in displays) {
+      Rect visibleBounds = _visibleBoundsForDisplay(display);
+      double distance = _distanceToRect(
+        point: trayCenter,
+        rect: visibleBounds,
+      );
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestDisplay = display;
+      }
+    }
+
+    return bestDisplay;
+  }
+
+  static Rect _visibleBoundsForDisplay(Display display) {
+    Offset visiblePosition = display.visiblePosition ?? Offset.zero;
+    Size visibleSize = display.visibleSize ?? display.size;
+    return Rect.fromLTWH(
+      visiblePosition.dx,
+      visiblePosition.dy,
+      visibleSize.width,
+      visibleSize.height,
+    );
+  }
+
+  static Offset _positionForTrayBounds({
+    required Rect trayBounds,
+    required Rect visibleBounds,
+    required Size windowSize,
+  }) {
+    _TrayEdge edge = _edgeForTrayBounds(
+      trayBounds: trayBounds,
+      visibleBounds: visibleBounds,
+    );
+    double proposedX = visibleBounds.left + visibleMargin;
+    double proposedY = visibleBounds.top + visibleMargin;
+
+    if (edge == _TrayEdge.top) {
+      proposedX = trayBounds.center.dx - (windowSize.width / 2);
+      proposedY = trayBounds.bottom + trayOffset;
+    } else if (edge == _TrayEdge.bottom) {
+      proposedX = trayBounds.center.dx - (windowSize.width / 2);
+      proposedY = trayBounds.top - windowSize.height - trayOffset;
+    } else if (edge == _TrayEdge.left) {
+      proposedX = trayBounds.right + trayOffset;
+      proposedY = trayBounds.center.dy - (windowSize.height / 2);
+    } else {
+      proposedX = trayBounds.left - windowSize.width - trayOffset;
+      proposedY = trayBounds.center.dy - (windowSize.height / 2);
+    }
+
+    double minX = visibleBounds.left + visibleMargin;
+    double maxX = visibleBounds.right - windowSize.width - visibleMargin;
+    double minY = visibleBounds.top + visibleMargin;
+    double maxY = visibleBounds.bottom - windowSize.height - visibleMargin;
+
+    return Offset(
+      _clampToVisibleRange(
+        value: proposedX,
+        min: minX,
+        max: maxX,
+      ),
+      _clampToVisibleRange(
+        value: proposedY,
+        min: minY,
+        max: maxY,
+      ),
+    );
+  }
+
+  static _TrayEdge _edgeForTrayBounds({
+    required Rect trayBounds,
+    required Rect visibleBounds,
+  }) {
+    if (trayBounds.bottom <= visibleBounds.top) {
+      return _TrayEdge.top;
+    }
+    if (trayBounds.top >= visibleBounds.bottom) {
+      return _TrayEdge.bottom;
+    }
+    if (trayBounds.right <= visibleBounds.left) {
+      return _TrayEdge.left;
+    }
+    if (trayBounds.left >= visibleBounds.right) {
+      return _TrayEdge.right;
+    }
+
+    double topDistance = (trayBounds.center.dy - visibleBounds.top).abs();
+    double bottomDistance = (visibleBounds.bottom - trayBounds.center.dy).abs();
+    double leftDistance = (trayBounds.center.dx - visibleBounds.left).abs();
+    double rightDistance = (visibleBounds.right - trayBounds.center.dx).abs();
+    double smallestDistance = topDistance;
+    _TrayEdge edge = _TrayEdge.top;
+
+    if (bottomDistance < smallestDistance) {
+      smallestDistance = bottomDistance;
+      edge = _TrayEdge.bottom;
+    }
+    if (leftDistance < smallestDistance) {
+      smallestDistance = leftDistance;
+      edge = _TrayEdge.left;
+    }
+    if (rightDistance < smallestDistance) {
+      edge = _TrayEdge.right;
+    }
+
+    return edge;
+  }
+
+  static double _distanceToRect({
+    required Offset point,
+    required Rect rect,
+  }) {
+    double dx = 0;
+    double dy = 0;
+
+    if (point.dx < rect.left) {
+      dx = rect.left - point.dx;
+    } else if (point.dx > rect.right) {
+      dx = point.dx - rect.right;
+    }
+
+    if (point.dy < rect.top) {
+      dy = rect.top - point.dy;
+    } else if (point.dy > rect.bottom) {
+      dy = point.dy - rect.bottom;
+    }
+
+    return (dx * dx) + (dy * dy);
+  }
+
+  static double _clampToVisibleRange({
+    required double value,
+    required double min,
+    required double max,
+  }) {
+    if (max < min) {
+      return min;
+    }
+    return value.clamp(min, max).toDouble();
+  }
+}
+
+enum _TrayEdge {
+  top,
+  bottom,
+  left,
+  right,
 }
 
 class AlembicTrayListener implements TrayListener {

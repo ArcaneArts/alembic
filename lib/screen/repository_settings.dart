@@ -1,65 +1,20 @@
+import 'package:alembic/app/alembic_scaffold.dart';
+import 'package:alembic/app/alembic_tokens.dart';
+import 'package:alembic/app/alembic_widgets.dart';
 import 'package:alembic/util/extensions.dart';
 import 'package:alembic/util/repo_config.dart';
-import 'package:alembic/widget/glass_context_menu.dart';
-import 'package:alembic/widget/glass_modal_overlay.dart';
-import 'package:alembic/widget/glass_settings_sheet.dart';
-import 'package:alembic/widget/glass_shell.dart';
-import 'package:alembic/widget/glass_text_field.dart';
-import 'package:flutter/cupertino.dart';
+import 'package:arcane/arcane.dart';
+import 'package:flutter/material.dart' as m;
 import 'package:github/github.dart';
 
 Future<void> showRepositorySettingsModal(
   BuildContext context,
   Repository repository,
-) async {
-  await showGeneralDialog<void>(
-    context: context,
-    useRootNavigator: true,
-    barrierDismissible: true,
-    barrierLabel: 'Dismiss',
-    barrierColor: const Color(0x00000000),
-    transitionDuration: const Duration(milliseconds: 220),
-    pageBuilder: (dialogContext, _, __) {
-      return SafeArea(
-        child: GlassModalOverlay(
-          mode: GlassModalFocusMode.blurAndDim,
-          blurSigmaMultiplier: 2.40,
-          dimStrengthOverride: 0.04,
-          whiteLiftStrengthOverride: 0.30,
-          padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(
-              maxWidth: 680,
-              maxHeight: 760,
-            ),
-            child: RepositorySettings(
-              repository: repository,
-              modal: true,
-            ),
-          ),
-        ),
-      );
-    },
-    transitionBuilder: (context, animation, _, child) {
-      CurvedAnimation fadeCurve = CurvedAnimation(
-        parent: animation,
-        curve: Curves.easeOutCubic,
-        reverseCurve: Curves.easeInCubic,
-      );
-      CurvedAnimation scaleCurve = CurvedAnimation(
-        parent: animation,
-        curve: Curves.easeOutBack,
-        reverseCurve: Curves.easeInCubic,
-      );
-
-      return FadeTransition(
-        opacity: fadeCurve,
-        child: ScaleTransition(
-          scale: Tween<double>(begin: 0.93, end: 1).animate(scaleCurve),
-          child: child,
-        ),
-      );
-    },
+) {
+  return Navigator.of(context, rootNavigator: true).push(
+    m.MaterialPageRoute<void>(
+      builder: (_) => RepositorySettings(repository: repository),
+    ),
   );
 }
 
@@ -78,7 +33,7 @@ class RepositorySettings extends StatefulWidget {
 }
 
 class _RepositorySettingsState extends State<RepositorySettings> {
-  late TextEditingController _pathController;
+  late final m.TextEditingController _pathController;
   late ApplicationTool _editorTool;
   late GitTool _gitTool;
 
@@ -86,7 +41,7 @@ class _RepositorySettingsState extends State<RepositorySettings> {
   void initState() {
     super.initState();
     AlembicRepoConfig repoConfig = getRepoConfig(widget.repository);
-    _pathController = TextEditingController(text: repoConfig.openDirectory);
+    _pathController = m.TextEditingController(text: repoConfig.openDirectory);
     _pathController.addListener(_savePath);
     _editorTool = repoConfig.editorTool ?? ApplicationTool.intellij;
     _gitTool = repoConfig.gitTool ?? GitTool.gitkraken;
@@ -106,139 +61,203 @@ class _RepositorySettingsState extends State<RepositorySettings> {
     );
   }
 
-  Future<void> _pickEditorTool() async {
-    ApplicationTool? selected = await GlassContextMenu.show<ApplicationTool>(
-      context,
-      title: 'Editor Tool',
-      actions: ApplicationTool.values.map((tool) {
-        return GlassMenuAction<ApplicationTool>(
-          value: tool,
-          title: tool.displayName,
-        );
-      }).toList(),
-    );
-    if (selected == null) {
-      return;
-    }
-    setState(() {
-      _editorTool = selected;
-    });
-    setRepoConfig(
-      widget.repository,
-      getRepoConfig(widget.repository)..editorTool = selected,
-    );
-  }
-
-  Future<void> _pickGitTool() async {
-    GitTool? selected = await GlassContextMenu.show<GitTool>(
-      context,
-      title: 'Git Tool',
-      actions: GitTool.values.map((tool) {
-        return GlassMenuAction<GitTool>(
-          value: tool,
-          title: tool.displayName,
-        );
-      }).toList(),
-    );
-    if (selected == null) {
-      return;
-    }
-    setState(() {
-      _gitTool = selected;
-    });
-    setRepoConfig(
-      widget.repository,
-      getRepoConfig(widget.repository)..gitTool = selected,
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     String owner = widget.repository.owner?.login ?? 'Unknown';
     String visibility =
         widget.repository.isPrivate == true ? 'Private' : 'Public';
 
-    Widget sheet = GlassSettingsSheetScaffold(
-      title: 'Repository Settings',
-      subtitle: widget.repository.fullName,
-      onClosePressed: () => Navigator.of(context).pop(),
-      onFooterPressed: () => Navigator.of(context).pop(),
-      footerLabel: 'Done',
-      showDragStrip: !widget.modal,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          GlassSettingsSection(
-            title: 'Repository',
-            children: <Widget>[
-              GlassSettingsActionRow(
-                label: 'Owner',
-                value: owner,
-                supportingText: 'GitHub organization or user.',
-                onPressed: null,
-              ),
-              GlassSettingsActionRow(
-                label: 'Visibility',
-                value: visibility,
-                supportingText: 'Read-only repository metadata.',
-                onPressed: null,
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          GlassSettingsSection(
-            title: 'Workspace',
-            children: <Widget>[
-              GlassSettingsFieldRow(
-                label: 'Open Subdirectory',
-                supportingText:
-                    'Subdirectory Alembic opens in your selected tools.',
-                child: GlassTextField(
-                  controller: _pathController,
-                  placeholder: '/ or package/subdir',
-                  prefix: const Icon(
-                    CupertinoIcons.folder,
-                    size: 15,
+    return m.Scaffold(
+      backgroundColor: m.Colors.transparent,
+      body: AlembicScaffold(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 760),
+            child: AlembicPanel(
+              child: m.ListView(
+                shrinkWrap: true,
+                children: <Widget>[
+                  Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: AlembicSectionHeader(
+                          title: 'Repository Settings',
+                          subtitle: widget.repository.fullName,
+                        ),
+                      ),
+                      AlembicToolbarButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        label: 'Done',
+                      ),
+                    ],
                   ),
-                ),
+                  const Gap(AlembicShadcnTokens.gapLg),
+                  _RepositoryInfoRow(
+                    title: 'Owner',
+                    value: owner,
+                    description: 'GitHub organization or user.',
+                  ),
+                  const Divider(),
+                  _RepositoryInfoRow(
+                    title: 'Visibility',
+                    value: visibility,
+                    description: 'Read-only repository metadata.',
+                  ),
+                  const Divider(),
+                  AlembicLabeledField(
+                    label: 'Open subdirectory',
+                    supportingText:
+                        'Alembic opens this relative path in your configured tools.',
+                    child: AlembicTextInput(
+                      controller: _pathController,
+                      placeholder: '/ or package/subdir',
+                    ),
+                  ),
+                  const Gap(AlembicShadcnTokens.gapLg),
+                  _RepositoryMenuRow<ApplicationTool>(
+                    title: 'Editor tool override',
+                    description:
+                        'Use a different editor for this repository only.',
+                    valueLabel: _editorTool.displayName,
+                    items: XApplicationTool.supportedTools,
+                    itemLabel: (ApplicationTool tool) => tool.displayName,
+                    onSelected: (ApplicationTool tool) {
+                      setState(() {
+                        _editorTool = tool;
+                      });
+                      setRepoConfig(
+                        widget.repository,
+                        getRepoConfig(widget.repository)..editorTool = tool,
+                      );
+                    },
+                  ),
+                  const Divider(),
+                  _RepositoryMenuRow<GitTool>(
+                    title: 'Git tool override',
+                    description:
+                        'Use a different Git client for this repository only.',
+                    valueLabel: _gitTool.displayName,
+                    items: XGitTool.supportedTools,
+                    itemLabel: (GitTool tool) => tool.displayName,
+                    onSelected: (GitTool tool) {
+                      setState(() {
+                        _gitTool = tool;
+                      });
+                      setRepoConfig(
+                        widget.repository,
+                        getRepoConfig(widget.repository)..gitTool = tool,
+                      );
+                    },
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
-          const SizedBox(height: 12),
-          GlassSettingsSection(
-            title: 'Tool Overrides',
-            children: <Widget>[
-              GlassSettingsActionRow(
-                label: 'Editor Tool',
-                value: _editorTool.displayName,
-                supportingText: 'Override editor for this repository only.',
-                onPressed: _pickEditorTool,
-              ),
-              GlassSettingsActionRow(
-                label: 'Git Tool',
-                value: _gitTool.displayName,
-                supportingText: 'Override Git client for this repository only.',
-                onPressed: _pickGitTool,
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-
-    if (widget.modal) {
-      return sheet;
-    }
-
-    return CupertinoPageScaffold(
-      backgroundColor: CupertinoColors.transparent,
-      child: GlassShell(
-        safeArea: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 2, 16, 12),
-          child: sheet,
         ),
       ),
+    );
+  }
+}
+
+class _RepositoryInfoRow extends StatelessWidget {
+  final String title;
+  final String description;
+  final String value;
+
+  const _RepositoryInfoRow({
+    required this.title,
+    required this.description,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(
+                title,
+                style: Theme.of(context).typography.small.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+              ),
+              const Gap(4),
+              Text(
+                description,
+                style: Theme.of(context).typography.xSmall.copyWith(
+                      color: Theme.of(context).colorScheme.mutedForeground,
+                    ),
+              ),
+            ],
+          ),
+        ),
+        const Gap(12),
+        Text(value, style: Theme.of(context).typography.small),
+      ],
+    );
+  }
+}
+
+class _RepositoryMenuRow<T> extends StatelessWidget {
+  final String title;
+  final String description;
+  final String valueLabel;
+  final List<T> items;
+  final String Function(T item) itemLabel;
+  final ValueChanged<T> onSelected;
+
+  const _RepositoryMenuRow({
+    required this.title,
+    required this.description,
+    required this.valueLabel,
+    required this.items,
+    required this.itemLabel,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    List<AlembicDropdownOption<T>> options = <AlembicDropdownOption<T>>[
+      for (T item in items)
+        AlembicDropdownOption<T>(
+          value: item,
+          label: itemLabel(item),
+        ),
+    ];
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: <Widget>[
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(
+                title,
+                style: Theme.of(context).typography.small.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+              ),
+              const Gap(4),
+              Text(
+                description,
+                style: Theme.of(context).typography.xSmall.copyWith(
+                      color: Theme.of(context).colorScheme.mutedForeground,
+                    ),
+              ),
+            ],
+          ),
+        ),
+        const Gap(12),
+        AlembicSelect<T>(
+          value: items.firstWhere((T item) => itemLabel(item) == valueLabel),
+          options: options,
+          onChanged: onSelected,
+        ),
+      ],
     );
   }
 }
