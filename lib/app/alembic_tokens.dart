@@ -2,24 +2,24 @@ import 'package:arcane/arcane.dart';
 import 'package:flutter/material.dart' as m;
 
 class AlembicShadcnTokens {
-  static const EdgeInsets shellPadding = EdgeInsets.all(16);
-  static const EdgeInsets surfacePadding = EdgeInsets.all(16);
-  static const EdgeInsets compactSurfacePadding = EdgeInsets.all(12);
+  static const EdgeInsets shellPadding = EdgeInsets.all(12);
+  static const EdgeInsets surfacePadding = EdgeInsets.all(14);
+  static const EdgeInsets compactSurfacePadding = EdgeInsets.all(10);
   static const EdgeInsets controlPadding =
-      EdgeInsets.symmetric(horizontal: 10, vertical: 8);
+      EdgeInsets.symmetric(horizontal: 9, vertical: 7);
   static const EdgeInsets compactControlPadding =
-      EdgeInsets.symmetric(horizontal: 8, vertical: 6);
+      EdgeInsets.symmetric(horizontal: 7, vertical: 5);
 
   static const double surfaceRadius = 12;
   static const double controlRadius = 12;
   static const double badgeRadius = 8;
-  static const double sidebarWidth = 320;
-  static const double asideWidth = 296;
+  static const double sidebarWidth = 300;
+  static const double asideWidth = 280;
 
   static const double gapSm = 8;
-  static const double gapMd = 12;
-  static const double gapLg = 16;
-  static const double gapXl = 20;
+  static const double gapMd = 10;
+  static const double gapLg = 12;
+  static const double gapXl = 16;
 
   static const ColorScheme lightScheme = ColorScheme(
     brightness: Brightness.light,

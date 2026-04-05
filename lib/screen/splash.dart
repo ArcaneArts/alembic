@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:alembic/app/alembic_scaffold.dart';
 import 'package:alembic/app/alembic_tokens.dart';
 import 'package:alembic/app/alembic_widgets.dart';
@@ -39,7 +41,7 @@ class SplashScreenState extends State<SplashScreen>
       m.CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic),
     );
     _controller.forward();
-    _handleAuthentication();
+    unawaited(_handleAuthentication());
   }
 
   @override
@@ -48,13 +50,15 @@ class SplashScreenState extends State<SplashScreen>
     super.dispose();
   }
 
-  void _handleAuthentication() {
-    if (!box.get('authenticated', defaultValue: false)) {
+  Future<void> _handleAuthentication() async {
+    await restoreStoredAuthenticationState();
+
+    String token = box.get('1', defaultValue: '').toString().trim();
+    if (token.isEmpty) {
       _navigateToLogin();
-    } else {
-      _ensureTokenType();
-      _navigateToHome();
+      return;
     }
+    _navigateToHome();
   }
 
   void _navigateToLogin() {
@@ -87,29 +91,11 @@ class SplashScreenState extends State<SplashScreen>
   }
 
   GitHub _createGitHubInstance() {
-    final String token = box.get('1');
-    final String tokenType = box.get('token_type', defaultValue: 'classic');
+    String token = box.get('1', defaultValue: '').toString().trim();
+    String tokenType =
+        box.get('token_type', defaultValue: 'classic').toString();
     info('Using $tokenType token for authentication');
     return GitHub(auth: Authentication.withToken(token));
-  }
-
-  void _ensureTokenType() {
-    if (!box.get('authenticated', defaultValue: false)) {
-      return;
-    }
-
-    final String token = box.get('1', defaultValue: '');
-    String tokenType = box.get('token_type', defaultValue: 'unknown');
-    if (tokenType == 'unknown' && token.isNotEmpty) {
-      if (token.startsWith('github_pat_')) {
-        tokenType = 'fine_grained';
-      } else if (token.startsWith('ghp_')) {
-        tokenType = 'personal';
-      } else {
-        tokenType = 'classic';
-      }
-      box.put('token_type', tokenType);
-    }
   }
 
   @override

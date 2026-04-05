@@ -10,10 +10,10 @@ import 'package:window_manager/window_manager.dart';
 class WindowUtil {
   static const double minWidth = 1024;
   static const double minHeight = 720;
-  static const double defaultWidth = 1380;
-  static const double defaultHeight = 860;
-  static const double maxWidth = 1800;
-  static const double maxHeight = 1400;
+  static const double defaultWidth = 1280;
+  static const double defaultHeight = 800;
+  static const double maxWidth = 1680;
+  static const double maxHeight = 1280;
   static const double trayOffset = 12;
   static const double visibleMargin = 8;
 
@@ -111,6 +111,10 @@ class WindowUtil {
   static Size _loadWindowSize() {
     dynamic rawWidth = boxSettings.get('window_width');
     dynamic rawHeight = boxSettings.get('window_height');
+
+    if (rawWidth == 1380 && rawHeight == 860) {
+      return const Size(defaultWidth, defaultHeight);
+    }
 
     double width = _coerceDimension(
       raw: rawWidth,

@@ -798,7 +798,7 @@ class _AlembicHomeState extends State<AlembicHome> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: <Widget>[
                     topBar,
-                    const Gap(AlembicShadcnTokens.gapLg),
+                    const Gap(AlembicShadcnTokens.gapMd),
                     Expanded(
                       child: AlembicSurface(
                         padding: EdgeInsets.zero,
@@ -889,9 +889,9 @@ class _HomeTopBar extends StatelessWidget {
         bool collapseToIcons = constraints.maxWidth < 1080;
         bool inlineCenteredHeader = constraints.maxWidth >= 1240;
         bool stackSearchRow = constraints.maxWidth < 980;
-        double navigationButtonWidth = collapseToIcons ? 42 : 120;
-        double teamsButtonWidth = collapseToIcons ? 42 : 134;
-        double topActionWidth = collapseToIcons ? 42 : 124;
+        double navigationButtonWidth = collapseToIcons ? 40 : 108;
+        double teamsButtonWidth = collapseToIcons ? 40 : 116;
+        double topActionWidth = collapseToIcons ? 40 : 112;
         Widget navigation = Wrap(
           spacing: AlembicShadcnTokens.gapSm,
           runSpacing: AlembicShadcnTokens.gapSm,
@@ -1083,7 +1083,7 @@ class _HomeTopBar extends StatelessWidget {
                 ),
               ],
             ),
-            const Gap(AlembicShadcnTokens.gapMd),
+            const Gap(AlembicShadcnTokens.gapSm),
             searchRow,
             progressBar,
           ],
@@ -1203,9 +1203,12 @@ class _RepositoryBrowserPaneState extends State<_RepositoryBrowserPane> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
         Padding(
-          padding: AlembicShadcnTokens.compactSurfacePadding,
+          padding: const EdgeInsets.symmetric(
+            horizontal: AlembicShadcnTokens.gapMd,
+            vertical: AlembicShadcnTokens.gapSm,
+          ),
           child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: <Widget>[
               Expanded(
                 child: Column(
@@ -1213,14 +1216,14 @@ class _RepositoryBrowserPaneState extends State<_RepositoryBrowserPane> {
                   children: <Widget>[
                     Text(
                       _title,
-                      style: theme.typography.large.copyWith(
+                      style: theme.typography.medium.copyWith(
                         fontWeight: FontWeight.w700,
                       ),
                     ),
-                    const Gap(4),
+                    const Gap(2),
                     Text(
                       _subtitle,
-                      style: theme.typography.small.copyWith(
+                      style: theme.typography.xSmall.copyWith(
                         color: theme.colorScheme.mutedForeground,
                       ),
                     ),
@@ -1229,7 +1232,7 @@ class _RepositoryBrowserPaneState extends State<_RepositoryBrowserPane> {
               ),
               Text(
                 '${widget.repositories.length} repositories',
-                style: theme.typography.small.copyWith(
+                style: theme.typography.xSmall.copyWith(
                   color: theme.colorScheme.mutedForeground,
                   fontWeight: FontWeight.w600,
                 ),
@@ -1259,14 +1262,10 @@ class _RepositoryBrowserPaneState extends State<_RepositoryBrowserPane> {
                   controller: _scrollController,
                   child: m.ListView.separated(
                     controller: _scrollController,
-                    padding: EdgeInsets.zero,
+                    padding: const EdgeInsets.all(AlembicShadcnTokens.gapSm),
                     itemCount: widget.repositories.length,
                     separatorBuilder: (BuildContext context, int index) {
-                      return m.Divider(
-                        height: 1,
-                        thickness: 1,
-                        color: theme.colorScheme.border,
-                      );
+                      return const SizedBox(height: AlembicShadcnTokens.gapSm);
                     },
                     itemBuilder: (BuildContext context, int index) {
                       Repository repository = widget.repositories[index];
@@ -1544,105 +1543,103 @@ class _RepositoryListRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     ThemeData theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AlembicShadcnTokens.gapMd,
-        vertical: AlembicShadcnTokens.gapMd,
-      ),
-      child: LayoutBuilder(
-        builder: (BuildContext context, BoxConstraints constraints) {
-          bool compact = constraints.maxWidth < 980;
-          Widget primaryAction = actions.first;
-          List<Widget> utilityActions = actions.skip(1).toList();
-          Widget info = Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Text(
-                title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.typography.small.copyWith(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                ),
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        bool compact = constraints.maxWidth < 980;
+        Widget primaryAction = actions.first;
+        List<Widget> utilityActions = actions.skip(1).toList();
+        Widget info = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.typography.small.copyWith(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
               ),
+            ),
+            const Gap(2),
+            Text(
+              subtitle,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.typography.xSmall.copyWith(
+                color: theme.colorScheme.mutedForeground,
+              ),
+            ),
+            if (description != null) ...<Widget>[
               const Gap(4),
               Text(
-                subtitle,
+                description!,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: theme.typography.small.copyWith(
+                style: theme.typography.xSmall.copyWith(
                   color: theme.colorScheme.mutedForeground,
                 ),
               ),
-              if (description != null) ...<Widget>[
-                const Gap(6),
-                Text(
-                  description!,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.typography.small.copyWith(
-                    color: theme.colorScheme.mutedForeground,
-                  ),
-                ),
-              ],
-              const Gap(AlembicShadcnTokens.gapSm),
-              Wrap(
-                spacing: AlembicShadcnTokens.gapSm,
-                runSpacing: AlembicShadcnTokens.gapSm,
-                children: meta,
-              ),
             ],
-          );
-          Widget utilityBar = Wrap(
-            spacing: AlembicShadcnTokens.gapSm,
-            runSpacing: AlembicShadcnTokens.gapSm,
-            alignment: compact ? WrapAlignment.start : WrapAlignment.end,
-            children: utilityActions,
-          );
-
-          if (compact) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                info,
-                const Gap(AlembicShadcnTokens.gapMd),
-                primaryAction,
-                if (utilityActions.isNotEmpty) ...<Widget>[
-                  const Gap(AlembicShadcnTokens.gapSm),
-                  utilityBar,
+            const Gap(8),
+            Wrap(
+              spacing: AlembicShadcnTokens.gapSm,
+              runSpacing: AlembicShadcnTokens.gapSm,
+              children: meta,
+            ),
+          ],
+        );
+        Widget utilityBar = Wrap(
+          spacing: AlembicShadcnTokens.gapSm,
+          runSpacing: AlembicShadcnTokens.gapSm,
+          alignment: compact ? WrapAlignment.start : WrapAlignment.end,
+          children: utilityActions,
+        );
+        Widget actionBar = compact
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  primaryAction,
+                  if (utilityActions.isNotEmpty) ...<Widget>[
+                    const Gap(6),
+                    utilityBar,
+                  ],
                 ],
-              ],
-            );
-          }
+              )
+            : Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: <Widget>[
+                  primaryAction,
+                  if (utilityActions.isNotEmpty) ...<Widget>[
+                    const Spacer(),
+                    Flexible(child: utilityBar),
+                  ],
+                ],
+              );
 
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+        return AlembicSurface(
+          padding: EdgeInsets.zero,
+          tone: AlembicSurfaceTone.inset,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
-              Expanded(child: info),
-              const Gap(AlembicShadcnTokens.gapLg),
-              ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxWidth: constraints.maxWidth * 0.36,
-                ),
-                child: Align(
-                  alignment: Alignment.topRight,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: <Widget>[
-                      primaryAction,
-                      if (utilityActions.isNotEmpty) ...<Widget>[
-                        const Gap(AlembicShadcnTokens.gapSm),
-                        utilityBar,
-                      ],
-                    ],
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 11, 12, 10),
+                child: info,
+              ),
+              Container(
+                padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.secondary.withValues(alpha: 0.58),
+                  border: Border(
+                    top: BorderSide(color: theme.colorScheme.border),
                   ),
                 ),
+                child: actionBar,
               ),
             ],
-          );
-        },
-      ),
+          ),
+        );
+      },
     );
   }
 }

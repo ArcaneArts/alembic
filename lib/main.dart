@@ -85,9 +85,40 @@ Future<void> _setupAppSettings() async {
   box = await _openEncryptedDataBox();
   verbose('Opening settings box');
   boxSettings = await Hive.openBox('s');
+  await restoreStoredAuthenticationState();
   verbose('Init Window');
   await WindowUtil.init();
   await _configureStartup(packageInfoFuture);
+}
+
+Future<void> restoreStoredAuthenticationState() async {
+  String token = box.get('1', defaultValue: '').toString().trim();
+  bool authenticated = box.get('authenticated', defaultValue: false) == true;
+  if (token.isEmpty) {
+    if (authenticated) {
+      await box.put('authenticated', false);
+    }
+    return;
+  }
+
+  if (!authenticated) {
+    await box.put('authenticated', true);
+  }
+
+  String tokenType = box.get('token_type', defaultValue: 'unknown').toString();
+  if (tokenType == 'unknown' || tokenType.isEmpty) {
+    await box.put('token_type', detectStoredTokenType(token));
+  }
+}
+
+String detectStoredTokenType(String token) {
+  if (token.startsWith('github_pat_')) {
+    return 'fine_grained';
+  }
+  if (token.startsWith('ghp_')) {
+    return 'personal';
+  }
+  return 'classic';
 }
 
 Future<Box> _openEncryptedDataBox() async {
