@@ -1,13 +1,13 @@
 import 'package:arcane/arcane.dart';
-import 'package:alembic/app/alembic_tokens.dart';
 import 'package:alembic/main.dart';
+import 'package:alembic/ui/alembic_ui.dart';
 
 const String alembicThemeModeKey = 'theme_mode_v1';
 
 ThemeMode loadAlembicThemeMode() {
-  final String raw =
+  String raw =
       boxSettings.get(alembicThemeModeKey, defaultValue: ThemeMode.system.name);
-  for (final ThemeMode mode in ThemeMode.values) {
+  for (ThemeMode mode in ThemeMode.values) {
     if (mode.name == raw) {
       return mode;
     }

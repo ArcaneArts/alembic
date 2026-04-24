@@ -8,12 +8,12 @@ import 'package:tray_manager/tray_manager.dart';
 import 'package:window_manager/window_manager.dart';
 
 class WindowUtil {
-  static const double minWidth = 1024;
-  static const double minHeight = 720;
-  static const double defaultWidth = 1280;
-  static const double defaultHeight = 800;
-  static const double maxWidth = 1680;
-  static const double maxHeight = 1280;
+  static const double minWidth = 460;
+  static const double minHeight = 640;
+  static const double defaultWidth = 560;
+  static const double defaultHeight = 760;
+  static const double maxWidth = 680;
+  static const double maxHeight = 980;
   static const double trayOffset = 12;
   static const double visibleMargin = 8;
 
@@ -112,7 +112,10 @@ class WindowUtil {
     dynamic rawWidth = boxSettings.get('window_width');
     dynamic rawHeight = boxSettings.get('window_height');
 
-    if (rawWidth == 1380 && rawHeight == 860) {
+    if ((rawWidth == 1380 && rawHeight == 860) ||
+        (rawWidth == 1280 && rawHeight == 800) ||
+        (rawWidth == 980 && rawHeight == 740) ||
+        (rawWidth == 900 && rawHeight == 740)) {
       return const Size(defaultWidth, defaultHeight);
     }
 

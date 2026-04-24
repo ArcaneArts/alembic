@@ -2,20 +2,19 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:alembic/app/alembic_dialogs.dart';
-import 'package:alembic/app/alembic_scaffold.dart';
-import 'package:alembic/app/alembic_tokens.dart';
-import 'package:alembic/app/alembic_widgets.dart';
 import 'package:alembic/core/arcane_repository.dart';
 import 'package:alembic/core/repository_runtime.dart';
 import 'package:alembic/main.dart';
 import 'package:alembic/platform/desktop_platform_adapter.dart';
 import 'package:alembic/presentation/home_view_state.dart';
+import 'package:alembic/presentation/repository_action_catalog.dart';
 import 'package:alembic/presentation/repository_action_model.dart';
 import 'package:alembic/screen/home/home_controller.dart';
 import 'package:alembic/screen/login.dart';
 import 'package:alembic/screen/repository_settings.dart';
 import 'package:alembic/screen/settings.dart';
 import 'package:alembic/screen/splash.dart';
+import 'package:alembic/ui/alembic_ui.dart';
 import 'package:alembic/util/extensions.dart';
 import 'package:alembic/util/repository_catalog.dart';
 import 'package:alembic/util/repo_config.dart';
@@ -102,6 +101,12 @@ extension _RepoStateValues on RepoState {
         RepoState.active => 'Open',
         RepoState.archived => 'Activate',
         RepoState.cloud => 'Clone',
+      };
+
+  IconData get primaryActionIcon => switch (this) {
+        RepoState.active => m.Icons.folder_open,
+        RepoState.archived => m.Icons.unarchive_outlined,
+        RepoState.cloud => m.Icons.add_link,
       };
 }
 
@@ -799,12 +804,7 @@ class _AlembicHomeState extends State<AlembicHome> {
                   children: <Widget>[
                     topBar,
                     const Gap(AlembicShadcnTokens.gapMd),
-                    Expanded(
-                      child: AlembicSurface(
-                        padding: EdgeInsets.zero,
-                        child: content,
-                      ),
-                    ),
+                    Expanded(child: content),
                   ],
                 );
               },
@@ -886,45 +886,29 @@ class _HomeTopBar extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
-        bool collapseToIcons = constraints.maxWidth < 1080;
-        bool inlineCenteredHeader = constraints.maxWidth >= 1240;
-        bool stackSearchRow = constraints.maxWidth < 980;
-        double navigationButtonWidth = collapseToIcons ? 40 : 108;
-        double teamsButtonWidth = collapseToIcons ? 40 : 116;
-        double topActionWidth = collapseToIcons ? 40 : 112;
-        Widget navigation = Wrap(
-          spacing: AlembicShadcnTokens.gapSm,
-          runSpacing: AlembicShadcnTokens.gapSm,
-          children: <Widget>[
-            SizedBox(
-              width: navigationButtonWidth,
-              child: _HomeNavigationButton(
-                label: 'Local',
-                icon: m.Icons.folder_open,
-                collapsed: collapseToIcons,
-                selected: selection.tab == HomeTab.active,
-                onPressed: () => onTabSelected(HomeTab.active),
-              ),
+        bool collapseToIcons = constraints.maxWidth < 420;
+        Widget navigation = AlembicTabs<HomeTab>(
+          value: selection.tab,
+          onChanged: onTabSelected,
+          collapsed: collapseToIcons,
+          items: const <AlembicNavigationItem<HomeTab>>[
+            AlembicNavigationItem<HomeTab>(
+              value: HomeTab.active,
+              label: 'Local',
+              icon: m.Icons.folder_open,
+              tooltip: 'Local',
             ),
-            SizedBox(
-              width: navigationButtonWidth,
-              child: _HomeNavigationButton(
-                label: 'Personal',
-                icon: m.Icons.person_outline,
-                collapsed: collapseToIcons,
-                selected: selection.tab == HomeTab.personal,
-                onPressed: () => onTabSelected(HomeTab.personal),
-              ),
+            AlembicNavigationItem<HomeTab>(
+              value: HomeTab.personal,
+              label: 'Personal',
+              icon: m.Icons.person_outline,
+              tooltip: 'Personal',
             ),
-            SizedBox(
-              width: teamsButtonWidth,
-              child: _HomeNavigationButton(
-                label: 'Teams',
-                icon: m.Icons.apartment_outlined,
-                collapsed: collapseToIcons,
-                selected: selection.tab == HomeTab.organizations,
-                onPressed: () => onTabSelected(HomeTab.organizations),
-              ),
+            AlembicNavigationItem<HomeTab>(
+              value: HomeTab.organizations,
+              label: 'Teams',
+              icon: m.Icons.apartment_outlined,
+              tooltip: 'Teams',
             ),
           ],
         );
@@ -947,7 +931,7 @@ class _HomeTopBar extends StatelessWidget {
             );
           },
           leadingIcon: m.Icons.apartment_outlined,
-          compact: collapseToIcons,
+          compact: false,
         );
         Widget appActions = Wrap(
           spacing: AlembicShadcnTokens.gapSm,
@@ -956,62 +940,48 @@ class _HomeTopBar extends StatelessWidget {
           crossAxisAlignment: WrapCrossAlignment.center,
           children: <Widget>[
             SizedBox(
-              width: topActionWidth,
+              width: collapseToIcons
+                  ? AlembicShadcnTokens.commandIconWidth
+                  : AlembicShadcnTokens.commandButtonWidth,
               child: AlembicToolbarButton(
                 label: 'Clone',
                 leadingIcon: m.Icons.add_link,
                 onPressed: onImportRepository,
                 prominent: true,
                 iconOnly: collapseToIcons,
-                tooltip: 'Clone Link',
+                tooltip: 'Clone repository',
               ),
             ),
             SizedBox(
-              width: topActionWidth,
+              width: AlembicShadcnTokens.commandIconWidth,
               child: AlembicToolbarButton(
                 label: 'Settings',
                 leadingIcon: m.Icons.tune,
                 onPressed: onOpenSettings,
-                iconOnly: collapseToIcons,
+                iconOnly: true,
+                tooltip: 'Settings',
               ),
             ),
             SizedBox(
-              width: topActionWidth,
-              child: AlembicDropdownMenu<_TopMenuAction>(
-                label: 'More',
+              width: AlembicShadcnTokens.commandIconWidth,
+              child: AlembicOverflowMenu<_TopMenuAction>(
+                label: 'More options',
                 items: menuOptions,
                 onSelected: onTopMenuSelected,
-                trailingIcon: m.Icons.more_horiz,
-                iconOnly: collapseToIcons,
-                alignment: Alignment.center,
               ),
             ),
           ],
         );
-        Widget searchRow = stackSearchRow
-            ? Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: <Widget>[
-                  searchField,
-                  if (selection.tab == HomeTab.organizations) ...<Widget>[
-                    const Gap(AlembicShadcnTokens.gapSm),
-                    SizedBox(
-                      width: collapseToIcons ? 180 : 220,
-                      child: organizationField,
-                    ),
-                  ],
-                ],
-              )
-            : Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: <Widget>[
-                  Expanded(child: searchField),
-                  if (selection.tab == HomeTab.organizations) ...<Widget>[
-                    const Gap(AlembicShadcnTokens.gapMd),
-                    SizedBox(width: 240, child: organizationField),
-                  ],
-                ],
-              );
+        Widget searchRow = Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            searchField,
+            if (selection.tab == HomeTab.organizations) ...<Widget>[
+              const Gap(AlembicShadcnTokens.gapSm),
+              organizationField,
+            ],
+          ],
+        );
         Widget progressBar = StreamBuilder<double?>(
           stream: progress.stream,
           initialData: progress.valueOrNull,
@@ -1027,96 +997,35 @@ class _HomeTopBar extends StatelessWidget {
           },
         );
 
-        if (!inlineCenteredHeader) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: <Widget>[
-                  const Expanded(
-                    child: _RailBrand(compact: true),
-                  ),
-                  const Gap(AlembicShadcnTokens.gapMd),
-                  Flexible(
-                    child: Align(
-                      alignment: Alignment.centerRight,
-                      child: appActions,
-                    ),
-                  ),
-                ],
-              ),
-              const Gap(AlembicShadcnTokens.gapMd),
-              Align(
-                alignment: Alignment.center,
-                child: navigation,
-              ),
-              const Gap(AlembicShadcnTokens.gapMd),
-              searchRow,
-              progressBar,
-            ],
-          );
-        }
-
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            Stack(
-              alignment: Alignment.center,
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: <Widget>[
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: <Widget>[
-                    const _RailBrand(compact: true),
-                    const Spacer(),
-                    Flexible(
-                      child: Align(
-                        alignment: Alignment.centerRight,
-                        child: appActions,
-                      ),
-                    ),
-                  ],
+                const Expanded(
+                  child: _RailBrand(compact: true),
                 ),
-                Align(
-                  alignment: Alignment.center,
-                  child: navigation,
+                const Gap(AlembicShadcnTokens.gapMd),
+                Flexible(
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: appActions,
+                  ),
                 ),
               ],
             ),
-            const Gap(AlembicShadcnTokens.gapSm),
+            const Gap(AlembicShadcnTokens.gapMd),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: navigation,
+            ),
+            const Gap(AlembicShadcnTokens.gapMd),
             searchRow,
             progressBar,
           ],
         );
       },
-    );
-  }
-}
-
-class _HomeNavigationButton extends StatelessWidget {
-  final String label;
-  final IconData icon;
-  final bool collapsed;
-  final bool selected;
-  final VoidCallback onPressed;
-
-  const _HomeNavigationButton({
-    required this.label,
-    required this.icon,
-    required this.collapsed,
-    required this.selected,
-    required this.onPressed,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return AlembicToolbarButton(
-      label: label,
-      leadingIcon: collapsed ? icon : null,
-      onPressed: onPressed,
-      prominent: selected,
-      iconOnly: collapsed,
-      tooltip: collapsed ? label : null,
     );
   }
 }
@@ -1203,10 +1112,7 @@ class _RepositoryBrowserPaneState extends State<_RepositoryBrowserPane> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
         Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: AlembicShadcnTokens.gapMd,
-            vertical: AlembicShadcnTokens.gapSm,
-          ),
+          padding: AlembicShadcnTokens.rowPadding,
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: <Widget>[
@@ -1262,10 +1168,12 @@ class _RepositoryBrowserPaneState extends State<_RepositoryBrowserPane> {
                   controller: _scrollController,
                   child: m.ListView.separated(
                     controller: _scrollController,
-                    padding: const EdgeInsets.all(AlembicShadcnTokens.gapSm),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: AlembicShadcnTokens.gapSm,
+                    ),
                     itemCount: widget.repositories.length,
                     separatorBuilder: (BuildContext context, int index) {
-                      return const SizedBox(height: AlembicShadcnTokens.gapSm);
+                      return const SizedBox(height: AlembicShadcnTokens.gapXs);
                     },
                     itemBuilder: (BuildContext context, int index) {
                       Repository repository = widget.repositories[index];
@@ -1321,18 +1229,22 @@ class _LocalRepositoryRow extends StatelessWidget {
       runtime: runtime,
     );
     List<RepositoryActionModel> stateActions =
-        _RepositoryActionCatalog.stateActions(RepoState.active);
+        RepositoryActionCatalog.stateActions(RepoState.active);
     List<RepositoryActionModel> localActions =
-        _RepositoryActionCatalog.localActions(
+        RepositoryActionCatalog.localActions(
       includeExplorer: true,
       explorerName: DesktopPlatformAdapter.instance.fileExplorerName,
     );
     List<RepositoryActionModel> menuActions = <RepositoryActionModel>[
-      _findAction(stateActions, RepositoryTileAction.pull),
-      _findAction(localActions, RepositoryTileAction.details),
-      _findAction(localActions, RepositoryTileAction.openFinder),
-      ..._RepositoryActionCatalog.githubActions(),
-      _findAction(stateActions, RepositoryTileAction.deleteRepository),
+      RepositoryActionCatalog.find(stateActions, RepositoryTileAction.pull),
+      RepositoryActionCatalog.find(localActions, RepositoryTileAction.details),
+      RepositoryActionCatalog.find(
+          localActions, RepositoryTileAction.openFinder),
+      RepositoryActionCatalog.find(localActions, RepositoryTileAction.settings),
+      RepositoryActionCatalog.find(stateActions, RepositoryTileAction.archive),
+      ...RepositoryActionCatalog.githubActions(),
+      RepositoryActionCatalog.find(
+          stateActions, RepositoryTileAction.deleteRepository),
     ];
 
     return StreamBuilder<List<String>>(
@@ -1345,12 +1257,12 @@ class _LocalRepositoryRow extends StatelessWidget {
           future: arcaneRepository.daysUntilArchival,
           builder: (BuildContext context, AsyncSnapshot<int> daysSnapshot) {
             int daysUntilArchive = daysSnapshot.data ?? config.daysToArchive;
-            return _RepositoryListRow(
+            return AlembicListRow(
               title: repository.name,
               subtitle: repository.fullName,
               description: _cleanDescription(repository.description),
               meta: <Widget>[
-                _RepositoryMetaText(
+                AlembicMetaText(
                   label: repository.isPrivate == true ? 'Private' : 'Public',
                 ),
                 AlembicBadge(
@@ -1358,53 +1270,29 @@ class _LocalRepositoryRow extends StatelessWidget {
                       '$daysUntilArchive day${daysUntilArchive == 1 ? '' : 's'} to archive',
                 ),
                 if (work.isNotEmpty)
-                  _RepositoryMetaText(
+                  AlembicMetaText(
                     label: work.join(' • '),
                   ),
               ],
-              actions: <Widget>[
-                AlembicToolbarButton(
-                  label: 'Open',
-                  onPressed: () => onPrimaryAction(
-                    repository: repository,
-                    state: RepoState.active,
-                  ),
-                  prominent: true,
+              primaryAction: AlembicToolbarButton(
+                label: 'Open',
+                leadingIcon: RepoState.active.primaryActionIcon,
+                onPressed: () => onPrimaryAction(
+                  repository: repository,
+                  state: RepoState.active,
                 ),
-                AlembicToolbarButton(
-                  label: 'Configure',
-                  compact: true,
-                  onPressed: () => onRepositoryAction(
-                    repository: repository,
-                    state: RepoState.active,
-                    work: work,
-                    action: RepositoryTileAction.settings,
-                  ),
+                prominent: true,
+              ),
+              secondaryActions: AlembicOverflowMenu<RepositoryTileAction>(
+                label: 'Repository options',
+                items: _menuOptions(menuActions),
+                onSelected: (RepositoryTileAction action) => onRepositoryAction(
+                  repository: repository,
+                  state: RepoState.active,
+                  work: work,
+                  action: action,
                 ),
-                AlembicToolbarButton(
-                  label: 'Archive',
-                  compact: true,
-                  onPressed: () => onRepositoryAction(
-                    repository: repository,
-                    state: RepoState.active,
-                    work: work,
-                    action: RepositoryTileAction.archive,
-                  ),
-                ),
-                AlembicDropdownMenu<RepositoryTileAction>(
-                  label: 'More',
-                  compact: true,
-                  items: _menuOptions(menuActions),
-                  onSelected: (RepositoryTileAction action) =>
-                      onRepositoryAction(
-                    repository: repository,
-                    state: RepoState.active,
-                    work: work,
-                    action: action,
-                  ),
-                  trailingIcon: m.Icons.more_horiz,
-                ),
-              ],
+              ),
             );
           },
         );
@@ -1447,9 +1335,9 @@ class _BrowseRepositoryRow extends StatelessWidget {
       builder: (BuildContext context, AsyncSnapshot<RepoState> stateSnapshot) {
         RepoState state = stateSnapshot.data ?? RepoState.cloud;
         List<RepositoryActionModel> stateActions =
-            _RepositoryActionCatalog.stateActions(state);
+            RepositoryActionCatalog.stateActions(state);
         List<RepositoryActionModel> linkActions =
-            _RepositoryActionCatalog.linkActions(
+            RepositoryActionCatalog.linkActions(
           canFork: canForkRepository(repository),
           explorerName: DesktopPlatformAdapter.instance.fileExplorerName,
           includeExplorer: state == RepoState.active,
@@ -1470,196 +1358,63 @@ class _BrowseRepositoryRow extends StatelessWidget {
           builder:
               (BuildContext context, AsyncSnapshot<List<String>> workSnapshot) {
             List<String> work = workSnapshot.data ?? const <String>[];
-            return _RepositoryListRow(
+            return AlembicListRow(
               title: repository.name,
               subtitle: repository.fullName,
               description: _cleanDescription(repository.description),
               meta: <Widget>[
                 _RepoStateBadge(state: state),
-                _RepositoryMetaText(
+                AlembicMetaText(
                   label: repository.isPrivate == true ? 'Private' : 'Public',
                 ),
                 if (work.isNotEmpty)
-                  _RepositoryMetaText(
+                  AlembicMetaText(
                     label: work.join(' • '),
                   ),
               ],
-              actions: <Widget>[
-                AlembicToolbarButton(
-                  label: state.primaryActionLabel,
-                  onPressed: () => onPrimaryAction(
-                    repository: repository,
-                    state: state,
-                  ),
-                  prominent: true,
+              primaryAction: AlembicToolbarButton(
+                label: state.primaryActionLabel,
+                leadingIcon: state.primaryActionIcon,
+                onPressed: () => onPrimaryAction(
+                  repository: repository,
+                  state: state,
                 ),
-                AlembicToolbarButton(
-                  label: 'GitHub',
-                  compact: true,
-                  onPressed: () => onRepositoryAction(
-                    repository: repository,
-                    state: state,
-                    work: work,
-                    action: RepositoryTileAction.viewGithub,
+                prominent: true,
+              ),
+              secondaryActions: Wrap(
+                spacing: AlembicShadcnTokens.gapSm,
+                runSpacing: AlembicShadcnTokens.gapSm,
+                children: <Widget>[
+                  AlembicToolbarButton(
+                    label: 'Open on GitHub',
+                    leadingIcon: m.Icons.open_in_new,
+                    compact: true,
+                    iconOnly: true,
+                    tooltip: 'Open on GitHub',
+                    onPressed: () => onRepositoryAction(
+                      repository: repository,
+                      state: state,
+                      work: work,
+                      action: RepositoryTileAction.viewGithub,
+                    ),
                   ),
-                ),
-                AlembicDropdownMenu<RepositoryTileAction>(
-                  label: 'More',
-                  compact: true,
-                  items: _menuOptions(menuActions),
-                  onSelected: (RepositoryTileAction action) =>
-                      onRepositoryAction(
-                    repository: repository,
-                    state: state,
-                    work: work,
-                    action: action,
+                  AlembicOverflowMenu<RepositoryTileAction>(
+                    label: 'Repository options',
+                    items: _menuOptions(menuActions),
+                    onSelected: (RepositoryTileAction action) =>
+                        onRepositoryAction(
+                      repository: repository,
+                      state: state,
+                      work: work,
+                      action: action,
+                    ),
                   ),
-                  trailingIcon: m.Icons.more_horiz,
-                ),
-              ],
+                ],
+              ),
             );
           },
         );
       },
-    );
-  }
-}
-
-class _RepositoryListRow extends StatelessWidget {
-  final String title;
-  final String subtitle;
-  final String? description;
-  final List<Widget> meta;
-  final List<Widget> actions;
-
-  const _RepositoryListRow({
-    required this.title,
-    required this.subtitle,
-    required this.description,
-    required this.meta,
-    required this.actions,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    ThemeData theme = Theme.of(context);
-    return LayoutBuilder(
-      builder: (BuildContext context, BoxConstraints constraints) {
-        bool compact = constraints.maxWidth < 980;
-        Widget primaryAction = actions.first;
-        List<Widget> utilityActions = actions.skip(1).toList();
-        Widget info = Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Text(
-              title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.typography.small.copyWith(
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const Gap(2),
-            Text(
-              subtitle,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.typography.xSmall.copyWith(
-                color: theme.colorScheme.mutedForeground,
-              ),
-            ),
-            if (description != null) ...<Widget>[
-              const Gap(4),
-              Text(
-                description!,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.typography.xSmall.copyWith(
-                  color: theme.colorScheme.mutedForeground,
-                ),
-              ),
-            ],
-            const Gap(8),
-            Wrap(
-              spacing: AlembicShadcnTokens.gapSm,
-              runSpacing: AlembicShadcnTokens.gapSm,
-              children: meta,
-            ),
-          ],
-        );
-        Widget utilityBar = Wrap(
-          spacing: AlembicShadcnTokens.gapSm,
-          runSpacing: AlembicShadcnTokens.gapSm,
-          alignment: compact ? WrapAlignment.start : WrapAlignment.end,
-          children: utilityActions,
-        );
-        Widget actionBar = compact
-            ? Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  primaryAction,
-                  if (utilityActions.isNotEmpty) ...<Widget>[
-                    const Gap(6),
-                    utilityBar,
-                  ],
-                ],
-              )
-            : Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: <Widget>[
-                  primaryAction,
-                  if (utilityActions.isNotEmpty) ...<Widget>[
-                    const Spacer(),
-                    Flexible(child: utilityBar),
-                  ],
-                ],
-              );
-
-        return AlembicSurface(
-          padding: EdgeInsets.zero,
-          tone: AlembicSurfaceTone.inset,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 11, 12, 10),
-                child: info,
-              ),
-              Container(
-                padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.secondary.withValues(alpha: 0.58),
-                  border: Border(
-                    top: BorderSide(color: theme.colorScheme.border),
-                  ),
-                ),
-                child: actionBar,
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _RepositoryMetaText extends StatelessWidget {
-  final String label;
-
-  const _RepositoryMetaText({
-    required this.label,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    ThemeData theme = Theme.of(context);
-    return Text(
-      label,
-      style: theme.typography.xSmall.copyWith(
-        color: theme.colorScheme.mutedForeground,
-        fontWeight: FontWeight.w600,
-      ),
     );
   }
 }
@@ -1672,196 +1427,18 @@ String? _cleanDescription(String? value) {
   return description;
 }
 
-RepositoryActionModel _findAction(
-  List<RepositoryActionModel> actions,
-  RepositoryTileAction action,
-) {
-  return actions.firstWhere(
-    (RepositoryActionModel model) => model.action == action,
-  );
-}
-
 List<AlembicDropdownOption<RepositoryTileAction>> _menuOptions(
   List<RepositoryActionModel> actions,
-) {
-  return actions
-      .map(
-        (RepositoryActionModel model) =>
-            AlembicDropdownOption<RepositoryTileAction>(
+) =>
+    <AlembicDropdownOption<RepositoryTileAction>>[
+      for (RepositoryActionModel model in actions)
+        AlembicDropdownOption<RepositoryTileAction>(
           value: model.action,
           label: model.label,
-        ),
-      )
-      .toList();
-}
-
-class _RepositoryActionCatalog {
-  const _RepositoryActionCatalog._();
-
-  static List<RepositoryActionModel> stateActions(RepoState state) =>
-      switch (state) {
-        RepoState.active => <RepositoryActionModel>[
-            const RepositoryActionModel(
-              action: RepositoryTileAction.pull,
-              label: 'Pull latest changes',
-              description: 'Run `git pull` in the active workspace repository.',
-              prominent: true,
-            ),
-            const RepositoryActionModel(
-              action: RepositoryTileAction.archive,
-              label: 'Archive repository',
-              description:
-                  'Compress the local repository into Alembic archive storage.',
-            ),
-            const RepositoryActionModel(
-              action: RepositoryTileAction.deleteRepository,
-              label: 'Delete local repository',
-              description: 'Remove the cloned workspace copy from this device.',
-              destructive: true,
-            ),
-          ],
-        RepoState.archived => <RepositoryActionModel>[
-            const RepositoryActionModel(
-              action: RepositoryTileAction.activate,
-              label: 'Activate archive',
-              description:
-                  'Restore this archived repository into the workspace.',
-              prominent: true,
-            ),
-            const RepositoryActionModel(
-              action: RepositoryTileAction.updateArchive,
-              label: 'Refresh archive',
-              description:
-                  'Restore, pull, and recompress the archive snapshot.',
-            ),
-            const RepositoryActionModel(
-              action: RepositoryTileAction.deleteArchive,
-              label: 'Delete archive',
-              description:
-                  'Remove the stored archive snapshot from local storage.',
-              destructive: true,
-            ),
-          ],
-        RepoState.cloud => <RepositoryActionModel>[
-            const RepositoryActionModel(
-              action: RepositoryTileAction.clone,
-              label: 'Clone repository',
-              description:
-                  'Clone this repository into the configured workspace.',
-              prominent: true,
-            ),
-            const RepositoryActionModel(
-              action: RepositoryTileAction.archiveFromCloud,
-              label: 'Archive from cloud',
-              description:
-                  'Clone the repository, then archive it without keeping a working copy.',
-            ),
-          ],
-      };
-
-  static List<RepositoryActionModel> linkActions({
-    required bool canFork,
-    required String explorerName,
-    required bool includeExplorer,
-  }) {
-    return <RepositoryActionModel>[
-      const RepositoryActionModel(
-        action: RepositoryTileAction.details,
-        label: 'Repository details',
-        description: 'Open the repository detail summary dialog.',
-      ),
-      if (includeExplorer)
-        RepositoryActionModel(
-          action: RepositoryTileAction.openFinder,
-          label: 'Open in $explorerName',
-          description:
-              'Reveal the active working copy in the system file browser.',
-        ),
-      const RepositoryActionModel(
-        action: RepositoryTileAction.settings,
-        label: 'Repository settings',
-        description:
-            'Configure repository-specific editor, Git client, and path overrides.',
-      ),
-      const RepositoryActionModel(
-        action: RepositoryTileAction.viewGithub,
-        label: 'View on GitHub',
-        description: 'Open the main repository page in the browser.',
-      ),
-      const RepositoryActionModel(
-        action: RepositoryTileAction.issues,
-        label: 'Issues',
-        description: 'Open the issues list for this repository.',
-      ),
-      const RepositoryActionModel(
-        action: RepositoryTileAction.pullRequests,
-        label: 'Pull requests',
-        description: 'Open the pull request list for this repository.',
-      ),
-      const RepositoryActionModel(
-        action: RepositoryTileAction.newIssue,
-        label: 'New issue',
-        description: 'Open the GitHub new issue flow.',
-      ),
-      const RepositoryActionModel(
-        action: RepositoryTileAction.newPullRequest,
-        label: 'New pull request',
-        description: 'Open the GitHub compare view to start a pull request.',
-      ),
-      if (canFork)
-        const RepositoryActionModel(
-          action: RepositoryTileAction.fork,
-          label: 'Fork and clone',
-          description:
-              'Create a fork in your account and clone it into the workspace.',
+          icon: model.icon,
+          destructive: model.destructive,
         ),
     ];
-  }
-
-  static List<RepositoryActionModel> localActions({
-    required bool includeExplorer,
-    required String explorerName,
-  }) {
-    return <RepositoryActionModel>[
-      const RepositoryActionModel(
-        action: RepositoryTileAction.settings,
-        label: 'Repository settings',
-        description: '',
-      ),
-      const RepositoryActionModel(
-        action: RepositoryTileAction.details,
-        label: 'Repository details',
-        description: '',
-      ),
-      if (includeExplorer)
-        RepositoryActionModel(
-          action: RepositoryTileAction.openFinder,
-          label: 'Open in $explorerName',
-          description: '',
-        ),
-    ];
-  }
-
-  static List<RepositoryActionModel> githubActions() {
-    return const <RepositoryActionModel>[
-      RepositoryActionModel(
-        action: RepositoryTileAction.viewGithub,
-        label: 'View on GitHub',
-        description: '',
-      ),
-      RepositoryActionModel(
-        action: RepositoryTileAction.pullRequests,
-        label: 'Pull requests',
-        description: '',
-      ),
-      RepositoryActionModel(
-        action: RepositoryTileAction.issues,
-        label: 'Issues',
-        description: '',
-      ),
-    ];
-  }
-}
 
 class _RailBrand extends StatelessWidget {
   final bool compact;

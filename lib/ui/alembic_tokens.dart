@@ -2,20 +2,40 @@ import 'package:arcane/arcane.dart';
 import 'package:flutter/material.dart' as m;
 
 class AlembicShadcnTokens {
-  static const EdgeInsets shellPadding = EdgeInsets.all(12);
-  static const EdgeInsets surfacePadding = EdgeInsets.all(14);
-  static const EdgeInsets compactSurfacePadding = EdgeInsets.all(10);
+  static const EdgeInsets shellPadding = EdgeInsets.all(10);
+  static const EdgeInsets surfacePadding = EdgeInsets.all(12);
+  static const EdgeInsets compactSurfacePadding = EdgeInsets.all(8);
   static const EdgeInsets controlPadding =
-      EdgeInsets.symmetric(horizontal: 9, vertical: 7);
+      EdgeInsets.symmetric(horizontal: 10, vertical: 7);
   static const EdgeInsets compactControlPadding =
-      EdgeInsets.symmetric(horizontal: 7, vertical: 5);
+      EdgeInsets.symmetric(horizontal: 8, vertical: 5);
+  static const EdgeInsets rowPadding =
+      EdgeInsets.symmetric(horizontal: 10, vertical: 8);
 
-  static const double surfaceRadius = 12;
-  static const double controlRadius = 12;
-  static const double badgeRadius = 8;
-  static const double sidebarWidth = 300;
+  static const double surfaceRadius = 8;
+  static const double controlRadius = 7;
+  static const double badgeRadius = 6;
+  static const double shellMaxWidth = double.infinity;
+  static const double modalMaxWidth = 560;
+  static const double listRowMaxWidth = double.infinity;
+  static const double listRowHeight = 102;
+  static const double listDescriptionLineHeight = 16;
+  static const double sidebarWidth = 292;
   static const double asideWidth = 280;
+  static const double buttonHeight = 34;
+  static const double compactButtonHeight = 30;
+  static const double iconButtonSize = 34;
+  static const double compactIconButtonSize = 34;
+  static const double buttonMinWidth = 104;
+  static const double compactButtonMinWidth = 104;
+  static const double commandButtonWidth = 104;
+  static const double commandIconWidth = 34;
+  static const double rowActionButtonWidth = 104;
+  static const double rowActionColumnWidth = 104;
+  static const double tabWidth = 96;
+  static const double tabIconWidth = 34;
 
+  static const double gapXs = 4;
   static const double gapSm = 8;
   static const double gapMd = 10;
   static const double gapLg = 12;
@@ -23,72 +43,72 @@ class AlembicShadcnTokens {
 
   static const ColorScheme lightScheme = ColorScheme(
     brightness: Brightness.light,
-    background: m.Color(0xFFF5F5F5),
-    foreground: m.Color(0xFF0A0A0A),
+    background: m.Color(0xFFF7F7F8),
+    foreground: m.Color(0xFF111113),
     card: m.Color(0xFFFFFFFF),
-    cardForeground: m.Color(0xFF0A0A0A),
+    cardForeground: m.Color(0xFF111113),
     popover: m.Color(0xFFFFFFFF),
-    popoverForeground: m.Color(0xFF0A0A0A),
-    primary: m.Color(0xFF111111),
+    popoverForeground: m.Color(0xFF111113),
+    primary: m.Color(0xFF18181B),
     primaryForeground: m.Color(0xFFFAFAFA),
-    secondary: m.Color(0xFFF0F0F0),
-    secondaryForeground: m.Color(0xFF111111),
-    muted: m.Color(0xFFF0F0F0),
+    secondary: m.Color(0xFFF1F1F3),
+    secondaryForeground: m.Color(0xFF18181B),
+    muted: m.Color(0xFFF2F2F4),
     mutedForeground: m.Color(0xFF6B7280),
-    accent: m.Color(0xFFF0F0F0),
-    accentForeground: m.Color(0xFF111111),
+    accent: m.Color(0xFFEFF6FF),
+    accentForeground: m.Color(0xFF172554),
     destructive: m.Color(0xFFDC2626),
-    border: m.Color(0xFFE4E4E7),
-    input: m.Color(0xFFE4E4E7),
-    ring: m.Color(0xFFA3A3A3),
+    border: m.Color(0xFFE1E1E5),
+    input: m.Color(0xFFDCDCE2),
+    ring: m.Color(0xFF9CA3AF),
     chart1: m.Color(0xFF2563EB),
     chart2: m.Color(0xFF059669),
-    chart3: m.Color(0xFFF59E0B),
-    chart4: m.Color(0xFF9333EA),
+    chart3: m.Color(0xFFD97706),
+    chart4: m.Color(0xFF7C3AED),
     chart5: m.Color(0xFFE11D48),
-    sidebar: m.Color(0xFFF8F8F8),
-    sidebarForeground: m.Color(0xFF0A0A0A),
-    sidebarPrimary: m.Color(0xFF111111),
+    sidebar: m.Color(0xFFF2F2F4),
+    sidebarForeground: m.Color(0xFF111113),
+    sidebarPrimary: m.Color(0xFF18181B),
     sidebarPrimaryForeground: m.Color(0xFFFAFAFA),
-    sidebarAccent: m.Color(0xFFF0F0F0),
-    sidebarAccentForeground: m.Color(0xFF111111),
-    sidebarBorder: m.Color(0xFFE4E4E7),
-    sidebarRing: m.Color(0xFFA3A3A3),
+    sidebarAccent: m.Color(0xFFE9E9ED),
+    sidebarAccentForeground: m.Color(0xFF18181B),
+    sidebarBorder: m.Color(0xFFE1E1E5),
+    sidebarRing: m.Color(0xFF9CA3AF),
   );
 
   static const ColorScheme darkScheme = ColorScheme(
     brightness: Brightness.dark,
-    background: m.Color(0xFF050505),
-    foreground: m.Color(0xFFFAFAFA),
-    card: m.Color(0xFF111111),
-    cardForeground: m.Color(0xFFFAFAFA),
-    popover: m.Color(0xFF101010),
-    popoverForeground: m.Color(0xFFFAFAFA),
-    primary: m.Color(0xFFFAFAFA),
-    primaryForeground: m.Color(0xFF111111),
-    secondary: m.Color(0xFF181818),
-    secondaryForeground: m.Color(0xFFFAFAFA),
-    muted: m.Color(0xFF161616),
-    mutedForeground: m.Color(0xFFA3A3A3),
-    accent: m.Color(0xFF1B1B1B),
-    accentForeground: m.Color(0xFFFAFAFA),
+    background: m.Color(0xFF08080A),
+    foreground: m.Color(0xFFF4F4F5),
+    card: m.Color(0xFF111114),
+    cardForeground: m.Color(0xFFF4F4F5),
+    popover: m.Color(0xFF121216),
+    popoverForeground: m.Color(0xFFF4F4F5),
+    primary: m.Color(0xFFF4F4F5),
+    primaryForeground: m.Color(0xFF111114),
+    secondary: m.Color(0xFF1A1A20),
+    secondaryForeground: m.Color(0xFFF4F4F5),
+    muted: m.Color(0xFF18181D),
+    mutedForeground: m.Color(0xFFA1A1AA),
+    accent: m.Color(0xFF172033),
+    accentForeground: m.Color(0xFFBFDBFE),
     destructive: m.Color(0xFFFB7185),
-    border: m.Color(0xFF262626),
-    input: m.Color(0xFF222222),
-    ring: m.Color(0xFF737373),
-    chart1: m.Color(0xFF3B82F6),
-    chart2: m.Color(0xFF10B981),
-    chart3: m.Color(0xFFF59E0B),
-    chart4: m.Color(0xFFA855F7),
-    chart5: m.Color(0xFFF43F5E),
-    sidebar: m.Color(0xFF0F0F0F),
-    sidebarForeground: m.Color(0xFFFAFAFA),
-    sidebarPrimary: m.Color(0xFFFAFAFA),
-    sidebarPrimaryForeground: m.Color(0xFF111111),
-    sidebarAccent: m.Color(0xFF191919),
-    sidebarAccentForeground: m.Color(0xFFFAFAFA),
-    sidebarBorder: m.Color(0xFF262626),
-    sidebarRing: m.Color(0xFF737373),
+    border: m.Color(0xFF27272F),
+    input: m.Color(0xFF2A2A32),
+    ring: m.Color(0xFF71717A),
+    chart1: m.Color(0xFF60A5FA),
+    chart2: m.Color(0xFF34D399),
+    chart3: m.Color(0xFFFBBF24),
+    chart4: m.Color(0xFFA78BFA),
+    chart5: m.Color(0xFFFB7185),
+    sidebar: m.Color(0xFF0E0E12),
+    sidebarForeground: m.Color(0xFFF4F4F5),
+    sidebarPrimary: m.Color(0xFFF4F4F5),
+    sidebarPrimaryForeground: m.Color(0xFF111114),
+    sidebarAccent: m.Color(0xFF18181D),
+    sidebarAccentForeground: m.Color(0xFFF4F4F5),
+    sidebarBorder: m.Color(0xFF27272F),
+    sidebarRing: m.Color(0xFF71717A),
   );
 
   static const ContrastedColorScheme scheme = ContrastedColorScheme(

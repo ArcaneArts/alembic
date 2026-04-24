@@ -1,5 +1,5 @@
+import 'package:alembic/ui/alembic_ui.dart';
 import 'package:arcane/arcane.dart';
-import 'package:alembic/app/alembic_widgets.dart';
 import 'package:flutter/material.dart' as m;
 
 Future<void> showAlembicInfoDialog(
@@ -9,30 +9,17 @@ Future<void> showAlembicInfoDialog(
 }) {
   return m.showDialog<void>(
     context: context,
-    builder: (BuildContext dialogContext) {
-      return m.Dialog(
-        child: AlembicPanel(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              AlembicSectionHeader(
-                title: title,
-                subtitle: message,
-              ),
-              const Gap(18),
-              Align(
-                alignment: Alignment.centerRight,
-                child: PrimaryButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(),
-                  child: const Text('Close'),
-                ),
-              ),
-            ],
-          ),
+    builder: (BuildContext dialogContext) => AlembicDialogCard(
+      title: title,
+      description: message,
+      actions: <Widget>[
+        AlembicToolbarButton(
+          onPressed: () => Navigator.of(dialogContext).pop(),
+          label: 'Close',
+          prominent: true,
         ),
-      );
-    },
+      ],
+    ),
   );
 }
 
@@ -44,46 +31,25 @@ Future<bool> showAlembicConfirmDialog(
   String cancelText = 'Cancel',
   bool destructive = false,
 }) async {
-  final bool? result = await m.showDialog<bool>(
+  bool? result = await m.showDialog<bool>(
     context: context,
-    builder: (BuildContext dialogContext) {
-      return m.Dialog(
-        child: AlembicPanel(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              AlembicSectionHeader(
-                title: title,
-                subtitle: description,
-              ),
-              const Gap(18),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: <Widget>[
-                  OutlineButton(
-                    onPressed: () => Navigator.of(dialogContext).pop(false),
-                    child: Text(cancelText),
-                  ),
-                  const Gap(10),
-                  destructive
-                      ? SecondaryButton(
-                          onPressed: () =>
-                              Navigator.of(dialogContext).pop(true),
-                          child: Text(confirmText),
-                        )
-                      : PrimaryButton(
-                          onPressed: () =>
-                              Navigator.of(dialogContext).pop(true),
-                          child: Text(confirmText),
-                        ),
-                ],
-              ),
-            ],
-          ),
+    builder: (BuildContext dialogContext) => AlembicDialogCard(
+      title: title,
+      description: description,
+      actions: <Widget>[
+        AlembicToolbarButton(
+          onPressed: () => Navigator.of(dialogContext).pop(false),
+          label: cancelText,
         ),
-      );
-    },
+        const Gap(AlembicShadcnTokens.gapSm),
+        AlembicToolbarButton(
+          onPressed: () => Navigator.of(dialogContext).pop(true),
+          label: confirmText,
+          prominent: !destructive,
+          destructive: destructive,
+        ),
+      ],
+    ),
   );
   return result ?? false;
 }
@@ -95,49 +61,36 @@ Future<String?> showAlembicInputDialog(
   required String placeholder,
   String confirmText = 'Save',
 }) async {
-  final m.TextEditingController controller = m.TextEditingController();
-  final String? result = await m.showDialog<String>(
+  m.TextEditingController controller = m.TextEditingController();
+  String? result = await m.showDialog<String>(
     context: context,
-    builder: (BuildContext dialogContext) {
-      return m.Dialog(
-        child: AlembicPanel(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              AlembicSectionHeader(
-                title: title,
-                subtitle: description,
-              ),
-              const Gap(16),
-              AlembicTextInput(
-                controller: controller,
-                placeholder: placeholder,
-                onSubmitted: (String value) {
-                  Navigator.of(dialogContext).pop(value.trim());
-                },
-              ),
-              const Gap(18),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: <Widget>[
-                  OutlineButton(
-                    onPressed: () => Navigator.of(dialogContext).pop(),
-                    child: const Text('Cancel'),
-                  ),
-                  const Gap(10),
-                  PrimaryButton(
-                    onPressed: () =>
-                        Navigator.of(dialogContext).pop(controller.text.trim()),
-                    child: Text(confirmText),
-                  ),
-                ],
-              ),
-            ],
-          ),
+    builder: (BuildContext dialogContext) => AlembicDialogCard(
+      title: title,
+      description: description,
+      actions: <Widget>[
+        AlembicToolbarButton(
+          onPressed: () => Navigator.of(dialogContext).pop(),
+          label: 'Cancel',
         ),
-      );
-    },
+        const Gap(AlembicShadcnTokens.gapSm),
+        AlembicToolbarButton(
+          onPressed: () => Navigator.of(dialogContext).pop(
+            controller.text.trim(),
+          ),
+          label: confirmText,
+          prominent: true,
+        ),
+      ],
+      children: <Widget>[
+        AlembicTextInput(
+          controller: controller,
+          placeholder: placeholder,
+          onSubmitted: (String value) {
+            Navigator.of(dialogContext).pop(value.trim());
+          },
+        ),
+      ],
+    ),
   );
   controller.dispose();
   return result;
