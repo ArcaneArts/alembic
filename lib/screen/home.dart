@@ -131,6 +131,7 @@ class _AlembicHomeState extends State<AlembicHome> {
   StreamSubscription<int>? _runtimeSubscription;
   HomeSelectionState _selection = const HomeSelectionState.initial();
   String? _searchQuery;
+  int _repositoryRevision = 0;
 
   Map<Organization, List<Repository>> get orgRepos => _controller.orgRepos;
 
@@ -157,6 +158,7 @@ class _AlembicHomeState extends State<AlembicHome> {
     allRepos.then((List<Repository> _) => _showTokenUpdateSummaryIfNeeded());
     _runtimeSubscription = widget.runtime.changed.stream.listen((_) {
       if (mounted) {
+        _repositoryRevision++;
         setState(() {});
       }
     });
@@ -223,6 +225,7 @@ class _AlembicHomeState extends State<AlembicHome> {
       await _showTokenUpdateSummaryIfNeeded();
     }
     if (mounted) {
+      _repositoryRevision++;
       setState(() {});
     }
   }
@@ -790,6 +793,7 @@ class _AlembicHomeState extends State<AlembicHome> {
                 Widget content = _RepositoryBrowserPane(
                   selection: _selection,
                   runtime: widget.runtime,
+                  revision: _repositoryRevision,
                   searchQuery: _searchQuery,
                   repositories: visibleRepositories,
                   onImportRepository: () => unawaited(_importRepository()),
@@ -1033,6 +1037,7 @@ class _HomeTopBar extends StatelessWidget {
 class _RepositoryBrowserPane extends StatefulWidget {
   final HomeSelectionState selection;
   final RepositoryRuntime runtime;
+  final int revision;
   final String? searchQuery;
   final List<Repository> repositories;
   final VoidCallback onImportRepository;
@@ -1052,6 +1057,7 @@ class _RepositoryBrowserPane extends StatefulWidget {
   const _RepositoryBrowserPane({
     required this.selection,
     required this.runtime,
+    required this.revision,
     required this.searchQuery,
     required this.repositories,
     required this.onImportRepository,
@@ -1066,6 +1072,8 @@ class _RepositoryBrowserPane extends StatefulWidget {
 }
 
 class _RepositoryBrowserPaneState extends State<_RepositoryBrowserPane> {
+  static const String _repositoryListKeyPrefix = 'repository:';
+
   late final ScrollController _scrollController;
 
   @override
@@ -1166,33 +1174,72 @@ class _RepositoryBrowserPaneState extends State<_RepositoryBrowserPane> {
                 )
               : m.Scrollbar(
                   controller: _scrollController,
-                  child: m.ListView.separated(
+                  child: m.CustomScrollView(
                     controller: _scrollController,
-                    padding: const EdgeInsets.symmetric(
-                      vertical: AlembicShadcnTokens.gapSm,
-                    ),
-                    itemCount: widget.repositories.length,
-                    separatorBuilder: (BuildContext context, int index) {
-                      return const SizedBox(height: AlembicShadcnTokens.gapXs);
-                    },
-                    itemBuilder: (BuildContext context, int index) {
-                      Repository repository = widget.repositories[index];
-                      if (_isProjects) {
-                        return _LocalRepositoryRow(
-                          repository: repository,
-                          runtime: widget.runtime,
-                          onPrimaryAction: widget.onPrimaryAction,
-                          onRepositoryAction: widget.onRepositoryAction,
-                        );
-                      }
-                      return _BrowseRepositoryRow(
-                        repository: repository,
-                        runtime: widget.runtime,
-                        onPrimaryAction: widget.onPrimaryAction,
-                        onRepositoryAction: widget.onRepositoryAction,
-                        canForkRepository: widget.canForkRepository,
-                      );
-                    },
+                    cacheExtent: AlembicShadcnTokens.listRowHeight * 8,
+                    slivers: <Widget>[
+                      m.SliverPadding(
+                        padding: const EdgeInsets.symmetric(
+                          vertical: AlembicShadcnTokens.gapSm,
+                        ),
+                        sliver: m.SliverList.separated(
+                          itemCount: widget.repositories.length,
+                          findItemIndexCallback: (key) {
+                            if (key is! m.ValueKey<String>) {
+                              return null;
+                            }
+                            String value = key.value;
+                            if (!value.startsWith(_repositoryListKeyPrefix)) {
+                              return null;
+                            }
+                            String fullName = value.substring(
+                              _repositoryListKeyPrefix.length,
+                            );
+                            int repositoryIndex =
+                                widget.repositories.indexWhere(
+                              (Repository repository) {
+                                return repository.fullName.toLowerCase() ==
+                                    fullName;
+                              },
+                            );
+                            if (repositoryIndex < 0) {
+                              return null;
+                            }
+                            return repositoryIndex;
+                          },
+                          separatorBuilder: (BuildContext context, int index) {
+                            return const SizedBox(
+                              height: AlembicShadcnTokens.gapXs,
+                            );
+                          },
+                          itemBuilder: (BuildContext context, int index) {
+                            Repository repository = widget.repositories[index];
+                            m.ValueKey<String> key = m.ValueKey<String>(
+                              '$_repositoryListKeyPrefix${repository.fullName.toLowerCase()}',
+                            );
+                            if (_isProjects) {
+                              return _LocalRepositoryRow(
+                                key: key,
+                                repository: repository,
+                                runtime: widget.runtime,
+                                revision: widget.revision,
+                                onPrimaryAction: widget.onPrimaryAction,
+                                onRepositoryAction: widget.onRepositoryAction,
+                              );
+                            }
+                            return _BrowseRepositoryRow(
+                              key: key,
+                              repository: repository,
+                              runtime: widget.runtime,
+                              revision: widget.revision,
+                              onPrimaryAction: widget.onPrimaryAction,
+                              onRepositoryAction: widget.onRepositoryAction,
+                              canForkRepository: widget.canForkRepository,
+                            );
+                          },
+                        ),
+                      ),
+                    ],
                   ),
                 ),
         ),
@@ -1201,9 +1248,10 @@ class _RepositoryBrowserPaneState extends State<_RepositoryBrowserPane> {
   }
 }
 
-class _LocalRepositoryRow extends StatelessWidget {
+class _LocalRepositoryRow extends StatefulWidget {
   final Repository repository;
   final RepositoryRuntime runtime;
+  final int revision;
   final Future<void> Function({
     required Repository repository,
     required RepoState state,
@@ -1216,18 +1264,49 @@ class _LocalRepositoryRow extends StatelessWidget {
   }) onRepositoryAction;
 
   const _LocalRepositoryRow({
+    super.key,
     required this.repository,
     required this.runtime,
+    required this.revision,
     required this.onPrimaryAction,
     required this.onRepositoryAction,
   });
 
   @override
-  Widget build(BuildContext context) {
+  State<_LocalRepositoryRow> createState() => _LocalRepositoryRowState();
+}
+
+class _LocalRepositoryRowState extends State<_LocalRepositoryRow> {
+  late Stream<List<String>> _workStream;
+  late Future<int> _daysUntilArchival;
+
+  @override
+  void initState() {
+    super.initState();
+    _configureRepository();
+  }
+
+  @override
+  void didUpdateWidget(covariant _LocalRepositoryRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.repository.fullName != widget.repository.fullName ||
+        oldWidget.runtime != widget.runtime ||
+        oldWidget.revision != widget.revision) {
+      _configureRepository();
+    }
+  }
+
+  void _configureRepository() {
     ArcaneRepository arcaneRepository = ArcaneRepository(
-      repository: repository,
-      runtime: runtime,
+      repository: widget.repository,
+      runtime: widget.runtime,
     );
+    _workStream = arcaneRepository.streamWork();
+    _daysUntilArchival = arcaneRepository.daysUntilArchival;
+  }
+
+  @override
+  Widget build(BuildContext context) {
     List<RepositoryActionModel> stateActions =
         RepositoryActionCatalog.stateActions(RepoState.active);
     List<RepositoryActionModel> localActions =
@@ -1248,22 +1327,24 @@ class _LocalRepositoryRow extends StatelessWidget {
     ];
 
     return StreamBuilder<List<String>>(
-      stream: arcaneRepository.streamWork(),
+      stream: _workStream,
       initialData: const <String>[],
       builder:
           (BuildContext context, AsyncSnapshot<List<String>> workSnapshot) {
         List<String> work = workSnapshot.data ?? const <String>[];
         return FutureBuilder<int>(
-          future: arcaneRepository.daysUntilArchival,
+          future: _daysUntilArchival,
           builder: (BuildContext context, AsyncSnapshot<int> daysSnapshot) {
             int daysUntilArchive = daysSnapshot.data ?? config.daysToArchive;
             return AlembicListRow(
-              title: repository.name,
-              subtitle: repository.fullName,
-              description: _cleanDescription(repository.description),
+              title: widget.repository.name,
+              subtitle: widget.repository.fullName,
+              description: _cleanDescription(widget.repository.description),
               meta: <Widget>[
                 AlembicMetaText(
-                  label: repository.isPrivate == true ? 'Private' : 'Public',
+                  label: widget.repository.isPrivate == true
+                      ? 'Private'
+                      : 'Public',
                 ),
                 AlembicBadge(
                   label:
@@ -1277,8 +1358,8 @@ class _LocalRepositoryRow extends StatelessWidget {
               primaryAction: AlembicToolbarButton(
                 label: 'Open',
                 leadingIcon: RepoState.active.primaryActionIcon,
-                onPressed: () => onPrimaryAction(
-                  repository: repository,
+                onPressed: () => widget.onPrimaryAction(
+                  repository: widget.repository,
                   state: RepoState.active,
                 ),
                 prominent: true,
@@ -1286,8 +1367,9 @@ class _LocalRepositoryRow extends StatelessWidget {
               secondaryActions: AlembicOverflowMenu<RepositoryTileAction>(
                 label: 'Repository options',
                 items: _menuOptions(menuActions),
-                onSelected: (RepositoryTileAction action) => onRepositoryAction(
-                  repository: repository,
+                onSelected: (RepositoryTileAction action) =>
+                    widget.onRepositoryAction(
+                  repository: widget.repository,
                   state: RepoState.active,
                   work: work,
                   action: action,
@@ -1301,9 +1383,10 @@ class _LocalRepositoryRow extends StatelessWidget {
   }
 }
 
-class _BrowseRepositoryRow extends StatelessWidget {
+class _BrowseRepositoryRow extends StatefulWidget {
   final Repository repository;
   final RepositoryRuntime runtime;
+  final int revision;
   final Future<void> Function({
     required Repository repository,
     required RepoState state,
@@ -1317,28 +1400,59 @@ class _BrowseRepositoryRow extends StatelessWidget {
   final bool Function(Repository repository) canForkRepository;
 
   const _BrowseRepositoryRow({
+    super.key,
     required this.repository,
     required this.runtime,
+    required this.revision,
     required this.onPrimaryAction,
     required this.onRepositoryAction,
     required this.canForkRepository,
   });
 
   @override
-  Widget build(BuildContext context) {
+  State<_BrowseRepositoryRow> createState() => _BrowseRepositoryRowState();
+}
+
+class _BrowseRepositoryRowState extends State<_BrowseRepositoryRow> {
+  late Stream<List<String>> _workStream;
+  late Future<RepoState> _state;
+
+  @override
+  void initState() {
+    super.initState();
+    _configureRepository();
+  }
+
+  @override
+  void didUpdateWidget(covariant _BrowseRepositoryRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.repository.fullName != widget.repository.fullName ||
+        oldWidget.runtime != widget.runtime ||
+        oldWidget.revision != widget.revision) {
+      _configureRepository();
+    }
+  }
+
+  void _configureRepository() {
     ArcaneRepository arcaneRepository = ArcaneRepository(
-      repository: repository,
-      runtime: runtime,
+      repository: widget.repository,
+      runtime: widget.runtime,
     );
+    _workStream = arcaneRepository.streamWork();
+    _state = arcaneRepository.state;
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return FutureBuilder<RepoState>(
-      future: arcaneRepository.state,
+      future: _state,
       builder: (BuildContext context, AsyncSnapshot<RepoState> stateSnapshot) {
         RepoState state = stateSnapshot.data ?? RepoState.cloud;
         List<RepositoryActionModel> stateActions =
             RepositoryActionCatalog.stateActions(state);
         List<RepositoryActionModel> linkActions =
             RepositoryActionCatalog.linkActions(
-          canFork: canForkRepository(repository),
+          canFork: widget.canForkRepository(widget.repository),
           explorerName: DesktopPlatformAdapter.instance.fileExplorerName,
           includeExplorer: state == RepoState.active,
         );
@@ -1353,19 +1467,21 @@ class _BrowseRepositoryRow extends StatelessWidget {
         ];
 
         return StreamBuilder<List<String>>(
-          stream: arcaneRepository.streamWork(),
+          stream: _workStream,
           initialData: const <String>[],
           builder:
               (BuildContext context, AsyncSnapshot<List<String>> workSnapshot) {
             List<String> work = workSnapshot.data ?? const <String>[];
             return AlembicListRow(
-              title: repository.name,
-              subtitle: repository.fullName,
-              description: _cleanDescription(repository.description),
+              title: widget.repository.name,
+              subtitle: widget.repository.fullName,
+              description: _cleanDescription(widget.repository.description),
               meta: <Widget>[
                 _RepoStateBadge(state: state),
                 AlembicMetaText(
-                  label: repository.isPrivate == true ? 'Private' : 'Public',
+                  label: widget.repository.isPrivate == true
+                      ? 'Private'
+                      : 'Public',
                 ),
                 if (work.isNotEmpty)
                   AlembicMetaText(
@@ -1375,8 +1491,8 @@ class _BrowseRepositoryRow extends StatelessWidget {
               primaryAction: AlembicToolbarButton(
                 label: state.primaryActionLabel,
                 leadingIcon: state.primaryActionIcon,
-                onPressed: () => onPrimaryAction(
-                  repository: repository,
+                onPressed: () => widget.onPrimaryAction(
+                  repository: widget.repository,
                   state: state,
                 ),
                 prominent: true,
@@ -1391,8 +1507,8 @@ class _BrowseRepositoryRow extends StatelessWidget {
                     compact: true,
                     iconOnly: true,
                     tooltip: 'Open on GitHub',
-                    onPressed: () => onRepositoryAction(
-                      repository: repository,
+                    onPressed: () => widget.onRepositoryAction(
+                      repository: widget.repository,
                       state: state,
                       work: work,
                       action: RepositoryTileAction.viewGithub,
@@ -1402,8 +1518,8 @@ class _BrowseRepositoryRow extends StatelessWidget {
                     label: 'Repository options',
                     items: _menuOptions(menuActions),
                     onSelected: (RepositoryTileAction action) =>
-                        onRepositoryAction(
-                      repository: repository,
+                        widget.onRepositoryAction(
+                      repository: widget.repository,
                       state: state,
                       work: work,
                       action: action,
