@@ -2,6 +2,7 @@ enum HomeTab {
   active,
   personal,
   organizations,
+  archiveMaster,
 }
 
 enum OrganizationFilterKind {

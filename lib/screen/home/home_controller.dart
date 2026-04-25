@@ -1,10 +1,15 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:alembic/core/account_registry.dart';
 import 'package:alembic/core/arcane_repository.dart';
 import 'package:alembic/core/repository_runtime.dart';
 import 'package:alembic/main.dart';
+import 'package:alembic/presentation/home_view_state.dart';
+import 'package:alembic/util/archive_master.dart';
 import 'package:alembic/util/environment.dart';
+import 'package:alembic/util/extensions.dart';
+import 'package:alembic/util/git_accounts.dart';
 import 'package:alembic/util/repository_catalog.dart';
 import 'package:alembic/util/repo_config.dart';
 import 'package:alembic/util/semaphore.dart';
@@ -13,11 +18,13 @@ import 'package:github/github.dart';
 import 'package:rxdart/rxdart.dart';
 
 class HomeController {
-  final GitHub github;
+  final AccountRegistry registry;
   final RepositoryRuntime runtime;
   final Map<Organization, List<Repository>> orgRepos =
       <Organization, List<Repository>>{};
   final List<Repository> personalRepos = <Repository>[];
+  final Map<String, String> _accountByFullName = <String, String>{};
+  final Set<String> _personalLoginsLower = <String>{};
   final BehaviorSubject<int> fetching = BehaviorSubject<int>.seeded(0);
   final BehaviorSubject<double?> progress =
       BehaviorSubject<double?>.seeded(null);
@@ -31,14 +38,46 @@ class HomeController {
   bool _classicMigrationPromptConsumed = false;
 
   HomeController({
-    required this.github,
+    required this.registry,
     required this.runtime,
   });
+
+  GitHub get primaryGitHub =>
+      registry.primaryGitHub ?? GitHub();
+
+  String? accountIdForRepository(Repository repository) {
+    final String key = repository.fullName.toLowerCase();
+    final String? cached = _accountByFullName[key];
+    if (cached != null && cached.isNotEmpty) {
+      return cached;
+    }
+    final String? configId = getRepoConfig(repository).accountId;
+    if (configId != null && configId.isNotEmpty) {
+      _accountByFullName[key] = configId;
+      return configId;
+    }
+    return registry.primaryAccountId;
+  }
+
+  GitAccount? accountForRepository(Repository repository) {
+    final String? id = accountIdForRepository(repository);
+    if (id == null) {
+      return null;
+    }
+    return registry.accountById(id);
+  }
+
+  GitHub githubForRepository(Repository repository) {
+    final String? id = accountIdForRepository(repository);
+    final GitHub? specific = id == null ? null : registry.githubForAccount(id);
+    return specific ?? primaryGitHub;
+  }
 
   ArcaneRepository repositoryFor(Repository repository) {
     return ArcaneRepository(
       repository: repository,
       runtime: runtime,
+      accountId: accountIdForRepository(repository),
     );
   }
 
@@ -134,11 +173,11 @@ class HomeController {
   }
 
   Future<int> updateAllRepositoryTokens() async {
-    if (!box.containsKey('1')) {
+    final List<GitAccount> accounts = registry.accounts;
+    if (accounts.isEmpty) {
       return 0;
     }
 
-    String latestToken = box.get('1');
     progress.add(0.0);
 
     List<Repository> repositories = await allRepos;
@@ -149,10 +188,13 @@ class HomeController {
     for (Repository repo in repositories) {
       ArcaneRepository repository = repositoryFor(repo);
       if (await repository.isActive) {
-        bool wasUpdated = await repository.checkAndUpdateToken(latestToken);
-        if (wasUpdated) {
-          updated++;
-          success('Updated token for ${repo.fullName}');
+        final String latestToken = repository.resolvedToken;
+        if (latestToken.isNotEmpty) {
+          bool wasUpdated = await repository.checkAndUpdateToken(latestToken);
+          if (wasUpdated) {
+            updated++;
+            success('Updated token for ${repo.fullName}');
+          }
         }
       }
       current++;
@@ -167,34 +209,82 @@ class HomeController {
     if (alembicIsFlutterTestEnvironment()) {
       personalRepos.clear();
       orgRepos.clear();
+      _accountByFullName.clear();
+      _personalLoginsLower.clear();
       fetching.add(0);
       return <Repository>[];
     }
 
     personalRepos.clear();
     orgRepos.clear();
+    _accountByFullName.clear();
+    _personalLoginsLower.clear();
     fetching.add(0);
 
     Map<String, Repository> mergedRepositories = <String, Repository>{};
-    String currentLogin = '';
 
     try {
-      try {
-        CurrentUser currentUser = await github.users.getCurrentUser();
-        currentLogin = (currentUser.login ?? '').toLowerCase();
-        if (currentLogin.isNotEmpty) {
-          await boxSettings.put('current_user_login', currentLogin);
-        }
-      } catch (_) {
-        currentLogin =
-            (boxSettings.get('current_user_login', defaultValue: '') as String)
-                .toLowerCase();
+      final List<AccountClient> clients = registry.clients;
+      if (clients.isEmpty) {
+        return <Repository>[];
       }
 
-      List<Repository> fetchedRepositories =
-          await listRepositoriesAggressive(type: 'all').toList();
-      for (Repository repository in fetchedRepositories) {
-        mergedRepositories[repository.fullName.toLowerCase()] = repository;
+      for (AccountClient client in clients) {
+        try {
+          final CurrentUser currentUser =
+              await client.github.users.getCurrentUser();
+          final String login = (currentUser.login ?? '').toLowerCase();
+          if (login.isNotEmpty) {
+            _personalLoginsLower.add(login);
+          }
+          if (client.account.id == registry.primaryAccountId &&
+              login.isNotEmpty) {
+            await boxSettings.put('current_user_login', login);
+          }
+        } catch (_) {
+          if (client.account.login != null &&
+              client.account.login!.trim().isNotEmpty) {
+            _personalLoginsLower.add(client.account.login!.toLowerCase());
+          }
+        }
+      }
+      if (_personalLoginsLower.isEmpty) {
+        final String stored =
+            (boxSettings.get('current_user_login', defaultValue: '') as String)
+                .trim()
+                .toLowerCase();
+        if (stored.isNotEmpty) {
+          _personalLoginsLower.add(stored);
+        }
+      }
+
+      for (AccountClient client in clients) {
+        try {
+          List<Repository> fetchedRepositories =
+              await listRepositoriesAggressive(
+            client.github,
+            type: 'all',
+          ).toList();
+          for (Repository repository in fetchedRepositories) {
+            String key = repository.fullName.toLowerCase();
+            if (mergedRepositories.containsKey(key)) {
+              continue;
+            }
+            mergedRepositories[key] = repository;
+            _accountByFullName[key] = client.account.id;
+            try {
+              final AlembicRepoConfig repoConfig = getRepoConfig(repository);
+              if (repoConfig.accountId != client.account.id) {
+                repoConfig.accountId = client.account.id;
+                setRepoConfig(repository, repoConfig);
+              }
+            } catch (_) {}
+          }
+        } catch (e) {
+          error(
+            'Failed fetching repos for account ${client.account.name}: $e',
+          );
+        }
       }
 
       List<RepositoryRef> workspaceRefs = scanWorkspaceRepositoryRefs();
@@ -244,7 +334,8 @@ class HomeController {
       Map<String, Organization> ownerOrganizations = <String, Organization>{};
       for (Repository repo in repos) {
         String ownerLogin = repo.owner?.login ?? 'unknown';
-        bool isPersonal = ownerLogin.toLowerCase() == currentLogin;
+        bool isPersonal =
+            _personalLoginsLower.contains(ownerLogin.toLowerCase());
 
         if (!isPersonal) {
           if (!ownerOrganizations.containsKey(ownerLogin)) {
@@ -391,9 +482,11 @@ class HomeController {
 
   Future<Repository?> resolveRepositoryRef(RepositoryRef ref) async {
     RepositorySlug slug = RepositorySlug(ref.owner, ref.name);
-    try {
-      return await github.repositories.getRepository(slug);
-    } catch (_) {}
+    for (AccountClient client in registry.clients) {
+      try {
+        return await client.github.repositories.getRepository(slug);
+      } catch (_) {}
+    }
 
     GitHub anonymousGitHub = GitHub();
     try {
@@ -461,7 +554,8 @@ class HomeController {
     return segments.last;
   }
 
-  Stream<Repository> listRepositoriesAggressive({
+  Stream<Repository> listRepositoriesAggressive(
+    GitHub github, {
     String type = 'all',
     String sort = 'full_name',
     String direction = 'asc',
@@ -504,33 +598,157 @@ class HomeController {
     }
     _classicMigrationPromptConsumed = true;
 
-    bool isAuthenticated = box.get('authenticated', defaultValue: false);
+    bool isAuthenticated =
+        box.get(gitAccountsLegacyAuthFlag, defaultValue: false);
     if (!isAuthenticated) {
       return false;
     }
 
-    String token = box.get('1', defaultValue: '').toString().trim();
+    String token =
+        box.get(gitAccountsLegacyTokenKey, defaultValue: '').toString().trim();
     if (token.isEmpty) {
       return false;
     }
 
-    String tokenType =
-        box.get('token_type', defaultValue: 'unknown').toString();
+    String tokenType = box
+        .get(gitAccountsLegacyTypeKey, defaultValue: 'unknown')
+        .toString();
     if (tokenType == 'unknown') {
       tokenType = detectTokenType(token);
-      await box.put('token_type', tokenType);
+      await box.put(gitAccountsLegacyTypeKey, tokenType);
     }
 
     return tokenType == 'classic';
   }
 
-  String detectTokenType(String token) {
-    if (token.startsWith('github_pat_')) {
-      return 'fine_grained';
+  List<Repository> repositoriesForSelection({
+    required HomeSelectionState selection,
+    required String? query,
+    required List<Repository> all,
+  }) =>
+      switch (selection.tab) {
+        HomeTab.active => sortedProjects(all, query),
+        HomeTab.personal => sortedPersonal(query),
+        HomeTab.organizations =>
+          organizationRepositoriesFor(selection.organizationFilter, query),
+        HomeTab.archiveMaster => archiveMasterRepositories(all, query),
+      };
+
+  List<Repository> sortedProjects(
+    List<Repository> allRepositories,
+    String? query,
+  ) {
+    List<Repository> repositories = allRepositories
+        .where(
+          (Repository repo) => repositoryFor(repo).isActiveSync,
+        )
+        .toList()
+        .filterBy(query);
+    repositories.sort((Repository a, Repository b) {
+      int lastOpenComparison = (getRepoConfig(b).lastOpen ?? 0)
+          .compareTo(getRepoConfig(a).lastOpen ?? 0);
+      if (lastOpenComparison != 0) {
+        return lastOpenComparison;
+      }
+      return a.fullName.compareTo(b.fullName);
+    });
+    return repositories;
+  }
+
+  List<Repository> sortedPersonal(String? query) {
+    List<Repository> repositories = <Repository>[
+      ...personalRepos.filterBy(query),
+    ];
+    repositories.sort(
+      (Repository a, Repository b) => a.fullName.compareTo(b.fullName),
+    );
+    return repositories;
+  }
+
+  List<Repository> organizationRepositoriesFor(
+    OrganizationFilter filter,
+    String? query,
+  ) {
+    if (filter.isAll) {
+      List<Organization> organizations = orgRepos.keys.toList()
+        ..sort((Organization a, Organization b) {
+          return (a.login ?? '').compareTo(b.login ?? '');
+        });
+      List<Repository> repositories = <Repository>[];
+      for (Organization organization in organizations) {
+        repositories.addAll(orgRepos[organization]!.filterBy(query));
+      }
+      return repositories;
     }
-    if (token.startsWith('ghp_')) {
-      return 'personal';
+
+    String? selectedLogin = filter.organizationLogin;
+    if (selectedLogin == null) {
+      return <Repository>[];
     }
-    return 'classic';
+
+    for (Organization organization in orgRepos.keys) {
+      String login = organization.login ?? '';
+      if (login == selectedLogin) {
+        return orgRepos[organization]!.filterBy(query);
+      }
+    }
+
+    return <Repository>[];
+  }
+
+  List<Repository> archiveMasterRepositories(
+    List<Repository> allRepositories,
+    String? query,
+  ) {
+    List<ArchiveMasterTarget> targets = loadArchiveMasterTargets();
+    Set<String> directRepoKeys = <String>{};
+    Set<String> orgOwners = <String>{};
+    for (ArchiveMasterTarget target in targets) {
+      if (target.kind == ArchiveMasterTargetKind.organization) {
+        orgOwners.add(target.owner.toLowerCase());
+        continue;
+      }
+      directRepoKeys.add(
+        '${target.owner.toLowerCase()}/${(target.repository ?? '').toLowerCase()}',
+      );
+    }
+    List<Repository> repositories = <Repository>[];
+    for (Repository repo in allRepositories) {
+      String key = repo.fullName.toLowerCase();
+      String owner = (repo.owner?.login ?? '').toLowerCase();
+      if (directRepoKeys.contains(key) || orgOwners.contains(owner)) {
+        repositories.add(repo);
+      }
+    }
+    List<Repository> filtered = repositories.filterBy(query);
+    filtered.sort(
+      (Repository a, Repository b) => a.fullName.compareTo(b.fullName),
+    );
+    return filtered;
+  }
+
+  List<String> organizationLogins() {
+    List<String> logins = <String>[];
+    for (Organization organization in orgRepos.keys) {
+      String login = organization.login ?? 'unknown';
+      logins.add(login);
+    }
+    logins.sort();
+    return logins;
+  }
+
+  bool canForkRepository(Repository repository) {
+    GitAccount? account = accountForRepository(repository);
+    String accountLogin = (account?.login ?? '').trim().toLowerCase();
+    String fallbackLogin =
+        (boxSettings.get('current_user_login', defaultValue: '') as String)
+            .trim()
+            .toLowerCase();
+    String currentLogin =
+        accountLogin.isNotEmpty ? accountLogin : fallbackLogin;
+    String ownerLogin = (repository.owner?.login ?? '').trim().toLowerCase();
+    return ownerLogin.isNotEmpty &&
+        currentLogin.isNotEmpty &&
+        ownerLogin != currentLogin;
   }
 }

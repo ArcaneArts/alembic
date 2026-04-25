@@ -1,15 +1,16 @@
 import 'dart:async';
 
+import 'package:alembic/core/account_registry.dart';
+import 'package:alembic/core/archive_master_service.dart';
 import 'package:alembic/core/repository_runtime.dart';
 import 'package:alembic/main.dart';
 import 'package:alembic/screen/home.dart';
 import 'package:alembic/screen/login.dart';
 import 'package:alembic/ui/alembic_ui.dart';
+import 'package:alembic/util/git_accounts.dart';
 import 'package:arcane/arcane.dart';
-import 'package:fast_log/fast_log.dart';
 import 'package:flutter/material.dart' as m;
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:github/github.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -51,8 +52,8 @@ class SplashScreenState extends State<SplashScreen>
   Future<void> _handleAuthentication() async {
     await restoreStoredAuthenticationState();
 
-    String token = box.get('1', defaultValue: '').toString().trim();
-    if (token.isEmpty) {
+    final List<GitAccount> accounts = loadGitAccounts();
+    if (accounts.isEmpty) {
       _navigateToLogin();
       return;
     }
@@ -76,24 +77,23 @@ class SplashScreenState extends State<SplashScreen>
       if (!mounted) {
         return;
       }
+      final AccountRegistry registry = AccountRegistry.fromCurrentStorage();
+      final RepositoryRuntime runtime = RepositoryRuntime();
+      final ArchiveMasterService archiveMasterService = ArchiveMasterService(
+        registry: registry,
+        runtime: runtime,
+      );
       Navigator.of(context).pushAndRemoveUntil(
         m.MaterialPageRoute<void>(
           builder: (_) => AlembicHome(
-            github: _createGitHubInstance(),
-            runtime: RepositoryRuntime(),
+            registry: registry,
+            runtime: runtime,
+            archiveMasterService: archiveMasterService,
           ),
         ),
         (_) => false,
       );
     });
-  }
-
-  GitHub _createGitHubInstance() {
-    String token = box.get('1', defaultValue: '').toString().trim();
-    String tokenType =
-        box.get('token_type', defaultValue: 'classic').toString();
-    info('Using $tokenType token for authentication');
-    return GitHub(auth: Authentication.withToken(token));
   }
 
   @override

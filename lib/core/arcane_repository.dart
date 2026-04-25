@@ -4,8 +4,10 @@ import 'dart:math';
 import 'package:alembic/core/repository_runtime.dart';
 import 'package:alembic/main.dart';
 import 'package:alembic/platform/desktop_platform_adapter.dart';
+import 'package:alembic/util/archive_master.dart';
 import 'package:alembic/util/clone_transport.dart';
 import 'package:alembic/util/extensions.dart';
+import 'package:alembic/util/git_accounts.dart';
 import 'package:alembic/util/git_signing.dart';
 import 'package:alembic/util/repo_config.dart';
 import 'package:archive/archive_io.dart';
@@ -21,11 +23,13 @@ class ArcaneRepository {
   final RepositoryRuntime runtime;
   final CommandRunner commandRunner;
   final GitSigningManager signingManager;
+  final String? accountId;
   bool? _specific;
 
   ArcaneRepository({
     required this.repository,
     required this.runtime,
+    this.accountId,
     CommandRunner? commandRunner,
     GitSigningManager? signingManager,
   })  : commandRunner = commandRunner ?? cmd,
@@ -38,8 +42,35 @@ class ArcaneRepository {
   String get imagePath => expandPath(
       "${config.archiveDirectory}/archives/${repository.owner?.login ?? 'unknown'}/${repository.name}.zip");
 
+  String get archiveMasterPath => expandPath(
+      "${config.archiveMasterDirectory}/${repository.owner?.login ?? 'unknown'}/${repository.name}");
+
+  String get resolvedToken {
+    if (accountId != null) {
+      final GitAccount? specific = findGitAccountById(accountId);
+      if (specific != null && specific.token.isNotEmpty) {
+        return specific.token;
+      }
+    }
+    final GitAccount? primary = loadPrimaryGitAccount();
+    if (primary != null && primary.token.isNotEmpty) {
+      return primary.token;
+    }
+    return box.get(gitAccountsLegacyTokenKey, defaultValue: '').toString();
+  }
+
+  GitAccount? get resolvedAccount {
+    if (accountId != null) {
+      final GitAccount? specific = findGitAccountById(accountId);
+      if (specific != null) {
+        return specific;
+      }
+    }
+    return loadPrimaryGitAccount();
+  }
+
   String get authenticatedCloneUrl {
-    final String token = box.get("1");
+    final String token = resolvedToken;
     return "https://$token@github.com/${repository.owner?.login}/${repository.name}.git";
   }
 
@@ -66,6 +97,12 @@ class ArcaneRepository {
   Future<bool> get isArchived => File(imagePath).exists();
 
   bool get isArchivedSync => File(imagePath).existsSync();
+
+  Future<bool> get isArchiveMaster =>
+      Directory("$archiveMasterPath/.git").exists();
+
+  bool get isArchiveMasterSync =>
+      Directory("$archiveMasterPath/.git").existsSync();
 
   Future<RepoState> get state =>
       Future.wait(<Future<bool>>[isActive, isArchived]).then((statuses) {
@@ -291,7 +328,7 @@ class ArcaneRepository {
     if (cloneMode == CloneTransportMode.sshPreferred) {
       candidates.add(sshCloneUrl);
     }
-    final String token = box.get("1", defaultValue: "").toString().trim();
+    final String token = resolvedToken.trim();
     if (token.isNotEmpty) {
       candidates.add(authenticatedCloneUrl);
     }
@@ -424,6 +461,231 @@ class ArcaneRepository {
     });
   }
 
+  Future<void> ensureArchiveMaster(GitHub github) {
+    return doWork<void>("Archive Master", () async {
+      final String fullName = repository.fullName;
+      final int now = DateTime.timestamp().millisecondsSinceEpoch;
+      try {
+        if (!await Directory("$archiveMasterPath/.git").exists()) {
+          await _cloneArchiveMaster();
+        } else {
+          await _pullArchiveMaster();
+        }
+        await _ensureArchiveMasterSigningGuard();
+        final String headHash = await _readArchiveMasterHead();
+        await updateArchiveMasterRepoState(
+          fullName,
+          ArchiveMasterRepoState(
+            fullName: fullName,
+            lastCheckedMs: now,
+            lastPulledMs: now,
+            lastCommitHash: headHash.isEmpty ? null : headHash,
+            lastErrorMessage: null,
+          ),
+        );
+      } catch (e) {
+        await updateArchiveMasterRepoState(
+          fullName,
+          ArchiveMasterRepoState(
+            fullName: fullName,
+            lastCheckedMs: now,
+            lastPulledMs: getArchiveMasterRepoState(fullName)?.lastPulledMs,
+            lastCommitHash: getArchiveMasterRepoState(fullName)?.lastCommitHash,
+            lastErrorMessage: e.toString(),
+          ),
+        );
+        rethrow;
+      } finally {
+        runtime.notifyChanged();
+      }
+    });
+  }
+
+  Future<String> _readArchiveMasterHead() async {
+    final BehaviorSubject<String> stdout = BehaviorSubject<String>();
+    final BehaviorSubject<String> stderr = BehaviorSubject<String>();
+    try {
+      final int exitCode = await commandRunner(
+        'git',
+        <String>['-C', archiveMasterPath, 'rev-parse', 'HEAD'],
+        stdout: stdout,
+        stderr: stderr,
+        redactOutput: false,
+      );
+      if (exitCode != 0) {
+        return '';
+      }
+      return (stdout.valueOrNull ?? '').trim();
+    } finally {
+      await stdout.close();
+      await stderr.close();
+    }
+  }
+
+  Future<void> _cloneArchiveMaster() async {
+    runtime.addSyncingRepository(repository);
+    try {
+      await Directory(archiveMasterPath).parent.create(recursive: true);
+      final Directory target = Directory(archiveMasterPath);
+      if (await target.exists()) {
+        await target.delete(recursive: true);
+      }
+      final List<String> cloneCandidates = buildCloneCandidates();
+      final List<String> failures = <String>[];
+      bool cloned = false;
+      for (final String cloneUrl in cloneCandidates) {
+        final String candidateLabel = cloneUrl == publicCloneUrl
+            ? 'public'
+            : (cloneUrl == sshCloneUrl ? 'ssh' : 'authenticated');
+        final BehaviorSubject<String> stdout = BehaviorSubject<String>();
+        final BehaviorSubject<String> stderr = BehaviorSubject<String>();
+        final int exitCode = await commandRunner(
+          'git',
+          <String>['clone', cloneUrl, archiveMasterPath],
+          stdout: stdout,
+          stderr: stderr,
+        );
+        final String failureContext = sanitizeSecrets(
+          stderr.valueOrNull ?? stdout.valueOrNull ?? 'exit code $exitCode',
+        );
+        await stdout.close();
+        await stderr.close();
+        if (exitCode == 0) {
+          cloned = true;
+          break;
+        }
+        failures.add('$candidateLabel -> $failureContext');
+        final Directory failedTarget = Directory(archiveMasterPath);
+        if (await failedTarget.exists()) {
+          await failedTarget.delete(recursive: true);
+        }
+      }
+      if (!cloned) {
+        throw Exception(
+          'Archive master clone failed for ${repository.fullName}: ${failures.join(" | ")}',
+        );
+      }
+      success("Cloned archive master ${repository.fullName}");
+    } finally {
+      runtime.removeSyncingRepository(repository);
+    }
+  }
+
+  Future<void> _pullArchiveMaster() async {
+    runtime.addSyncingRepository(repository);
+    try {
+      info("Pulling archive master ${repository.fullName}");
+      final int fetchExit = await commandRunner(
+        'git',
+        <String>['-C', archiveMasterPath, 'fetch', '--all', '--prune'],
+      );
+      if (fetchExit != 0) {
+        warn("Archive master fetch failed for ${repository.fullName}");
+      }
+      final int pullExit = await commandRunner(
+        'git',
+        <String>['-C', archiveMasterPath, 'pull', '--ff-only'],
+      );
+      if (pullExit != 0) {
+        warn("Archive master pull failed for ${repository.fullName}");
+        return;
+      }
+      success("Pulled archive master ${repository.fullName}");
+    } finally {
+      runtime.removeSyncingRepository(repository);
+    }
+  }
+
+  Future<void> removeArchiveMaster() {
+    return doWork<void>("Removing Archive Master", () async {
+      final Directory masterDir = Directory(archiveMasterPath);
+      if (await masterDir.exists()) {
+        await masterDir.delete(recursive: true);
+      }
+      await removeArchiveMasterRepoState(repository.fullName);
+      info("Removed archive master at $archiveMasterPath");
+      runtime.notifyChanged();
+    });
+  }
+
+  Future<void> promoteArchiveMaster(GitHub github) {
+    return doWork<void>("Promoting Archive Master", () async {
+      final Directory masterDir = Directory(archiveMasterPath);
+      if (!await Directory("$archiveMasterPath/.git").exists()) {
+        throw Exception(
+          'No archive master clone present for ${repository.fullName}',
+        );
+      }
+      if (await isActive) {
+        throw Exception(
+          'Workspace already contains an active checkout for ${repository.fullName}',
+        );
+      }
+      if (await isArchived) {
+        await File(imagePath).delete();
+      }
+      final Directory targetDir = Directory(repoPath);
+      await targetDir.parent.create(recursive: true);
+      if (await targetDir.exists()) {
+        await targetDir.delete(recursive: true);
+      }
+      await _moveDirectory(masterDir, targetDir);
+      await removeArchiveMasterRepoState(repository.fullName);
+      runtime.addActiveRepository(repository);
+      setRepoConfig(
+        repository,
+        getRepoConfig(repository)
+          ..lastOpen = DateTime.timestamp().millisecondsSinceEpoch,
+      );
+      await _ensureSigningGuard();
+      try {
+        await ensureRepositoryUpdated(github);
+      } catch (e) {
+        warn("Pull after promotion failed: $e");
+      }
+      success("Promoted archive master to workspace at $repoPath");
+    });
+  }
+
+  Future<void> _ensureArchiveMasterSigningGuard() async {
+    try {
+      await signingManager.ensureRepoSigningGuard(archiveMasterPath);
+    } catch (e) {
+      warn("Signing guard failed for archive master ${repository.fullName}: $e");
+    }
+  }
+
+  Future<void> _moveDirectory(Directory source, Directory target) async {
+    try {
+      await source.rename(target.path);
+      return;
+    } catch (_) {}
+    await target.create(recursive: true);
+    await for (FileSystemEntity entity in source.list(
+      recursive: true,
+      followLinks: false,
+    )) {
+      final String relative = entity.path.substring(source.path.length);
+      final String relativeNormalized =
+          relative.startsWith(Platform.pathSeparator) ||
+                  relative.startsWith('/')
+              ? relative.substring(1)
+              : relative;
+      final String destinationPath =
+          "${target.path}${Platform.pathSeparator}$relativeNormalized";
+      if (entity is Directory) {
+        await Directory(destinationPath).create(recursive: true);
+      } else if (entity is File) {
+        await Directory(File(destinationPath).parent.path)
+            .create(recursive: true);
+        await entity.copy(destinationPath);
+      }
+    }
+    if (await source.exists()) {
+      await source.delete(recursive: true);
+    }
+  }
+
   Future<void> deleteRepository() {
     return doWork<void>("Deleting", () async {
       final Directory repoDirectory = Directory(repoPath);
@@ -480,6 +742,7 @@ class ArcaneRepository {
       final ArcaneRepository forkArcane = ArcaneRepository(
         repository: forkRepository,
         runtime: runtime,
+        accountId: accountId,
         commandRunner: commandRunner,
         signingManager: signingManager,
       );

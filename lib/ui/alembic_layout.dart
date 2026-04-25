@@ -36,8 +36,33 @@ class AlembicScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     ThemeData theme = Theme.of(context);
+    Color background = theme.colorScheme.background;
+    bool isDark = theme.colorScheme.brightness == Brightness.dark;
+    double highlightAlpha = isDark ? 0.055 : 0.018;
+    double edgeAlpha = isDark ? 0.14 : 0.06;
+    Color highlightColor = m.Color.alphaBlend(
+      m.Colors.white.withValues(alpha: highlightAlpha),
+      background,
+    );
+    Color edgeColor = isDark
+        ? m.Colors.white.withValues(alpha: edgeAlpha)
+        : m.Colors.black.withValues(alpha: edgeAlpha);
     return DecoratedBox(
-      decoration: BoxDecoration(color: theme.colorScheme.background),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          stops: const <double>[0.0, 0.12, 1.0],
+          colors: <Color>[
+            highlightColor,
+            background,
+            background,
+          ],
+        ),
+        border: Border(
+          top: BorderSide(color: edgeColor, width: 0.5),
+        ),
+      ),
       child: SafeArea(
         child: Padding(
           padding: padding,
@@ -197,14 +222,17 @@ class AlembicSectionHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     ThemeData theme = Theme.of(context);
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: <Widget>[
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: <Widget>[
               Text(
                 title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: theme.typography.medium.copyWith(
                   fontWeight: FontWeight.w700,
                 ),
@@ -213,6 +241,8 @@ class AlembicSectionHeader extends StatelessWidget {
                 const Gap(AlembicShadcnTokens.gapXs),
                 Text(
                   subtitle!,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                   style: theme.typography.small.copyWith(
                     color: theme.colorScheme.mutedForeground,
                   ),

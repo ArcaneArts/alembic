@@ -16,6 +16,11 @@ enum RepositoryTileAction {
   clone,
   archiveFromCloud,
   fork,
+  enrollArchiveMaster,
+  unenrollArchiveMaster,
+  refreshArchiveMaster,
+  promoteArchiveMaster,
+  changeAuth,
 }
 
 abstract class RepositoryTileActionOperations {
@@ -45,9 +50,21 @@ abstract class RepositoryTileActionOperations {
 
   Future<void> forkAndClone();
 
+  Future<void> enrollArchiveMaster();
+
+  Future<void> unenrollArchiveMaster();
+
+  Future<void> refreshArchiveMaster();
+
+  Future<void> promoteArchiveMaster();
+
+  Future<void> changeAuth();
+
   Future<bool> confirmDeleteRepository();
 
   Future<bool> confirmDeleteArchive();
+
+  Future<bool> confirmUnenrollArchiveMaster();
 }
 
 class RepositoryTileActionDispatcher {
@@ -81,6 +98,15 @@ class RepositoryTileActionDispatcher {
       RepositoryTileAction.clone => operations.cloneRepository(),
       RepositoryTileAction.archiveFromCloud => operations.archiveFromCloud(),
       RepositoryTileAction.fork => operations.forkAndClone(),
+      RepositoryTileAction.enrollArchiveMaster =>
+        operations.enrollArchiveMaster(),
+      RepositoryTileAction.unenrollArchiveMaster =>
+        _dispatchUnenrollArchiveMaster(operations),
+      RepositoryTileAction.refreshArchiveMaster =>
+        operations.refreshArchiveMaster(),
+      RepositoryTileAction.promoteArchiveMaster =>
+        operations.promoteArchiveMaster(),
+      RepositoryTileAction.changeAuth => operations.changeAuth(),
     };
   }
 
@@ -102,5 +128,15 @@ class RepositoryTileActionDispatcher {
       return;
     }
     await operations.deleteArchive();
+  }
+
+  Future<void> _dispatchUnenrollArchiveMaster(
+    RepositoryTileActionOperations operations,
+  ) async {
+    bool confirmed = await operations.confirmUnenrollArchiveMaster();
+    if (!confirmed) {
+      return;
+    }
+    await operations.unenrollArchiveMaster();
   }
 }

@@ -87,6 +87,13 @@ class RepositoryActionCatalog {
           description: 'Open the repository detail summary dialog.',
           icon: m.Icons.info_outline,
         ),
+        const RepositoryActionModel(
+          action: RepositoryTileAction.changeAuth,
+          label: 'Change authentication',
+          description:
+              'Pick the GitHub account, public HTTPS, or SSH key for this repository.',
+          icon: m.Icons.vpn_key_outlined,
+        ),
         if (includeExplorer)
           RepositoryActionModel(
             action: RepositoryTileAction.openFinder,
@@ -154,6 +161,12 @@ class RepositoryActionCatalog {
           icon: m.Icons.tune,
         ),
         const RepositoryActionModel(
+          action: RepositoryTileAction.changeAuth,
+          label: 'Change authentication',
+          description: '',
+          icon: m.Icons.vpn_key_outlined,
+        ),
+        const RepositoryActionModel(
           action: RepositoryTileAction.details,
           label: 'Repository details',
           description: '',
@@ -189,6 +202,49 @@ class RepositoryActionCatalog {
           icon: m.Icons.report_problem_outlined,
         ),
       ];
+
+  static List<RepositoryActionModel> archiveMasterActions({
+    required bool enrolled,
+    required bool hasMasterClone,
+    required bool isActive,
+  }) {
+    final List<RepositoryActionModel> actions = <RepositoryActionModel>[];
+    if (!enrolled) {
+      actions.add(const RepositoryActionModel(
+        action: RepositoryTileAction.enrollArchiveMaster,
+        label: 'Enroll in Archive Master',
+        description:
+            'Maintain a managed mirror that pulls automatically on a schedule.',
+        icon: m.Icons.cloud_sync_outlined,
+      ));
+    } else {
+      actions.add(const RepositoryActionModel(
+        action: RepositoryTileAction.refreshArchiveMaster,
+        label: 'Refresh archive master',
+        description:
+            'Force a clone or pull of the managed archive master mirror.',
+        icon: m.Icons.refresh,
+      ));
+      if (hasMasterClone && !isActive) {
+        actions.add(const RepositoryActionModel(
+          action: RepositoryTileAction.promoteArchiveMaster,
+          label: 'Promote to workspace',
+          description:
+              'Move the managed mirror into the workspace as the active checkout.',
+          icon: m.Icons.upgrade,
+        ));
+      }
+      actions.add(const RepositoryActionModel(
+        action: RepositoryTileAction.unenrollArchiveMaster,
+        label: 'Remove from Archive Master',
+        description:
+            'Stop tracking this repository and delete the managed mirror.',
+        icon: m.Icons.cancel_outlined,
+        destructive: true,
+      ));
+    }
+    return actions;
+  }
 
   static RepositoryActionModel find(
     List<RepositoryActionModel> actions,

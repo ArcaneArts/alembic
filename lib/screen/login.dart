@@ -1,7 +1,7 @@
 import 'package:alembic/core/token_validator.dart';
-import 'package:alembic/main.dart';
 import 'package:alembic/screen/splash.dart';
 import 'package:alembic/ui/alembic_ui.dart';
+import 'package:alembic/util/git_accounts.dart';
 import 'package:arcane/arcane.dart';
 import 'package:flutter/material.dart' as m;
 import 'package:flutter_svg/flutter_svg.dart';
@@ -66,15 +66,7 @@ class _LoginScreenState extends State<LoginScreen> {
     });
   }
 
-  String _detectTokenType(String token) {
-    if (token.startsWith('github_pat_')) {
-      return 'fine_grained';
-    }
-    if (token.startsWith('ghp_')) {
-      return 'personal';
-    }
-    return 'classic';
-  }
+  String _detectTokenType(String token) => detectTokenType(token);
 
   Future<void> _doLogin(String? providedToken) async {
     if (_isSubmitting) {
@@ -101,9 +93,15 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     final String tokenType = _detectTokenType(token);
-    await box.put('1', token);
-    await box.put('token_type', tokenType);
-    await box.put('authenticated', true);
+    final String suggestedName = (validationResult.login ?? '').trim().isEmpty
+        ? 'Account ${loadGitAccounts().length + 1}'
+        : validationResult.login!.trim();
+    await addGitAccount(
+      name: suggestedName,
+      token: token,
+      tokenType: tokenType,
+      login: validationResult.login,
+    );
 
     if (!mounted) {
       return;

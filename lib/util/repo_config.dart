@@ -34,7 +34,9 @@ class AlembicConfig {
   GitTool? gitTool;
   String workspaceDirectory;
   String archiveDirectory;
+  String archiveMasterDirectory;
   int daysToArchive;
+  int archiveMasterIntervalMinutes;
 
   /// Default constructor with reasonable defaults
   AlembicConfig({
@@ -42,14 +44,18 @@ class AlembicConfig {
     this.gitTool = GitTool.gitkraken,
     this.workspaceDirectory = "~/Developer/RemoteGit",
     this.archiveDirectory = "~/Developer/AlembicArchive",
+    this.archiveMasterDirectory = "~/Developer/AlembicArchiveMaster",
     this.daysToArchive = 30,
+    this.archiveMasterIntervalMinutes = 1440,
   });
 
   /// Create config from JSON string
   AlembicConfig.fromJson(String jsonString)
       : workspaceDirectory = "~/Developer/RemoteGit",
         archiveDirectory = "~/Developer/AlembicArchive",
-        daysToArchive = 30 {
+        archiveMasterDirectory = "~/Developer/AlembicArchiveMaster",
+        daysToArchive = 30,
+        archiveMasterIntervalMinutes = 1440 {
     try {
       final Map<String, dynamic> data = jsonDecode(jsonString);
 
@@ -80,7 +86,12 @@ class AlembicConfig {
           data["workspaceDirectory"] as String? ?? workspaceDirectory;
       archiveDirectory =
           data["archiveDirectory"] as String? ?? archiveDirectory;
+      archiveMasterDirectory =
+          data["archiveMasterDirectory"] as String? ?? archiveMasterDirectory;
       daysToArchive = data["daysToArchive"] as int? ?? daysToArchive;
+      archiveMasterIntervalMinutes =
+          data["archiveMasterIntervalMinutes"] as int? ??
+              archiveMasterIntervalMinutes;
     } catch (e) {
       // Failed to parse JSON, use defaults
       editorTool = ApplicationTool.intellij;
@@ -94,7 +105,9 @@ class AlembicConfig {
         "gitTool": gitTool?.name,
         "workspaceDirectory": workspaceDirectory,
         "archiveDirectory": archiveDirectory,
+        "archiveMasterDirectory": archiveMasterDirectory,
         "daysToArchive": daysToArchive,
+        "archiveMasterIntervalMinutes": archiveMasterIntervalMinutes,
       });
 }
 
@@ -104,6 +117,7 @@ class AlembicRepoConfig {
   GitTool? gitTool;
   String openDirectory;
   int? lastOpen;
+  String? accountId;
 
   /// Default constructor with reasonable defaults
   AlembicRepoConfig({
@@ -111,6 +125,7 @@ class AlembicRepoConfig {
     this.gitTool,
     this.openDirectory = "/",
     this.lastOpen,
+    this.accountId,
   });
 
   /// Create config from JSON string
@@ -139,6 +154,10 @@ class AlembicRepoConfig {
       // Load other settings
       openDirectory = data["openDirectory"] as String? ?? "/";
       lastOpen = data["lastOpen"] as int?;
+      final String? rawAccountId = data["accountId"] as String?;
+      if (rawAccountId != null && rawAccountId.trim().isNotEmpty) {
+        accountId = rawAccountId.trim();
+      }
     } catch (e) {
       // Failed to parse JSON, use defaults
     }
@@ -152,5 +171,7 @@ class AlembicRepoConfig {
           "gitTool": gitTool!.name,
         "openDirectory": openDirectory,
         if (lastOpen != null) "lastOpen": lastOpen,
+        if (accountId != null && accountId!.trim().isNotEmpty)
+          "accountId": accountId,
       });
 }

@@ -5,6 +5,7 @@ import 'dart:math';
 import 'package:alembic/app/alembic_theme.dart';
 import 'package:alembic/platform/desktop_platform_adapter.dart';
 import 'package:alembic/screen/splash.dart';
+import 'package:alembic/util/git_accounts.dart';
 import 'package:alembic/util/window.dart';
 import 'package:arcane/arcane.dart';
 import 'package:arcane_desktop/arcane_desktop.dart';
@@ -92,34 +93,42 @@ Future<void> _setupAppSettings() async {
 }
 
 Future<void> restoreStoredAuthenticationState() async {
-  String token = box.get('1', defaultValue: '').toString().trim();
-  bool authenticated = box.get('authenticated', defaultValue: false) == true;
-  if (token.isEmpty) {
-    if (authenticated) {
-      await box.put('authenticated', false);
+  await migrateLegacyTokenIfNeeded();
+  final List<GitAccount> accounts = loadGitAccounts();
+  final bool hasAccounts = accounts.isNotEmpty;
+  final bool storedAuthFlag =
+      box.get(gitAccountsLegacyAuthFlag, defaultValue: false) == true;
+
+  if (!hasAccounts) {
+    if (storedAuthFlag) {
+      await box.put(gitAccountsLegacyAuthFlag, false);
     }
     return;
   }
 
-  if (!authenticated) {
-    await box.put('authenticated', true);
+  if (!storedAuthFlag) {
+    await box.put(gitAccountsLegacyAuthFlag, true);
   }
 
-  String tokenType = box.get('token_type', defaultValue: 'unknown').toString();
-  if (tokenType == 'unknown' || tokenType.isEmpty) {
-    await box.put('token_type', detectStoredTokenType(token));
+  final GitAccount? primary = loadPrimaryGitAccount();
+  if (primary == null) {
+    return;
+  }
+
+  final String legacyToken =
+      box.get(gitAccountsLegacyTokenKey, defaultValue: '').toString().trim();
+  if (legacyToken != primary.token) {
+    await box.put(gitAccountsLegacyTokenKey, primary.token);
+  }
+
+  final String legacyType =
+      box.get(gitAccountsLegacyTypeKey, defaultValue: '').toString().trim();
+  if (legacyType != primary.tokenType) {
+    await box.put(gitAccountsLegacyTypeKey, primary.tokenType);
   }
 }
 
-String detectStoredTokenType(String token) {
-  if (token.startsWith('github_pat_')) {
-    return 'fine_grained';
-  }
-  if (token.startsWith('ghp_')) {
-    return 'personal';
-  }
-  return 'classic';
-}
+String detectStoredTokenType(String token) => detectTokenType(token);
 
 Future<Box> _openEncryptedDataBox() async {
   final List<int> secureKey = await _loadOrCreateDataKey();
