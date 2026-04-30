@@ -18,6 +18,7 @@ class HomeRepositoryBrowserPane extends StatefulWidget {
   final VoidCallback onOpenSettings;
   final RepositoryPrimaryActionCallback onPrimaryAction;
   final RepositoryActionCallback onRepositoryAction;
+  final Future<void> Function(List<Repository> repositories) onCloneSelected;
   final bool Function(Repository repository) canForkRepository;
   final GitAccount? Function(Repository repository) accountForRepository;
   final bool archiveMasterRunning;
@@ -33,6 +34,7 @@ class HomeRepositoryBrowserPane extends StatefulWidget {
     required this.onOpenSettings,
     required this.onPrimaryAction,
     required this.onRepositoryAction,
+    required this.onCloneSelected,
     required this.canForkRepository,
     required this.accountForRepository,
     required this.archiveMasterRunning,
@@ -47,6 +49,7 @@ class _HomeRepositoryBrowserPaneState extends State<HomeRepositoryBrowserPane> {
   static const String _repositoryListKeyPrefix = 'repository:';
 
   late final ScrollController _scrollController;
+  final Set<String> _selectedRepositoryKeys = <String>{};
 
   @override
   void initState() {
@@ -60,10 +63,21 @@ class _HomeRepositoryBrowserPaneState extends State<HomeRepositoryBrowserPane> {
     super.dispose();
   }
 
+  @override
+  void didUpdateWidget(covariant HomeRepositoryBrowserPane oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _pruneSelection();
+  }
+
   bool get _isProjects => widget.selection.tab == HomeTab.active;
 
-  bool get _isArchiveMaster =>
-      widget.selection.tab == HomeTab.archiveMaster;
+  bool get _isArchiveMaster => widget.selection.tab == HomeTab.archiveMaster;
+
+  bool get _selectionEnabled =>
+      widget.selection.tab == HomeTab.personal ||
+      widget.selection.tab == HomeTab.organizations;
+
+  int get _selectedCount => _selectedRepositories().length;
 
   String get _title => switch (widget.selection.tab) {
         HomeTab.active => 'Projects',
@@ -111,10 +125,7 @@ class _HomeRepositoryBrowserPaneState extends State<HomeRepositoryBrowserPane> {
           child: AlembicSectionHeader(
             title: _title,
             subtitle: _subtitle,
-            trailing: AlembicBadge(
-              label: countLabel,
-              tone: AlembicBadgeTone.outline,
-            ),
+            trailing: _buildHeaderActions(countLabel),
           ),
         ),
         m.Divider(
@@ -123,9 +134,8 @@ class _HomeRepositoryBrowserPaneState extends State<HomeRepositoryBrowserPane> {
           color: theme.colorScheme.border,
         ),
         Expanded(
-          child: widget.repositories.isEmpty
-              ? _buildEmptyState()
-              : _buildList(),
+          child:
+              widget.repositories.isEmpty ? _buildEmptyState() : _buildList(),
         ),
       ],
     );
@@ -135,11 +145,49 @@ class _HomeRepositoryBrowserPaneState extends State<HomeRepositoryBrowserPane> {
         title: _emptyTitle(),
         description: _emptyDescription(),
         primaryLabel: _isArchiveMaster ? 'Open Settings' : 'Clone Link',
-        onPrimaryPressed:
-            _isArchiveMaster ? widget.onOpenSettings : widget.onImportRepository,
+        onPrimaryPressed: _isArchiveMaster
+            ? widget.onOpenSettings
+            : widget.onImportRepository,
         secondaryLabel: _isProjects ? 'Settings' : null,
         onSecondaryPressed: _isProjects ? widget.onOpenSettings : null,
       );
+
+  Widget _buildHeaderActions(String countLabel) {
+    if (!_selectionEnabled || widget.repositories.isEmpty) {
+      return AlembicBadge(
+        label: countLabel,
+        tone: AlembicBadgeTone.outline,
+      );
+    }
+
+    int selectedCount = _selectedCount;
+    bool allSelected = selectedCount == widget.repositories.length;
+    return Wrap(
+      spacing: AlembicShadcnTokens.gapSm,
+      runSpacing: AlembicShadcnTokens.gapSm,
+      alignment: WrapAlignment.end,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: <Widget>[
+        AlembicBadge(
+          label: selectedCount == 0 ? countLabel : '$selectedCount selected',
+          tone: AlembicBadgeTone.outline,
+        ),
+        AlembicToolbarButton(
+          label: allSelected ? 'Clear' : 'Select all',
+          leadingIcon: allSelected ? m.Icons.close : m.Icons.select_all,
+          compact: true,
+          onPressed: allSelected ? _clearSelection : _selectVisible,
+        ),
+        AlembicToolbarButton(
+          label: 'Clone selected',
+          leadingIcon: m.Icons.add_link,
+          compact: true,
+          prominent: selectedCount > 0,
+          onPressed: selectedCount == 0 ? null : _cloneSelected,
+        ),
+      ],
+    );
+  }
 
   String _emptyTitle() {
     if (_isProjects) {
@@ -232,6 +280,72 @@ class _HomeRepositoryBrowserPaneState extends State<HomeRepositoryBrowserPane> {
       onRepositoryAction: widget.onRepositoryAction,
       canForkRepository: widget.canForkRepository,
       account: account,
+      selectable: _selectionEnabled,
+      selected: _selectedRepositoryKeys.contains(_repositoryKey(repository)),
+      onSelectedChanged: (bool selected) => _toggleRepositorySelection(
+        repository,
+        selected,
+      ),
     );
   }
+
+  void _toggleRepositorySelection(Repository repository, bool selected) {
+    String key = _repositoryKey(repository);
+    setState(() {
+      if (selected) {
+        _selectedRepositoryKeys.add(key);
+      } else {
+        _selectedRepositoryKeys.remove(key);
+      }
+    });
+  }
+
+  void _selectVisible() {
+    setState(() {
+      for (Repository repository in widget.repositories) {
+        _selectedRepositoryKeys.add(_repositoryKey(repository));
+      }
+    });
+  }
+
+  void _clearSelection() {
+    setState(() {
+      _selectedRepositoryKeys.clear();
+    });
+  }
+
+  Future<void> _cloneSelected() async {
+    List<Repository> selected = _selectedRepositories();
+    if (selected.isEmpty) {
+      return;
+    }
+    await widget.onCloneSelected(selected);
+    if (!mounted) {
+      return;
+    }
+    _clearSelection();
+  }
+
+  List<Repository> _selectedRepositories() {
+    List<Repository> selected = <Repository>[];
+    for (Repository repository in widget.repositories) {
+      if (_selectedRepositoryKeys.contains(_repositoryKey(repository))) {
+        selected.add(repository);
+      }
+    }
+    return selected;
+  }
+
+  void _pruneSelection() {
+    Set<String> visibleKeys = <String>{
+      for (Repository repository in widget.repositories)
+        _repositoryKey(repository),
+    };
+    _selectedRepositoryKeys.removeWhere(
+      (String key) => !visibleKeys.contains(key),
+    );
+  }
+
+  String _repositoryKey(Repository repository) =>
+      repository.fullName.toLowerCase();
 }

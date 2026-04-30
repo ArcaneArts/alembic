@@ -23,9 +23,14 @@ class HomeBulkActionsCoordinator {
 
   Future<void> executeOperation(
     Iterable<Repository> repositories,
-    Future<void> Function(ArcaneRepository repository) operation,
-  ) async {
-    await controller.executeBulkOperation(repositories, operation);
+    Future<void> Function(ArcaneRepository repository) operation, {
+    String label = 'Working repositories',
+  }) async {
+    await controller.executeBulkOperation(
+      repositories,
+      operation,
+      label: label,
+    );
     onChanged();
   }
 
@@ -37,6 +42,7 @@ class HomeBulkActionsCoordinator {
         (ArcaneRepository repository) => repository.ensureRepositoryUpdated(
           controller.githubForRepository(repository.repository),
         ),
+        label: HomeBulkAction.pullActive.label,
       );
       return;
     }
@@ -44,6 +50,7 @@ class HomeBulkActionsCoordinator {
       await executeOperation(
         active,
         (ArcaneRepository repository) => repository.archive(),
+        label: HomeBulkAction.archiveActive.label,
       );
       return;
     }
@@ -60,6 +67,7 @@ class HomeBulkActionsCoordinator {
         (ArcaneRepository repository) => repository.updateArchive(
           controller.githubForRepository(repository.repository),
         ),
+        label: HomeBulkAction.updateArchives.label,
       );
       return;
     }
@@ -70,6 +78,7 @@ class HomeBulkActionsCoordinator {
           controller.githubForRepository(repository.repository),
           waitForPull: true,
         ),
+        label: HomeBulkAction.activateArchives.label,
       );
       return;
     }
@@ -79,6 +88,7 @@ class HomeBulkActionsCoordinator {
       (ArcaneRepository repository) => repository.ensureRepositoryActive(
         controller.githubForRepository(repository.repository),
       ),
+      label: HomeBulkAction.activateEverything.label,
     );
   }
 

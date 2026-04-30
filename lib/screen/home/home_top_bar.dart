@@ -8,6 +8,7 @@ import 'package:flutter/material.dart' as m;
 class HomeTopBar extends StatelessWidget {
   final HomeSelectionState selection;
   final BehaviorSubject<double?> progress;
+  final BehaviorSubject<String?> progressLabel;
   final m.TextEditingController searchController;
   final List<String> organizationLogins;
   final ValueChanged<String> onSearchChanged;
@@ -22,6 +23,7 @@ class HomeTopBar extends StatelessWidget {
     super.key,
     required this.selection,
     required this.progress,
+    required this.progressLabel,
     required this.searchController,
     required this.organizationLogins,
     required this.onSearchChanged,
@@ -80,7 +82,10 @@ class HomeTopBar extends StatelessWidget {
             ),
             const Gap(AlembicShadcnTokens.gapMd),
             searchRow,
-            _HomeTopBarProgress(progress: progress),
+            _HomeTopBarProgress(
+              progress: progress,
+              progressLabel: progressLabel,
+            ),
           ],
         );
       },
@@ -226,8 +231,12 @@ class HomeTopBar extends StatelessWidget {
 
 class _HomeTopBarProgress extends StatelessWidget {
   final BehaviorSubject<double?> progress;
+  final BehaviorSubject<String?> progressLabel;
 
-  const _HomeTopBarProgress({required this.progress});
+  const _HomeTopBarProgress({
+    required this.progress,
+    required this.progressLabel,
+  });
 
   @override
   Widget build(BuildContext context) => StreamBuilder<double?>(
@@ -240,7 +249,10 @@ class _HomeTopBarProgress extends StatelessWidget {
           }
           return Padding(
             padding: const EdgeInsets.only(top: AlembicShadcnTokens.gapMd),
-            child: _HomeHeaderProgressBar(value: value),
+            child: _HomeHeaderProgressBar(
+              value: value,
+              label: progressLabel.valueOrNull ?? 'Working',
+            ),
           );
         },
       );
@@ -248,22 +260,55 @@ class _HomeTopBarProgress extends StatelessWidget {
 
 class _HomeHeaderProgressBar extends StatelessWidget {
   final double value;
+  final String label;
 
-  const _HomeHeaderProgressBar({required this.value});
+  const _HomeHeaderProgressBar({
+    required this.value,
+    required this.label,
+  });
 
   @override
   Widget build(BuildContext context) {
     ThemeData theme = Theme.of(context);
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(AlembicShadcnTokens.badgeRadius),
-      child: m.LinearProgressIndicator(
-        minHeight: 3,
-        value: value == 0 ? null : value,
-        backgroundColor: theme.colorScheme.secondary,
-        valueColor: AlwaysStoppedAnimation<Color>(
-          theme.colorScheme.primary,
+    int percent = (value * 100).round();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        Row(
+          children: <Widget>[
+            Expanded(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.typography.xSmall.copyWith(
+                  color: theme.colorScheme.mutedForeground,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            Text(
+              value == 0 ? 'Working' : '$percent%',
+              style: theme.typography.xSmall.copyWith(
+                color: theme.colorScheme.mutedForeground,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
         ),
-      ),
+        const Gap(AlembicShadcnTokens.gapXs),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(AlembicShadcnTokens.badgeRadius),
+          child: m.LinearProgressIndicator(
+            minHeight: 3,
+            value: value == 0 ? null : value,
+            backgroundColor: theme.colorScheme.secondary,
+            valueColor: AlwaysStoppedAnimation<Color>(
+              theme.colorScheme.primary,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

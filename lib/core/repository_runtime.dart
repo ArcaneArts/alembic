@@ -1,13 +1,32 @@
 import 'package:github/github.dart';
 import 'package:rxdart/rxdart.dart';
 
+enum RepositoryWorkKind {
+  generic,
+  clone,
+}
+
+class RepositoryWork {
+  final Repository repository;
+  final RepositoryWorkKind kind;
+  String message;
+  double? progress;
+
+  RepositoryWork({
+    required this.repository,
+    required this.message,
+    this.kind = RepositoryWorkKind.generic,
+    this.progress,
+  });
+}
+
 class RepositoryRuntime {
   final BehaviorSubject<int> changed = BehaviorSubject<int>.seeded(0);
   final BehaviorSubject<List<Repository>> syncingRepositories =
       BehaviorSubject<List<Repository>>.seeded(<Repository>[]);
-  final BehaviorSubject<List<(Repository, String)>> repoWork =
-      BehaviorSubject<List<(Repository, String)>>.seeded(
-    <(Repository, String)>[],
+  final BehaviorSubject<List<RepositoryWork>> repoWork =
+      BehaviorSubject<List<RepositoryWork>>.seeded(
+    <RepositoryWork>[],
   );
 
   List<Repository> _activeRepositories = <Repository>[];
@@ -57,25 +76,60 @@ class RepositoryRuntime {
     }
   }
 
-  (Repository, String) beginWork(Repository repository, String message) {
-    final (Repository, String) job = (repository, message);
-    repoWork.add(<(Repository, String)>[...repoWork.value, job]);
+  RepositoryWork beginWork(
+    Repository repository,
+    String message, {
+    RepositoryWorkKind kind = RepositoryWorkKind.generic,
+    double? progress,
+  }) {
+    RepositoryWork job = RepositoryWork(
+      repository: repository,
+      message: message,
+      kind: kind,
+      progress: progress,
+    );
+    repoWork.add(<RepositoryWork>[...repoWork.value, job]);
     return job;
   }
 
-  void endWork((Repository, String) job) {
+  void updateWork(
+    RepositoryWork job, {
+    String? message,
+    double? progress,
+    bool clearProgress = false,
+  }) {
+    if (message != null) {
+      job.message = message;
+    }
+    if (clearProgress) {
+      job.progress = null;
+    } else if (progress != null) {
+      job.progress = _clampedProgress(progress);
+    }
+    repoWork.add(<RepositoryWork>[...repoWork.value]);
+  }
+
+  void endWork(RepositoryWork job) {
     repoWork.add(
       repoWork.value.where((item) => item != job).toList(),
     );
   }
 
-  Stream<List<String>> streamWork(Repository repository) {
+  Stream<List<RepositoryWork>> streamWorkEntries(Repository repository) {
     String target = repository.fullName.toLowerCase();
-    return repoWork.stream.map((List<(Repository, String)> work) {
+    return repoWork.stream.map((List<RepositoryWork> work) {
       return work
-          .where((item) => item.$1.fullName.toLowerCase() == target)
-          .map((item) => item.$2)
+          .where(
+            (RepositoryWork item) =>
+                item.repository.fullName.toLowerCase() == target,
+          )
           .toList();
+    });
+  }
+
+  Stream<List<String>> streamWork(Repository repository) {
+    return streamWorkEntries(repository).map((List<RepositoryWork> work) {
+      return work.map((RepositoryWork item) => item.message).toList();
     });
   }
 
@@ -102,5 +156,15 @@ class RepositoryRuntime {
     await changed.close();
     await syncingRepositories.close();
     await repoWork.close();
+  }
+
+  double _clampedProgress(double value) {
+    if (value < 0) {
+      return 0;
+    }
+    if (value > 1) {
+      return 1;
+    }
+    return value;
   }
 }

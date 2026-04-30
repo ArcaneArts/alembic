@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 
@@ -182,10 +183,25 @@ class ArcaneRepository {
     return latestTime;
   }
 
-  Future<T> doWork<T>(String message, Future<T> Function() workFn) async {
-    (Repository, String) job = runtime.beginWork(repository, message);
+  Future<T> doWork<T>(String message, Future<T> Function() workFn) {
+    return doTrackedWork<T>(
+      message,
+      (RepositoryWork work) => workFn(),
+    );
+  }
+
+  Future<T> doTrackedWork<T>(
+    String message,
+    Future<T> Function(RepositoryWork work) workFn, {
+    RepositoryWorkKind kind = RepositoryWorkKind.generic,
+  }) async {
+    RepositoryWork job = runtime.beginWork(
+      repository,
+      message,
+      kind: kind,
+    );
     try {
-      return await workFn();
+      return await workFn(job);
     } finally {
       runtime.endWork(job);
     }
@@ -193,6 +209,10 @@ class ArcaneRepository {
 
   Stream<List<String>> streamWork() {
     return runtime.streamWork(repository);
+  }
+
+  Stream<List<RepositoryWork>> streamWorkEntries() {
+    return runtime.streamWorkEntries(repository);
   }
 
   Future<bool> checkAndUpdateToken(String latestToken) async {
@@ -265,61 +285,106 @@ class ArcaneRepository {
   }
 
   Future<void> _cloneRepository(bool updateActive) {
-    return doWork<void>("Cloning", () async {
-      runtime.addSyncingRepository(repository);
-      try {
-        await Directory(repoPath).parent.create(recursive: true);
-        final List<String> cloneCandidates = buildCloneCandidates();
-        final List<String> failures = <String>[];
-        bool cloned = false;
-        for (final String cloneUrl in cloneCandidates) {
-          final String candidateLabel = cloneUrl == publicCloneUrl
-              ? 'public'
-              : (cloneUrl == sshCloneUrl ? 'ssh' : 'authenticated');
-          final Directory target = Directory(repoPath);
-          if (await target.exists()) {
-            await target.delete(recursive: true);
+    return doTrackedWork<void>(
+      "Cloning",
+      (RepositoryWork work) async {
+        runtime.addSyncingRepository(repository);
+        try {
+          await Directory(repoPath).parent.create(recursive: true);
+          List<String> cloneCandidates = buildCloneCandidates();
+          List<String> failures = <String>[];
+          bool cloned = false;
+          for (String cloneUrl in cloneCandidates) {
+            String candidateLabel = cloneUrl == publicCloneUrl
+                ? 'public'
+                : (cloneUrl == sshCloneUrl ? 'ssh' : 'authenticated');
+            Directory target = Directory(repoPath);
+            if (await target.exists()) {
+              await target.delete(recursive: true);
+            }
+            BehaviorSubject<String> stdout = BehaviorSubject<String>();
+            BehaviorSubject<String> stderr = BehaviorSubject<String>();
+            runtime.updateWork(
+              work,
+              message: 'Cloning via $candidateLabel',
+              clearProgress: true,
+            );
+            StreamSubscription<String> stdoutSubscription =
+                stdout.stream.listen((String line) {
+              _updateCloneProgress(work, line);
+            });
+            StreamSubscription<String> stderrSubscription =
+                stderr.stream.listen((String line) {
+              _updateCloneProgress(work, line);
+            });
+            int exitCode = 1;
+            try {
+              exitCode = await commandRunner(
+                'git',
+                <String>['clone', cloneUrl, repoPath],
+                stdout: stdout,
+                stderr: stderr,
+              );
+            } finally {
+              await stdoutSubscription.cancel();
+              await stderrSubscription.cancel();
+            }
+            String failureContext = sanitizeSecrets(
+              stderr.valueOrNull ?? stdout.valueOrNull ?? 'exit code $exitCode',
+            );
+            await stdout.close();
+            await stderr.close();
+            if (exitCode == 0) {
+              cloned = true;
+              runtime.updateWork(
+                work,
+                message: 'Clone complete',
+                progress: 1,
+              );
+              break;
+            }
+            failures.add('$candidateLabel -> $failureContext');
           }
-          final BehaviorSubject<String> stdout = BehaviorSubject<String>();
-          final BehaviorSubject<String> stderr = BehaviorSubject<String>();
-          final int exitCode = await commandRunner(
-            'git',
-            <String>['clone', cloneUrl, repoPath],
-            stdout: stdout,
-            stderr: stderr,
-          );
-          final String failureContext = sanitizeSecrets(
-            stderr.valueOrNull ?? stdout.valueOrNull ?? 'exit code $exitCode',
-          );
-          await stdout.close();
-          await stderr.close();
-          if (exitCode == 0) {
-            cloned = true;
-            break;
+          if (!cloned) {
+            throw Exception(
+              'Git clone failed for ${repository.fullName}: ${failures.join(" | ")}',
+            );
           }
-          failures.add('$candidateLabel -> $failureContext');
-        }
-        if (!cloned) {
-          throw Exception(
-            'Git clone failed for ${repository.fullName}: ${failures.join(" | ")}',
+          success("Cloned ${repository.fullName}");
+          if (updateActive) {
+            runtime.addActiveRepository(repository);
+          }
+          setRepoConfig(
+            repository,
+            getRepoConfig(repository)
+              ..lastOpen = DateTime.timestamp().millisecondsSinceEpoch,
           );
+        } catch (e) {
+          error("Clone failed: $e");
+          rethrow;
+        } finally {
+          runtime.removeSyncingRepository(repository);
         }
-        success("Cloned ${repository.fullName}");
-        if (updateActive) {
-          runtime.addActiveRepository(repository);
-        }
-        setRepoConfig(
-          repository,
-          getRepoConfig(repository)
-            ..lastOpen = DateTime.timestamp().millisecondsSinceEpoch,
-        );
-      } catch (e) {
-        error("Clone failed: $e");
-        rethrow;
-      } finally {
-        runtime.removeSyncingRepository(repository);
-      }
-    });
+      },
+      kind: RepositoryWorkKind.clone,
+    );
+  }
+
+  void _updateCloneProgress(RepositoryWork work, String line) {
+    RegExp expression = RegExp(
+      r'(Receiving objects|Resolving deltas|Updating files):\s+(\d+)%',
+    );
+    RegExpMatch? match = expression.firstMatch(line);
+    if (match == null) {
+      return;
+    }
+    String phase = match.group(1) ?? 'Cloning';
+    int percent = int.tryParse(match.group(2) ?? '') ?? 0;
+    runtime.updateWork(
+      work,
+      message: '$phase $percent%',
+      progress: percent / 100,
+    );
   }
 
   List<String> buildCloneCandidates() {
@@ -651,7 +716,8 @@ class ArcaneRepository {
     try {
       await signingManager.ensureRepoSigningGuard(archiveMasterPath);
     } catch (e) {
-      warn("Signing guard failed for archive master ${repository.fullName}: $e");
+      warn(
+          "Signing guard failed for archive master ${repository.fullName}: $e");
     }
   }
 

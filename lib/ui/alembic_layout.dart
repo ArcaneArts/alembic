@@ -199,7 +199,12 @@ class AlembicPageHeader extends StatelessWidget {
         ),
         if (trailing != null) ...<Widget>[
           const Gap(AlembicShadcnTokens.gapMd),
-          trailing!,
+          Flexible(
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: trailing!,
+            ),
+          ),
         ],
       ],
     );
@@ -253,7 +258,12 @@ class AlembicSectionHeader extends StatelessWidget {
         ),
         if (trailing != null) ...<Widget>[
           const Gap(AlembicShadcnTokens.gapMd),
-          trailing!,
+          Flexible(
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: trailing!,
+            ),
+          ),
         ],
       ],
     );

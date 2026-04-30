@@ -144,8 +144,7 @@ class _LocalRepositoryRowState extends State<LocalRepositoryRow> {
         onTap: _onAuthBadgePressed,
       ),
       if (enrolled) const ArchiveMasterBadge(),
-      if (work.isNotEmpty)
-        AlembicMetaText(label: work.join(' • ')),
+      if (work.isNotEmpty) AlembicMetaText(label: work.join(' • ')),
     ];
   }
 
@@ -219,6 +218,9 @@ class BrowseRepositoryRow extends StatefulWidget {
   final RepositoryActionCallback onRepositoryAction;
   final bool Function(Repository repository) canForkRepository;
   final GitAccount? account;
+  final bool selectable;
+  final bool selected;
+  final ValueChanged<bool>? onSelectedChanged;
 
   const BrowseRepositoryRow({
     super.key,
@@ -229,6 +231,9 @@ class BrowseRepositoryRow extends StatefulWidget {
     required this.onRepositoryAction,
     required this.canForkRepository,
     required this.account,
+    this.selectable = false,
+    this.selected = false,
+    this.onSelectedChanged,
   });
 
   @override
@@ -239,7 +244,7 @@ class _BrowseRepositoryRowState extends State<BrowseRepositoryRow> {
   static const RepositoryAuthInspector _authInspector =
       RepositoryAuthInspector();
 
-  late Stream<List<String>> _workStream;
+  late Stream<List<RepositoryWork>> _workStream;
   late Future<RepoState> _state;
   late Future<RepoAuthInfo> _authInfo;
 
@@ -261,7 +266,7 @@ class _BrowseRepositoryRowState extends State<BrowseRepositoryRow> {
 
   void _configureRepository() {
     ArcaneRepository arcaneRepository = _arcaneRepository();
-    _workStream = arcaneRepository.streamWork();
+    _workStream = arcaneRepository.streamWorkEntries();
     _state = arcaneRepository.state;
     _authInfo = _authInspector.read(arcaneRepository);
   }
@@ -287,25 +292,33 @@ class _BrowseRepositoryRowState extends State<BrowseRepositoryRow> {
       future: _state,
       builder: (BuildContext context, AsyncSnapshot<RepoState> stateSnapshot) {
         RepoState state = stateSnapshot.data ?? RepoState.cloud;
-        return StreamBuilder<List<String>>(
+        return StreamBuilder<List<RepositoryWork>>(
           stream: _workStream,
-          initialData: const <String>[],
+          initialData: const <RepositoryWork>[],
           builder: (
             BuildContext context,
-            AsyncSnapshot<List<String>> workSnapshot,
+            AsyncSnapshot<List<RepositoryWork>> workSnapshot,
           ) {
-            List<String> work = workSnapshot.data ?? const <String>[];
+            List<RepositoryWork> work =
+                workSnapshot.data ?? const <RepositoryWork>[];
+            List<String> workLabels = _workLabels(work);
+            bool busy = work.isNotEmpty;
             return AlembicListRow(
               title: widget.repository.name,
               subtitle: widget.repository.fullName,
               description: cleanRepositoryDescription(
                 widget.repository.description,
               ),
+              leading: _buildSelectionToggle(),
               meta: _buildMeta(state: state, work: work),
-              primaryAction: _buildPrimaryAction(state),
-              secondaryActions: _buildSecondaryActions(
+              primaryAction: _buildPrimaryAction(
                 state: state,
                 work: work,
+                busy: busy,
+              ),
+              secondaryActions: _buildSecondaryActions(
+                state: state,
+                work: workLabels,
               ),
             );
           },
@@ -314,11 +327,29 @@ class _BrowseRepositoryRowState extends State<BrowseRepositoryRow> {
     );
   }
 
+  List<String> _workLabels(List<RepositoryWork> work) {
+    return work.map((RepositoryWork item) => item.message).toList();
+  }
+
+  Widget? _buildSelectionToggle() {
+    if (!widget.selectable) {
+      return null;
+    }
+    return AlembicSelectionToggle(
+      selected: widget.selected,
+      onChanged: widget.onSelectedChanged,
+      label: widget.selected
+          ? 'Deselect ${widget.repository.fullName}'
+          : 'Select ${widget.repository.fullName}',
+    );
+  }
+
   List<Widget> _buildMeta({
     required RepoState state,
-    required List<String> work,
+    required List<RepositoryWork> work,
   }) {
     bool enrolled = _isEnrolledInArchiveMaster();
+    RepositoryWork? primaryWork = _primaryWork(work);
     return <Widget>[
       RepoStateBadge(state: state),
       AlembicMetaText(
@@ -329,20 +360,43 @@ class _BrowseRepositoryRowState extends State<BrowseRepositoryRow> {
         onTap: () => _onAuthBadgePressed(state),
       ),
       if (enrolled) const ArchiveMasterBadge(),
-      if (work.isNotEmpty)
-        AlembicMetaText(label: work.join(' • ')),
+      if (primaryWork != null) RepositoryWorkBadge(work: primaryWork),
     ];
   }
 
-  Widget _buildPrimaryAction(RepoState state) => AlembicToolbarButton(
-        label: state.primaryActionLabel,
-        leadingIcon: state.primaryActionIcon,
-        onPressed: () => widget.onPrimaryAction(
-          repository: widget.repository,
-          state: state,
-        ),
+  Widget _buildPrimaryAction({
+    required RepoState state,
+    required List<RepositoryWork> work,
+    required bool busy,
+  }) =>
+      AlembicToolbarButton(
+        label: _primaryActionLabel(state: state, work: work),
+        leadingIcon: busy ? null : state.primaryActionIcon,
+        busy: busy,
+        onPressed: busy
+            ? null
+            : () => widget.onPrimaryAction(
+                  repository: widget.repository,
+                  state: state,
+                ),
         prominent: true,
       );
+
+  String _primaryActionLabel({
+    required RepoState state,
+    required List<RepositoryWork> work,
+  }) {
+    RepositoryWork? cloneWork = _cloneWork(work);
+    if (cloneWork != null) {
+      return cloneWork.progress == null
+          ? 'Cloning'
+          : '${(cloneWork.progress! * 100).round()}%';
+    }
+    if (work.isNotEmpty) {
+      return work.first.message;
+    }
+    return state.primaryActionLabel;
+  }
 
   Widget _buildSecondaryActions({
     required RepoState state,
@@ -414,6 +468,74 @@ class _BrowseRepositoryRowState extends State<BrowseRepositoryRow> {
         widget.repository.owner?.login ?? '',
         widget.repository.name,
       );
+
+  RepositoryWork? _primaryWork(List<RepositoryWork> work) {
+    RepositoryWork? cloneWork = _cloneWork(work);
+    if (cloneWork != null) {
+      return cloneWork;
+    }
+    if (work.isEmpty) {
+      return null;
+    }
+    return work.first;
+  }
+
+  RepositoryWork? _cloneWork(List<RepositoryWork> work) {
+    for (RepositoryWork item in work) {
+      if (item.kind == RepositoryWorkKind.clone) {
+        return item;
+      }
+    }
+    return null;
+  }
+}
+
+class RepositoryWorkBadge extends StatelessWidget {
+  final RepositoryWork work;
+
+  const RepositoryWorkBadge({
+    super.key,
+    required this.work,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    ThemeData theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.secondary,
+        borderRadius: BorderRadius.circular(AlembicShadcnTokens.badgeRadius),
+        border: Border.all(color: theme.colorScheme.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          SizedBox.square(
+            dimension: 11,
+            child: m.CircularProgressIndicator(
+              strokeWidth: 1.5,
+              value: work.progress,
+              backgroundColor: theme.colorScheme.border,
+              valueColor: AlwaysStoppedAnimation<Color>(
+                theme.colorScheme.foreground,
+              ),
+            ),
+          ),
+          const Gap(AlembicShadcnTokens.gapXs),
+          Text(
+            work.message,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.typography.xSmall.copyWith(
+              color: theme.colorScheme.foreground,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class RepoStateBadge extends StatelessWidget {
@@ -458,8 +580,7 @@ class _AuthBadgeFutureBuilder extends StatelessWidget {
   Widget build(BuildContext context) {
     return FutureBuilder<RepoAuthInfo>(
       future: future,
-      builder:
-          (BuildContext context, AsyncSnapshot<RepoAuthInfo> snapshot) {
+      builder: (BuildContext context, AsyncSnapshot<RepoAuthInfo> snapshot) {
         final RepoAuthInfo? info = snapshot.data;
         if (info == null) {
           return _AuthBadgePlaceholder(onTap: onTap);

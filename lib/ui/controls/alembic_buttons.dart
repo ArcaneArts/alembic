@@ -13,6 +13,7 @@ class AlembicToolbarButton extends StatelessWidget {
   final bool quiet;
   final bool compact;
   final bool iconOnly;
+  final bool busy;
   final String? tooltip;
 
   const AlembicToolbarButton({
@@ -26,12 +27,13 @@ class AlembicToolbarButton extends StatelessWidget {
     this.quiet = false,
     this.compact = false,
     this.iconOnly = false,
+    this.busy = false,
     this.tooltip,
   }) : assert(!iconOnly || leadingIcon != null || trailingIcon != null);
 
   @override
   Widget build(BuildContext context) {
-    Widget content = _buildContent();
+    Widget content = _buildContent(context);
     ButtonDensity density =
         compact ? ButtonDensity.compact : ButtonDensity.normal;
     Widget button = _buttonFor(
@@ -53,7 +55,13 @@ class AlembicToolbarButton extends StatelessWidget {
     );
   }
 
-  Widget _buildContent() {
+  Widget _buildContent(BuildContext context) {
+    if (busy) {
+      return _AlembicButtonBusyContent(
+        label: label,
+        iconOnly: iconOnly,
+      );
+    }
     if (iconOnly) {
       return m.Icon(leadingIcon ?? trailingIcon ?? m.Icons.circle, size: 16);
     }
@@ -124,6 +132,88 @@ class AlembicToolbarButton extends StatelessWidget {
           child: centered,
         ),
       ),
+    );
+  }
+}
+
+class AlembicSelectionToggle extends StatelessWidget {
+  final bool selected;
+  final ValueChanged<bool>? onChanged;
+  final String label;
+
+  const AlembicSelectionToggle({
+    super.key,
+    required this.selected,
+    required this.onChanged,
+    required this.label,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox.square(
+      dimension: AlembicShadcnTokens.compactIconButtonSize,
+      child: m.Tooltip(
+        message: label,
+        child: selected
+            ? PrimaryButton(
+                onPressed:
+                    onChanged == null ? null : () => onChanged!(!selected),
+                size: ButtonSize.small,
+                density: ButtonDensity.icon,
+                child: const m.Icon(m.Icons.check, size: 16),
+              )
+            : OutlineButton(
+                onPressed:
+                    onChanged == null ? null : () => onChanged!(!selected),
+                size: ButtonSize.small,
+                density: ButtonDensity.icon,
+                child: const m.Icon(m.Icons.check_box_outline_blank, size: 16),
+              ),
+      ),
+    );
+  }
+}
+
+class _AlembicButtonBusyContent extends StatelessWidget {
+  final String label;
+  final bool iconOnly;
+
+  const _AlembicButtonBusyContent({
+    required this.label,
+    required this.iconOnly,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    ThemeData theme = Theme.of(context);
+    Color color = m.DefaultTextStyle.of(context).style.color ??
+        theme.colorScheme.foreground;
+    Widget spinner = SizedBox.square(
+      dimension: 13,
+      child: m.CircularProgressIndicator(
+        strokeWidth: 1.6,
+        valueColor: AlwaysStoppedAnimation<Color>(
+          color,
+        ),
+      ),
+    );
+    if (iconOnly) {
+      return spinner;
+    }
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: <Widget>[
+        spinner,
+        const Gap(AlembicShadcnTokens.gapSm),
+        Flexible(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
     );
   }
 }

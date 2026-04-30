@@ -6,6 +6,7 @@ class AlembicListRow extends StatelessWidget {
   final String title;
   final String subtitle;
   final String? description;
+  final Widget? leading;
   final List<Widget> meta;
   final Widget primaryAction;
   final Widget? secondaryActions;
@@ -15,6 +16,7 @@ class AlembicListRow extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.description,
+    this.leading,
     required this.meta,
     required this.primaryAction,
     this.secondaryActions,
@@ -67,7 +69,10 @@ class AlembicListRow extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: <Widget>[
-                        copy,
+                        _AlembicListRowContent(
+                          leading: leading,
+                          copy: copy,
+                        ),
                         const Gap(AlembicShadcnTokens.gapMd),
                         actions,
                       ],
@@ -81,6 +86,15 @@ class AlembicListRow extends StatelessWidget {
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: <Widget>[
+                      if (leading != null) ...<Widget>[
+                        Padding(
+                          padding: const EdgeInsets.only(
+                            left: AlembicShadcnTokens.gapMd,
+                          ),
+                          child: leading!,
+                        ),
+                        const Gap(AlembicShadcnTokens.gapSm),
+                      ],
                       Expanded(
                         child: Padding(
                           padding: AlembicShadcnTokens.rowPadding,
@@ -101,6 +115,31 @@ class AlembicListRow extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _AlembicListRowContent extends StatelessWidget {
+  final Widget? leading;
+  final Widget copy;
+
+  const _AlembicListRowContent({
+    required this.leading,
+    required this.copy,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (leading == null) {
+      return copy;
+    }
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        leading!,
+        const Gap(AlembicShadcnTokens.gapSm),
+        Expanded(child: copy),
+      ],
     );
   }
 }

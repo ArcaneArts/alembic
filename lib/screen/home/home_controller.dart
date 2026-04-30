@@ -28,6 +28,8 @@ class HomeController {
   final BehaviorSubject<int> fetching = BehaviorSubject<int>.seeded(0);
   final BehaviorSubject<double?> progress =
       BehaviorSubject<double?>.seeded(null);
+  final BehaviorSubject<String?> progressLabel =
+      BehaviorSubject<String?>.seeded(null);
 
   Future<List<Repository>> allRepos = Future<List<Repository>>.value(
     <Repository>[],
@@ -42,8 +44,7 @@ class HomeController {
     required this.runtime,
   });
 
-  GitHub get primaryGitHub =>
-      registry.primaryGitHub ?? GitHub();
+  GitHub get primaryGitHub => registry.primaryGitHub ?? GitHub();
 
   String? accountIdForRepository(Repository repository) {
     final String key = repository.fullName.toLowerCase();
@@ -95,6 +96,7 @@ class HomeController {
     _staleCheckTimer?.cancel();
     await fetching.close();
     await progress.close();
+    await progressLabel.close();
   }
 
   Future<void> reloadRepositories({bool updateTokens = false}) async {
@@ -178,6 +180,7 @@ class HomeController {
       return 0;
     }
 
+    progressLabel.add('Checking repository tokens');
     progress.add(0.0);
 
     List<Repository> repositories = await allRepos;
@@ -202,6 +205,7 @@ class HomeController {
     }
 
     progress.add(null);
+    progressLabel.add(null);
     return updated;
   }
 
@@ -577,19 +581,26 @@ class HomeController {
 
   Future<void> executeBulkOperation(
     Iterable<Repository> repositories,
-    Future<void> Function(ArcaneRepository repository) operation,
-  ) async {
+    Future<void> Function(ArcaneRepository repository) operation, {
+    String label = 'Working repositories',
+  }) async {
+    progressLabel.add(label);
     progress.add(0);
-    await repositories
-        .map(
-          (Repository repository) => () => operation(repositoryFor(repository)),
-        )
-        .waitSemaphore<void>(
-          4,
-          progress: (double value) => progress.add(value),
-        );
-    progress.add(null);
-    await refreshActiveRepositories();
+    try {
+      await repositories
+          .map(
+            (Repository repository) =>
+                () => operation(repositoryFor(repository)),
+          )
+          .waitSemaphore<void>(
+            4,
+            progress: (double value) => progress.add(value),
+          );
+      await refreshActiveRepositories();
+    } finally {
+      progress.add(null);
+      progressLabel.add(null);
+    }
   }
 
   Future<bool> consumeClassicTokenMigrationPrompt() async {
@@ -610,9 +621,8 @@ class HomeController {
       return false;
     }
 
-    String tokenType = box
-        .get(gitAccountsLegacyTypeKey, defaultValue: 'unknown')
-        .toString();
+    String tokenType =
+        box.get(gitAccountsLegacyTypeKey, defaultValue: 'unknown').toString();
     if (tokenType == 'unknown') {
       tokenType = detectTokenType(token);
       await box.put(gitAccountsLegacyTypeKey, tokenType);

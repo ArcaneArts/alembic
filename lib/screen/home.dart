@@ -265,6 +265,17 @@ class _AlembicHomeState extends State<AlembicHome> {
     await _reloadRepositories();
   }
 
+  Future<void> _cloneSelectedRepositories(List<Repository> repositories) async {
+    await _bulkActions.executeOperation(
+      repositories,
+      (ArcaneRepository repository) => repository.ensureRepositoryActive(
+        _controller.githubForRepository(repository.repository),
+      ),
+      label: 'Cloning selected repositories',
+    );
+    await _reloadRepositories();
+  }
+
   void _openSettings() {
     unawaited(showSettingsModal(context));
   }
@@ -313,6 +324,7 @@ class _AlembicHomeState extends State<AlembicHome> {
         HomeTopBar(
           selection: _selection,
           progress: _controller.progress,
+          progressLabel: _controller.progressLabel,
           searchController: _searchController,
           organizationLogins: _controller.organizationLogins(),
           topMenuActions: _menuHandler.availableActions(),
@@ -341,6 +353,7 @@ class _AlembicHomeState extends State<AlembicHome> {
             onOpenSettings: _openSettings,
             onPrimaryAction: _openPrimaryRepositoryAction,
             onRepositoryAction: _dispatchRepositoryAction,
+            onCloneSelected: _cloneSelectedRepositories,
             canForkRepository: _controller.canForkRepository,
             accountForRepository: _controller.accountForRepository,
             archiveMasterRunning: _archiveMasterRunning,
