@@ -1,5 +1,6 @@
 import 'package:alembic/ui/alembic_tokens.dart';
 import 'package:alembic/ui/controls/alembic_control_frame.dart';
+import 'package:alembic/ui/controls/alembic_progress.dart';
 import 'package:arcane/arcane.dart';
 import 'package:flutter/material.dart' as m;
 
@@ -188,23 +189,17 @@ class _AlembicButtonBusyContent extends StatelessWidget {
     ThemeData theme = Theme.of(context);
     Color color = m.DefaultTextStyle.of(context).style.color ??
         theme.colorScheme.foreground;
-    Widget spinner = SizedBox.square(
-      dimension: 13,
-      child: m.CircularProgressIndicator(
-        strokeWidth: 1.6,
-        valueColor: AlwaysStoppedAnimation<Color>(
-          color,
-        ),
-      ),
+    Widget mark = AlembicProgressMark(
+      color: color,
     );
     if (iconOnly) {
-      return spinner;
+      return mark;
     }
     return Row(
       mainAxisSize: MainAxisSize.min,
       mainAxisAlignment: MainAxisAlignment.center,
       children: <Widget>[
-        spinner,
+        mark,
         const Gap(AlembicShadcnTokens.gapSm),
         Flexible(
           child: Text(

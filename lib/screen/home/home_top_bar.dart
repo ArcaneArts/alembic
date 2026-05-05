@@ -197,9 +197,9 @@ class HomeTopBar extends StatelessWidget {
   }) {
     Widget searchField = AlembicTextInput(
       controller: searchController,
-      placeholder: 'Search repositories',
-      leading: const m.Icon(m.Icons.search, size: 16),
+      placeholder: 'Search...',
       onChanged: onSearchChanged,
+      onSubmitted: onSearchChanged,
     );
     if (selection.tab != HomeTab.organizations) {
       return searchField;
@@ -299,13 +299,9 @@ class _HomeHeaderProgressBar extends StatelessWidget {
         const Gap(AlembicShadcnTokens.gapXs),
         ClipRRect(
           borderRadius: BorderRadius.circular(AlembicShadcnTokens.badgeRadius),
-          child: m.LinearProgressIndicator(
-            minHeight: 3,
+          child: AlembicProgressBar(
             value: value == 0 ? null : value,
-            backgroundColor: theme.colorScheme.secondary,
-            valueColor: AlwaysStoppedAnimation<Color>(
-              theme.colorScheme.primary,
-            ),
+            height: 3,
           ),
         ),
       ],

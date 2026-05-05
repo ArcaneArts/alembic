@@ -69,23 +69,83 @@ class AlembicTextInput extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     ThemeData theme = Theme.of(context);
-    return TextField(
+    m.OutlineInputBorder border = m.OutlineInputBorder(
+      borderRadius: m.BorderRadius.circular(AlembicShadcnTokens.controlRadius),
+      borderSide: m.BorderSide(color: theme.colorScheme.border),
+      gapPadding: 0,
+    );
+    m.OutlineInputBorder activeBorder = m.OutlineInputBorder(
+      borderRadius: m.BorderRadius.circular(AlembicShadcnTokens.controlRadius),
+      borderSide: m.BorderSide(color: theme.colorScheme.ring),
+      gapPadding: 0,
+    );
+    m.TextStyle textStyle = theme.typography.small.copyWith(
+      color: enabled
+          ? theme.colorScheme.foreground
+          : theme.colorScheme.mutedForeground,
+    );
+    return m.TextField(
       controller: controller,
-      placeholder: Text(
-        placeholder,
-        style: theme.typography.small.copyWith(
-          color: theme.colorScheme.mutedForeground,
-        ),
-      ),
       obscureText: obscureText,
       maxLength: maxLength,
       keyboardType: keyboardType,
       onChanged: onChanged,
       onSubmitted: onSubmitted,
       enabled: enabled,
-      features: <InputFeature>[
-        if (leading != null) InputFeature.leading(leading!),
-      ],
+      style: textStyle,
+      cursorColor: theme.colorScheme.foreground,
+      textInputAction: onSubmitted == null ? null : m.TextInputAction.done,
+      decoration: m.InputDecoration(
+        hintText: placeholder,
+        hintStyle: theme.typography.small.copyWith(
+          color: theme.colorScheme.mutedForeground,
+        ),
+        filled: true,
+        fillColor: enabled ? theme.colorScheme.card : theme.colorScheme.muted,
+        isDense: true,
+        counterText: maxLength == null ? null : '',
+        contentPadding: m.EdgeInsets.symmetric(
+          horizontal: leading == null ? 12 : 0,
+          vertical: 10,
+        ),
+        prefixIcon: leading == null
+            ? null
+            : _AlembicInputLeading(
+                leading: leading!,
+              ),
+        prefixIconConstraints: const m.BoxConstraints(
+          minWidth: 38,
+          minHeight: AlembicShadcnTokens.buttonHeight,
+        ),
+        border: border,
+        enabledBorder: border,
+        focusedBorder: activeBorder,
+        disabledBorder: border,
+        errorBorder: border,
+        focusedErrorBorder: activeBorder,
+      ),
+    );
+  }
+}
+
+class _AlembicInputLeading extends StatelessWidget {
+  final Widget leading;
+
+  const _AlembicInputLeading({
+    required this.leading,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    ThemeData theme = Theme.of(context);
+    return Center(
+      child: IconTheme.merge(
+        data: m.IconThemeData(
+          color: theme.colorScheme.mutedForeground,
+          size: 16,
+        ),
+        child: leading,
+      ),
     );
   }
 }

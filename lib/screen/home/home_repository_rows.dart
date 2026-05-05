@@ -34,6 +34,7 @@ class LocalRepositoryRow extends StatefulWidget {
   final RepositoryPrimaryActionCallback onPrimaryAction;
   final RepositoryActionCallback onRepositoryAction;
   final GitAccount? account;
+  final bool compact;
 
   const LocalRepositoryRow({
     super.key,
@@ -43,6 +44,7 @@ class LocalRepositoryRow extends StatefulWidget {
     required this.onPrimaryAction,
     required this.onRepositoryAction,
     required this.account,
+    this.compact = false,
   });
 
   @override
@@ -119,6 +121,7 @@ class _LocalRepositoryRowState extends State<LocalRepositoryRow> {
               ),
               primaryAction: _buildPrimaryAction(),
               secondaryActions: _buildSecondaryActions(work: work),
+              compact: widget.compact,
             );
           },
         );
@@ -221,6 +224,7 @@ class BrowseRepositoryRow extends StatefulWidget {
   final bool selectable;
   final bool selected;
   final ValueChanged<bool>? onSelectedChanged;
+  final bool compact;
 
   const BrowseRepositoryRow({
     super.key,
@@ -234,6 +238,7 @@ class BrowseRepositoryRow extends StatefulWidget {
     this.selectable = false,
     this.selected = false,
     this.onSelectedChanged,
+    this.compact = false,
   });
 
   @override
@@ -320,6 +325,7 @@ class _BrowseRepositoryRowState extends State<BrowseRepositoryRow> {
                 state: state,
                 work: workLabels,
               ),
+              compact: widget.compact,
             );
           },
         );
@@ -501,38 +507,36 @@ class RepositoryWorkBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     ThemeData theme = Theme.of(context);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.secondary,
-        borderRadius: BorderRadius.circular(AlembicShadcnTokens.badgeRadius),
-        border: Border.all(color: theme.colorScheme.border),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          SizedBox.square(
-            dimension: 11,
-            child: m.CircularProgressIndicator(
-              strokeWidth: 1.5,
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 168),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.secondary,
+          borderRadius: BorderRadius.circular(AlembicShadcnTokens.badgeRadius),
+          border: Border.all(color: theme.colorScheme.border),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            AlembicProgressMark(
               value: work.progress,
-              backgroundColor: theme.colorScheme.border,
-              valueColor: AlwaysStoppedAnimation<Color>(
-                theme.colorScheme.foreground,
+              size: 11,
+            ),
+            const Gap(AlembicShadcnTokens.gapXs),
+            Flexible(
+              child: Text(
+                work.message,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.typography.xSmall.copyWith(
+                  color: theme.colorScheme.foreground,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
-          ),
-          const Gap(AlembicShadcnTokens.gapXs),
-          Text(
-            work.message,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: theme.typography.xSmall.copyWith(
-              color: theme.colorScheme.foreground,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

@@ -114,30 +114,36 @@ class _HomeRepositoryBrowserPaneState extends State<HomeRepositoryBrowserPane> {
 
   @override
   Widget build(BuildContext context) {
-    ThemeData theme = Theme.of(context);
-    int count = widget.repositories.length;
-    String countLabel = '$count repositor${count == 1 ? 'y' : 'ies'}';
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: <Widget>[
-        Padding(
-          padding: AlembicShadcnTokens.rowPadding,
-          child: AlembicSectionHeader(
-            title: _title,
-            subtitle: _subtitle,
-            trailing: _buildHeaderActions(countLabel),
-          ),
-        ),
-        m.Divider(
-          height: 1,
-          thickness: 1,
-          color: theme.colorScheme.border,
-        ),
-        Expanded(
-          child:
-              widget.repositories.isEmpty ? _buildEmptyState() : _buildList(),
-        ),
-      ],
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        bool compact = constraints.maxWidth < 430;
+        ThemeData theme = Theme.of(context);
+        int count = widget.repositories.length;
+        String countLabel = '$count repositor${count == 1 ? 'y' : 'ies'}';
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            Padding(
+              padding: AlembicShadcnTokens.rowPadding,
+              child: AlembicSectionHeader(
+                title: _title,
+                subtitle: _subtitle,
+                trailing: _buildHeaderActions(countLabel),
+              ),
+            ),
+            m.Divider(
+              height: 1,
+              thickness: 1,
+              color: theme.colorScheme.border,
+            ),
+            Expanded(
+              child: widget.repositories.isEmpty
+                  ? _buildEmptyState()
+                  : _buildList(compact: compact),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -209,7 +215,7 @@ class _HomeRepositoryBrowserPaneState extends State<HomeRepositoryBrowserPane> {
     return 'Try another search or change the organization filter.';
   }
 
-  Widget _buildList() => m.Scrollbar(
+  Widget _buildList({required bool compact}) => m.Scrollbar(
         controller: _scrollController,
         child: m.CustomScrollView(
           controller: _scrollController,
@@ -227,7 +233,15 @@ class _HomeRepositoryBrowserPaneState extends State<HomeRepositoryBrowserPane> {
                     height: AlembicShadcnTokens.gapXs,
                   );
                 },
-                itemBuilder: _buildRepositoryRow,
+                itemBuilder: (
+                  BuildContext context,
+                  int index,
+                ) =>
+                    _buildRepositoryRow(
+                  context,
+                  index,
+                  compact: compact,
+                ),
               ),
             ),
           ],
@@ -254,7 +268,11 @@ class _HomeRepositoryBrowserPaneState extends State<HomeRepositoryBrowserPane> {
     return repositoryIndex;
   }
 
-  Widget _buildRepositoryRow(BuildContext context, int index) {
+  Widget _buildRepositoryRow(
+    BuildContext context,
+    int index, {
+    required bool compact,
+  }) {
     Repository repository = widget.repositories[index];
     m.ValueKey<String> key = m.ValueKey<String>(
       '$_repositoryListKeyPrefix${repository.fullName.toLowerCase()}',
@@ -269,6 +287,7 @@ class _HomeRepositoryBrowserPaneState extends State<HomeRepositoryBrowserPane> {
         onPrimaryAction: widget.onPrimaryAction,
         onRepositoryAction: widget.onRepositoryAction,
         account: account,
+        compact: compact,
       );
     }
     return BrowseRepositoryRow(
@@ -286,6 +305,7 @@ class _HomeRepositoryBrowserPaneState extends State<HomeRepositoryBrowserPane> {
         repository,
         selected,
       ),
+      compact: compact,
     );
   }
 

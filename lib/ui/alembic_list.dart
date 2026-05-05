@@ -10,6 +10,7 @@ class AlembicListRow extends StatelessWidget {
   final List<Widget> meta;
   final Widget primaryAction;
   final Widget? secondaryActions;
+  final bool compact;
 
   const AlembicListRow({
     super.key,
@@ -20,10 +21,37 @@ class AlembicListRow extends StatelessWidget {
     required this.meta,
     required this.primaryAction,
     this.secondaryActions,
+    this.compact = false,
   });
 
   @override
   Widget build(BuildContext context) {
+    Widget copy = _AlembicListRowCopy(
+      title: title,
+      subtitle: subtitle,
+      description: description,
+      meta: meta,
+    );
+    Widget actions = SizedBox(
+      width: AlembicShadcnTokens.rowActionColumnWidth,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          SizedBox(
+            width: AlembicShadcnTokens.rowActionButtonWidth,
+            child: primaryAction,
+          ),
+          if (secondaryActions != null) ...<Widget>[
+            const Gap(AlembicShadcnTokens.gapSm),
+            Align(
+              alignment: Alignment.centerRight,
+              child: secondaryActions!,
+            ),
+          ],
+        ],
+      ),
+    );
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(
@@ -34,89 +62,95 @@ class AlembicListRow extends StatelessWidget {
           child: AlembicSurface(
             padding: EdgeInsets.zero,
             tone: AlembicSurfaceTone.panel,
-            child: LayoutBuilder(
-              builder: (BuildContext context, BoxConstraints constraints) {
-                bool compact = constraints.maxWidth < 430;
-                Widget copy = _AlembicListRowCopy(
-                  title: title,
-                  subtitle: subtitle,
-                  description: description,
-                  meta: meta,
-                );
-                Widget actions = SizedBox(
-                  width: AlembicShadcnTokens.rowActionColumnWidth,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: <Widget>[
-                      SizedBox(
-                        width: AlembicShadcnTokens.rowActionButtonWidth,
-                        child: primaryAction,
-                      ),
-                      if (secondaryActions != null) ...<Widget>[
-                        const Gap(AlembicShadcnTokens.gapSm),
-                        Align(
-                          alignment: Alignment.centerRight,
-                          child: secondaryActions!,
-                        ),
-                      ],
-                    ],
+            child: compact
+                ? _AlembicCompactListRow(
+                    leading: leading,
+                    copy: copy,
+                    actions: actions,
+                  )
+                : _AlembicWideListRow(
+                    leading: leading,
+                    copy: copy,
+                    actions: actions,
                   ),
-                );
-                if (compact) {
-                  return Padding(
-                    padding: AlembicShadcnTokens.rowPadding,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        _AlembicListRowContent(
-                          leading: leading,
-                          copy: copy,
-                        ),
-                        const Gap(AlembicShadcnTokens.gapMd),
-                        actions,
-                      ],
-                    ),
-                  );
-                }
-                return ConstrainedBox(
-                  constraints: const BoxConstraints(
-                    minHeight: AlembicShadcnTokens.listRowHeight,
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: <Widget>[
-                      if (leading != null) ...<Widget>[
-                        Padding(
-                          padding: const EdgeInsets.only(
-                            left: AlembicShadcnTokens.gapMd,
-                          ),
-                          child: leading!,
-                        ),
-                        const Gap(AlembicShadcnTokens.gapSm),
-                      ],
-                      Expanded(
-                        child: Padding(
-                          padding: AlembicShadcnTokens.rowPadding,
-                          child: copy,
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.only(
-                          right: AlembicShadcnTokens.gapMd,
-                        ),
-                        child: actions,
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
           ),
         ),
       ),
     );
   }
+}
+
+class _AlembicCompactListRow extends StatelessWidget {
+  final Widget? leading;
+  final Widget copy;
+  final Widget actions;
+
+  const _AlembicCompactListRow({
+    required this.leading,
+    required this.copy,
+    required this.actions,
+  });
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: AlembicShadcnTokens.rowPadding,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            _AlembicListRowContent(
+              leading: leading,
+              copy: copy,
+            ),
+            const Gap(AlembicShadcnTokens.gapMd),
+            actions,
+          ],
+        ),
+      );
+}
+
+class _AlembicWideListRow extends StatelessWidget {
+  final Widget? leading;
+  final Widget copy;
+  final Widget actions;
+
+  const _AlembicWideListRow({
+    required this.leading,
+    required this.copy,
+    required this.actions,
+  });
+
+  @override
+  Widget build(BuildContext context) => ConstrainedBox(
+        constraints: const BoxConstraints(
+          minHeight: AlembicShadcnTokens.listRowHeight,
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: <Widget>[
+            if (leading != null) ...<Widget>[
+              Padding(
+                padding: const EdgeInsets.only(
+                  left: AlembicShadcnTokens.gapMd,
+                ),
+                child: leading!,
+              ),
+              const Gap(AlembicShadcnTokens.gapSm),
+            ],
+            Expanded(
+              child: Padding(
+                padding: AlembicShadcnTokens.rowPadding,
+                child: copy,
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(
+                right: AlembicShadcnTokens.gapMd,
+              ),
+              child: actions,
+            ),
+          ],
+        ),
+      );
 }
 
 class _AlembicListRowContent extends StatelessWidget {

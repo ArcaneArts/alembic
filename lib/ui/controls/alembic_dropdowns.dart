@@ -3,7 +3,7 @@ import 'package:alembic/ui/controls/alembic_control_frame.dart';
 import 'package:alembic/ui/controls/alembic_models.dart';
 import 'package:arcane/arcane.dart';
 import 'package:arcane/generated/arcane_shadcn/shadcn_flutter.dart'
-    show showDropdown;
+    show OverlayCompleter, closeOverlay, showDropdown;
 import 'package:flutter/material.dart' as m;
 
 class AlembicDropdownMenu<T> extends StatelessWidget {
@@ -55,7 +55,9 @@ class AlembicDropdownMenu<T> extends StatelessWidget {
   }
 
   void _showMenu(BuildContext context) {
-    showDropdown<void>(
+    _AlembicDropdownSelection<T>? selected;
+    OverlayCompleter<_AlembicDropdownSelection<T>?> overlay =
+        showDropdown<_AlembicDropdownSelection<T>>(
       context: context,
       widthConstraint: iconOnly
           ? PopoverConstraint.intrinsic
@@ -67,9 +69,23 @@ class AlembicDropdownMenu<T> extends StatelessWidget {
       builder: (BuildContext context) => _AlembicDropdownPopup<T>(
         items: items,
         selectedValue: selectedValue,
-        onSelected: onSelected,
+        onSelected: (T value) {
+          closeOverlay<_AlembicDropdownSelection<T>>(
+            context,
+            _AlembicDropdownSelection<T>(value),
+          );
+        },
       ),
     );
+    overlay.future.then((_AlembicDropdownSelection<T>? value) {
+      selected = value;
+    });
+    overlay.animationFuture.then((_) {
+      _AlembicDropdownSelection<T>? value = selected;
+      if (value != null) {
+        onSelected(value.value);
+      }
+    });
   }
 }
 
@@ -211,6 +227,12 @@ class _AlembicDropdownItemLabel extends StatelessWidget {
       ),
     );
   }
+}
+
+class _AlembicDropdownSelection<T> {
+  final T value;
+
+  const _AlembicDropdownSelection(this.value);
 }
 
 class _AlembicDropdownPopup<T> extends StatelessWidget {
