@@ -424,10 +424,11 @@ class ArcaneRepository {
           config.editorTool ??
           ApplicationTool.intellij;
       info("Opening ${repository.fullName} with IDE ${tool.displayName}");
-      tool.launch(
-        "$repoPath/${getRepoConfig(repository).openDirectory}"
-            .replaceAll("//", "/"),
+      final String openPath = DesktopPlatformAdapter.instance.joinPath(
+        repoPath,
+        getRepoConfig(repository).openDirectory,
       );
+      tool.launch(openPath);
 
       final GitTool gitTool = getRepoConfig(repository).gitTool ??
           config.gitTool ??
@@ -449,10 +450,8 @@ class ArcaneRepository {
     });
   }
 
-  Future<void> openInFinder() => commandRunner(
-        DesktopPlatformAdapter.instance.isWindows ? 'explorer' : 'open',
-        <String>[Directory(repoPath).absolute.path],
-      );
+  Future<void> openInFinder() =>
+      DesktopPlatformAdapter.instance.openInFileExplorer(repoPath);
 
   Future<void> archive() {
     return doWork<void>("Archiving", () async {
@@ -917,8 +916,10 @@ class ArcaneRepository {
   Future<void> runAutoMacros() async {
     final List<String> packagePaths = <String>[
       ...await findDartPackages(
-        "$repoPath/${getRepoConfig(repository).openDirectory}"
-            .replaceAll("//", "/"),
+        DesktopPlatformAdapter.instance.joinPath(
+          repoPath,
+          getRepoConfig(repository).openDirectory,
+        ),
       ).toList(),
       ...await findDartPackages(repoPath).toList(),
     ];

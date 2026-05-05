@@ -1,7 +1,10 @@
+import 'dart:io';
+
 import 'package:alembic/main.dart';
 import 'package:alembic/platform/desktop_platform_adapter.dart';
 import 'package:fast_log/fast_log.dart';
 import 'package:github/github.dart';
+import 'package:path/path.dart' as p;
 
 extension XSearchFilterRepo on List<Repository> {
   List<Repository> filterBy(String? query) {
@@ -60,14 +63,45 @@ extension XApplicationTool on ApplicationTool {
 
   Future<void> launch(String path) async {
     await _launchCandidates(
-      commands: switch (this) {
-        ApplicationTool.vscode => <String>['code', 'code.cmd'],
-        ApplicationTool.intellij => <String>['idea', 'idea64.exe'],
-        ApplicationTool.zed => <String>['zed', 'zed.exe'],
-        ApplicationTool.xcode => <String>['xed'],
-      },
+      commands: <String>[
+        ...switch (this) {
+          ApplicationTool.vscode => <String>['code', 'code.cmd'],
+          ApplicationTool.intellij => <String>['idea', 'idea64.exe'],
+          ApplicationTool.zed => <String>['zed', 'zed.exe'],
+          ApplicationTool.xcode => <String>['xed'],
+        },
+        ..._windowsFallbackCommands,
+      ],
       args: <String>[path],
     );
+  }
+
+  List<String> get _windowsFallbackCommands {
+    if (!DesktopPlatformAdapter.instance.isWindows) {
+      return const <String>[];
+    }
+
+    return switch (this) {
+      ApplicationTool.vscode => _windowsProgramCandidates(<String>[
+          'Programs/Microsoft VS Code/Code.exe',
+          'Microsoft VS Code/Code.exe',
+        ]),
+      ApplicationTool.intellij => _windowsProgramCandidates(<String>[
+          'JetBrains/IntelliJ IDEA Community Edition 2025.2/bin/idea64.exe',
+          'JetBrains/IntelliJ IDEA 2025.2/bin/idea64.exe',
+          'JetBrains/IntelliJ IDEA Community Edition 2025.1/bin/idea64.exe',
+          'JetBrains/IntelliJ IDEA 2025.1/bin/idea64.exe',
+          'JetBrains/IntelliJ IDEA Community Edition 2024.3/bin/idea64.exe',
+          'JetBrains/IntelliJ IDEA 2024.3/bin/idea64.exe',
+          'JetBrains/IntelliJ IDEA Community Edition 2024.2/bin/idea64.exe',
+          'JetBrains/IntelliJ IDEA 2024.2/bin/idea64.exe',
+        ]),
+      ApplicationTool.zed => _windowsProgramCandidates(<String>[
+          'Programs/Zed/Zed.exe',
+          'Zed/Zed.exe',
+        ]),
+      ApplicationTool.xcode => const <String>[],
+    };
   }
 }
 
@@ -103,23 +137,76 @@ extension XGitTool on GitTool {
 
   Future<void> launch(String path) async {
     await _launchCandidates(
-      commands: switch (this) {
-        GitTool.githubDesktop => <String>[
-            'github',
-            'github-desktop',
-            'GitHubDesktop.exe',
-          ],
-        GitTool.gitkraken => <String>['gitkraken', 'gitkraken.exe'],
-        GitTool.tower => <String>['gittower', 'tower'],
-        GitTool.fork => <String>['fork', 'Fork.exe'],
-        GitTool.sourcetree => <String>['sourcetree', 'SourceTree.exe'],
-      },
+      commands: <String>[
+        ...switch (this) {
+          GitTool.githubDesktop => <String>[
+              'github',
+              'github-desktop',
+              'GitHubDesktop.exe',
+            ],
+          GitTool.gitkraken => <String>['gitkraken', 'gitkraken.exe'],
+          GitTool.tower => <String>['gittower', 'tower'],
+          GitTool.fork => <String>['fork', 'Fork.exe'],
+          GitTool.sourcetree => <String>['sourcetree', 'SourceTree.exe'],
+        },
+        ..._windowsFallbackCommands,
+      ],
       args: switch (this) {
         GitTool.gitkraken => <String>['-p', path],
         _ => <String>[path],
       },
     );
   }
+
+  List<String> get _windowsFallbackCommands {
+    if (!DesktopPlatformAdapter.instance.isWindows) {
+      return const <String>[];
+    }
+
+    return switch (this) {
+      GitTool.githubDesktop => _windowsProgramCandidates(<String>[
+          'GitHubDesktop/GitHubDesktop.exe',
+          'Programs/GitHubDesktop/GitHubDesktop.exe',
+        ]),
+      GitTool.gitkraken => _windowsProgramCandidates(<String>[
+          'gitkraken/gitkraken.exe',
+          'Programs/gitkraken/gitkraken.exe',
+          'GitKraken/gitkraken.exe',
+        ]),
+      GitTool.tower => const <String>[],
+      GitTool.fork => _windowsProgramCandidates(<String>[
+          'Fork/Fork.exe',
+          'Programs/Fork/Fork.exe',
+        ]),
+      GitTool.sourcetree => _windowsProgramCandidates(<String>[
+          'Atlassian/SourceTree/SourceTree.exe',
+          'Programs/Atlassian/SourceTree/SourceTree.exe',
+        ]),
+    };
+  }
+}
+
+List<String> _windowsProgramCandidates(List<String> relativePaths) {
+  final List<String> baseDirectories = <String>[
+    Platform.environment['LOCALAPPDATA'] ?? '',
+    Platform.environment['ProgramFiles'] ?? '',
+    Platform.environment['ProgramFiles(x86)'] ?? '',
+  ];
+  final List<String> candidates = <String>[];
+
+  for (final String base in baseDirectories) {
+    if (base.trim().isEmpty) {
+      continue;
+    }
+    for (final String relativePath in relativePaths) {
+      final File executable = File(p.join(base.trim(), relativePath));
+      if (executable.existsSync() && !candidates.contains(executable.path)) {
+        candidates.add(executable.path);
+      }
+    }
+  }
+
+  return candidates;
 }
 
 Future<void> _launchCandidates({
@@ -137,7 +224,8 @@ Future<void> _launchCandidates({
 
   if (lastExitCode != 0) {
     error(
-      'Unable to launch external tool with candidates: ${commands.join(", ")}',
+      'Unable to launch external tool. Tried candidates: '
+      '${commands.join(", ")}. Ensure the tool is installed or available on PATH.',
     );
   }
 }

@@ -38,22 +38,39 @@ class AlembicConfig {
   int daysToArchive;
   int archiveMasterIntervalMinutes;
 
+  String get defaultWorkspaceDirectory =>
+      DesktopPlatformAdapter.instance.defaultWorkspaceDirectory;
+
+  String get defaultArchiveDirectory =>
+      DesktopPlatformAdapter.instance.defaultArchiveDirectory;
+
+  String get defaultArchiveMasterDirectory =>
+      DesktopPlatformAdapter.instance.defaultArchiveMasterDirectory;
+
   /// Default constructor with reasonable defaults
   AlembicConfig({
     this.editorTool = ApplicationTool.intellij,
     this.gitTool = GitTool.gitkraken,
-    this.workspaceDirectory = "~/Developer/RemoteGit",
-    this.archiveDirectory = "~/Developer/AlembicArchive",
-    this.archiveMasterDirectory = "~/Developer/AlembicArchiveMaster",
+    String? workspaceDirectory,
+    String? archiveDirectory,
+    String? archiveMasterDirectory,
     this.daysToArchive = 30,
     this.archiveMasterIntervalMinutes = 1440,
-  });
+  })  : workspaceDirectory = workspaceDirectory ??
+            DesktopPlatformAdapter.instance.defaultWorkspaceDirectory,
+        archiveDirectory = archiveDirectory ??
+            DesktopPlatformAdapter.instance.defaultArchiveDirectory,
+        archiveMasterDirectory = archiveMasterDirectory ??
+            DesktopPlatformAdapter.instance.defaultArchiveMasterDirectory;
 
   /// Create config from JSON string
   AlembicConfig.fromJson(String jsonString)
-      : workspaceDirectory = "~/Developer/RemoteGit",
-        archiveDirectory = "~/Developer/AlembicArchive",
-        archiveMasterDirectory = "~/Developer/AlembicArchiveMaster",
+      : workspaceDirectory =
+            DesktopPlatformAdapter.instance.defaultWorkspaceDirectory,
+        archiveDirectory =
+            DesktopPlatformAdapter.instance.defaultArchiveDirectory,
+        archiveMasterDirectory =
+            DesktopPlatformAdapter.instance.defaultArchiveMasterDirectory,
         daysToArchive = 30,
         archiveMasterIntervalMinutes = 1440 {
     try {
@@ -63,7 +80,8 @@ class AlembicConfig {
       final String? editorToolName = data["editorTool"] as String?;
       if (editorToolName != null) {
         editorTool = ApplicationTool.values.firstWhere(
-          (tool) => tool.name == editorToolName,
+          (tool) =>
+              tool.name == editorToolName && tool.supportedOnCurrentPlatform,
           orElse: () => ApplicationTool.intellij,
         );
       } else {
@@ -74,7 +92,7 @@ class AlembicConfig {
       final String? gitToolName = data["gitTool"] as String?;
       if (gitToolName != null) {
         gitTool = GitTool.values.firstWhere(
-          (tool) => tool.name == gitToolName,
+          (tool) => tool.name == gitToolName && tool.supportedOnCurrentPlatform,
           orElse: () => GitTool.gitkraken,
         );
       } else {
@@ -96,6 +114,9 @@ class AlembicConfig {
       // Failed to parse JSON, use defaults
       editorTool = ApplicationTool.intellij;
       gitTool = GitTool.gitkraken;
+      workspaceDirectory = defaultWorkspaceDirectory;
+      archiveDirectory = defaultArchiveDirectory;
+      archiveMasterDirectory = defaultArchiveMasterDirectory;
     }
   }
 
@@ -137,7 +158,8 @@ class AlembicRepoConfig {
       final String? editorToolName = data["editorTool"] as String?;
       if (editorToolName != null) {
         editorTool = ApplicationTool.values.firstWhere(
-          (tool) => tool.name == editorToolName,
+          (tool) =>
+              tool.name == editorToolName && tool.supportedOnCurrentPlatform,
           orElse: () => config.editorTool ?? ApplicationTool.intellij,
         );
       }
@@ -146,7 +168,7 @@ class AlembicRepoConfig {
       final String? gitToolName = data["gitTool"] as String?;
       if (gitToolName != null) {
         gitTool = GitTool.values.firstWhere(
-          (tool) => tool.name == gitToolName,
+          (tool) => tool.name == gitToolName && tool.supportedOnCurrentPlatform,
           orElse: () => config.gitTool ?? GitTool.gitkraken,
         );
       }

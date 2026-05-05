@@ -4,7 +4,6 @@ import 'package:alembic/platform/desktop_platform_adapter.dart';
 import 'package:alembic/ui/alembic_ui.dart';
 import 'package:alembic/util/window.dart';
 import 'package:arcane/arcane.dart';
-import 'package:launch_at_startup/launch_at_startup.dart';
 
 class GeneralSettingsPane extends StatefulWidget {
   final ValueChanged<ThemeMode> onThemeModeChanged;
@@ -20,24 +19,20 @@ class GeneralSettingsPane extends StatefulWidget {
 
 class _GeneralSettingsPaneState extends State<GeneralSettingsPane> {
   bool get _launchAtStartupEnabled =>
-      boxSettings.get('autolaunch', defaultValue: true);
+      boxSettings.get('autolaunch', defaultValue: true) == true;
   bool get _updateOnLaunch => boxSettings.get('achup', defaultValue: true);
   bool get _hideOnBlur => boxSettings.get(
         'hide_on_blur',
-        defaultValue: DesktopPlatformAdapter.instance.isMacOS,
+        defaultValue: DesktopPlatformAdapter.instance.isTrayFirstPlatform,
       );
   bool get _startHidden => boxSettings.get(
         'start_hidden',
-        defaultValue: DesktopPlatformAdapter.instance.isMacOS,
+        defaultValue: DesktopPlatformAdapter.instance.isTrayFirstPlatform,
       );
 
   Future<void> _setLaunchAtStartup(bool value) async {
     await boxSettings.put('autolaunch', value);
-    if (value) {
-      await launchAtStartup.enable();
-    } else {
-      await launchAtStartup.disable();
-    }
+    await applyLaunchAtStartupPreference(value);
     if (mounted) {
       setState(() {});
     }

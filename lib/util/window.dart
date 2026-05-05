@@ -1,7 +1,9 @@
 import 'dart:io';
 
 import 'package:alembic/main.dart';
+import 'package:alembic/platform/desktop_platform_adapter.dart';
 import 'package:fast_log/fast_log.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:screen_retriever/screen_retriever.dart';
 import 'package:tray_manager/tray_manager.dart';
@@ -16,13 +18,22 @@ class WindowUtil {
   static const double maxHeight = 980;
   static const double trayOffset = 12;
   static const double visibleMargin = 8;
+  static const String _windowsIconAsset = 'assets/app_icon.ico';
+  static const String _defaultTrayIconAsset = 'assets/tray.png';
 
   static bool isDark = false;
   static bool iconIsDark = true;
   static Size _windowSize = const Size(defaultWidth, defaultHeight);
   static bool _hideOnBlur = true;
+  static int _hideOnBlurSuspendCount = 0;
+  static DateTime _hideOnBlurBlockedUntil = DateTime.fromMillisecondsSinceEpoch(
+    0,
+  );
 
-  static bool get hideOnBlurEnabled => _hideOnBlur;
+  static bool get hideOnBlurEnabled =>
+      _hideOnBlur &&
+      _hideOnBlurSuspendCount == 0 &&
+      DateTime.now().isAfter(_hideOnBlurBlockedUntil);
 
   static Future<void> init() async {
     if (windowMode) {
@@ -32,13 +43,23 @@ class WindowUtil {
     _windowSize = _loadWindowSize();
 
     if (!boxSettings.containsKey('hide_on_blur')) {
-      await boxSettings.put('hide_on_blur', Platform.isMacOS);
+      await boxSettings.put(
+        'hide_on_blur',
+        DesktopPlatformAdapter.instance.isTrayFirstPlatform,
+      );
     }
     if (!boxSettings.containsKey('start_hidden')) {
-      await boxSettings.put('start_hidden', Platform.isMacOS);
+      await boxSettings.put(
+        'start_hidden',
+        DesktopPlatformAdapter.instance.isTrayFirstPlatform,
+      );
     }
 
-    _hideOnBlur = boxSettings.get('hide_on_blur', defaultValue: true) == true;
+    _hideOnBlur = boxSettings.get(
+          'hide_on_blur',
+          defaultValue: DesktopPlatformAdapter.instance.isTrayFirstPlatform,
+        ) ==
+        true;
 
     verbose("  Starting Window Manager");
     await windowManager.ensureInitialized();
@@ -46,20 +67,40 @@ class WindowUtil {
     await initSystemTray();
     verbose("  Setup Blur Listeners");
     windowManager.addListener(HideOnBlurWindowListener());
+    await _safeWindowCall(
+      'prevent close',
+      () => windowManager.setPreventClose(true),
+    );
     verbose("  Waiting for Window to be ready");
     windowManager.waitUntilReadyToShow(_windowOptions, () async {
       verbose("Setting Window Properties (mv=false, bg=transparent)");
-      await windowManager.setMovable(false);
-      await windowManager.center();
-      bool startHidden =
-          boxSettings.get('start_hidden', defaultValue: true) == true;
+      if (DesktopPlatformAdapter.instance.isMacOS) {
+        await _safeWindowCall(
+          'disable native window movement',
+          () => windowManager.setMovable(false),
+        );
+      }
+      if (DesktopPlatformAdapter.instance.isWindows) {
+        await _safeWindowCall(
+          'set Windows taskbar icon',
+          () => windowManager.setIcon(_windowsIconAsset),
+        );
+      }
+      await _safeWindowCall('center window', () => windowManager.center());
+      bool startHidden = boxSettings.get(
+            'start_hidden',
+            defaultValue: DesktopPlatformAdapter.instance.isTrayFirstPlatform,
+          ) ==
+          true;
       if (startHidden) {
         verbose("Window is Ready. Starting hidden (tray mode).");
-        await windowManager.hide();
+        await _setWindowsTaskbarVisibility(visible: false);
+        await _safeWindowCall('hide window', () => windowManager.hide());
       } else {
         verbose("Window is Ready. Showing window.");
-        await windowManager.show();
-        await windowManager.focus();
+        await _setWindowsTaskbarVisibility(visible: true);
+        await _safeWindowCall('show window', () => windowManager.show());
+        await _safeWindowCall('focus window', () => windowManager.focus());
       }
       await _reassertFramelessVisuals();
       Future<void>.delayed(const Duration(milliseconds: 120), () async {
@@ -70,18 +111,66 @@ class WindowUtil {
   }
 
   static Future<void> _reassertFramelessVisuals() async {
-    await windowManager.setAsFrameless();
-    await windowManager.setHasShadow(false);
-    await windowManager.setBackgroundColor(const Color(0x00000000));
+    await _safeWindowCall('make window frameless', windowManager.setAsFrameless);
+    await _safeWindowCall(
+      'disable window shadow',
+      () => windowManager.setHasShadow(false),
+    );
+    await _safeWindowCall(
+      'set transparent window background',
+      () => windowManager.setBackgroundColor(const Color(0x00000000)),
+    );
   }
+
+  static Future<void> _safeWindowCall(
+    String action,
+    Future<void> Function() call,
+  ) async {
+    try {
+      await call();
+    } on MissingPluginException catch (e) {
+      warn('Window manager does not support $action on this platform: $e');
+    } on PlatformException catch (e) {
+      warn('Window manager failed to $action: ${e.message ?? e.code}');
+    } catch (e) {
+      warn('Window manager failed to $action: $e');
+    }
+  }
+
+  static Future<void> _setWindowsTaskbarVisibility({
+    required bool visible,
+  }) async {
+    if (!DesktopPlatformAdapter.instance.isWindows) {
+      return;
+    }
+    await _safeWindowCall(
+      visible ? 'show window in taskbar' : 'hide window from taskbar',
+      () => windowManager.setSkipTaskbar(!visible),
+    );
+  }
+
+  static String get _trayIconAsset =>
+      DesktopPlatformAdapter.instance.isWindows
+          ? _windowsIconAsset
+          : _defaultTrayIconAsset;
 
   static Future<void> initSystemTray() async {
     if (windowMode) {
       return;
     }
-    await trayManager.setIcon('assets/tray.png', isTemplate: Platform.isMacOS);
+    await trayManager.setIcon(_trayIconAsset, isTemplate: Platform.isMacOS);
+    await trayManager.setToolTip('Alembic');
     Menu menu = Menu(
       items: [
+        MenuItem(
+          key: 'show',
+          label: 'Show Alembic',
+        ),
+        MenuItem(
+          key: 'hide',
+          label: 'Hide Alembic',
+        ),
+        MenuItem.separator(),
         MenuItem(
           key: 'exit',
           label: 'Exit Alembic',
@@ -104,7 +193,7 @@ class WindowUtil {
         title: 'Alembic',
         alwaysOnTop: false,
         backgroundColor: const Color(0x00000000),
-        skipTaskbar: Platform.isMacOS,
+        skipTaskbar: DesktopPlatformAdapter.instance.isTrayFirstPlatform,
         titleBarStyle: TitleBarStyle.hidden,
       );
 
@@ -167,9 +256,10 @@ class WindowUtil {
     if (windowMode) {
       return;
     }
+    await _setWindowsTaskbarVisibility(visible: true);
     await _positionNearTray();
-    await windowManager.show();
-    await windowManager.focus();
+    await _safeWindowCall('show window', () => windowManager.show());
+    await _safeWindowCall('focus window', () => windowManager.focus());
     await _reassertFramelessVisuals();
     Future<void>.delayed(const Duration(milliseconds: 120), () async {
       await _reassertFramelessVisuals();
@@ -180,7 +270,36 @@ class WindowUtil {
     if (windowMode) {
       return;
     }
-    await windowManager.hide();
+    await _safeWindowCall('hide window', () => windowManager.hide());
+    await _setWindowsTaskbarVisibility(visible: false);
+  }
+
+  static Future<T> withHideOnBlurSuspended<T>(
+    Future<T> Function() action, {
+    bool ensureVisibleAfter = false,
+  }) async {
+    suspendHideOnBlur();
+    try {
+      return await action();
+    } finally {
+      await resumeHideOnBlur(ensureVisible: ensureVisibleAfter);
+    }
+  }
+
+  static void suspendHideOnBlur() {
+    _hideOnBlurSuspendCount++;
+  }
+
+  static Future<void> resumeHideOnBlur({bool ensureVisible = false}) async {
+    if (_hideOnBlurSuspendCount > 0) {
+      _hideOnBlurSuspendCount--;
+    }
+    if (ensureVisible) {
+      _hideOnBlurBlockedUntil = DateTime.now().add(
+        const Duration(milliseconds: 750),
+      );
+      await show();
+    }
   }
 
   static Future<void> setHideOnBlur(bool value) async {
@@ -194,27 +313,73 @@ class WindowUtil {
 
   static Future<void> _positionNearTray() async {
     Rect? trayBounds = await trayManager.getBounds();
-    if (trayBounds == null) {
-      return;
-    }
-
     List<Display> displays = await screenRetriever.getAllDisplays();
     if (displays.isEmpty) {
       return;
     }
 
-    Display display = _displayForTrayBounds(
-      trayBounds: trayBounds,
-      displays: displays,
-    );
+    Rect? usableTrayBounds = _usableTrayBounds(trayBounds);
+    Display display = usableTrayBounds == null
+        ? await _defaultDisplay(displays)
+        : _displayForTrayBounds(
+            trayBounds: usableTrayBounds,
+            displays: displays,
+          );
     Rect visibleBounds = _visibleBoundsForDisplay(display);
     Size windowSize = await _currentWindowSize();
-    Offset position = _positionForTrayBounds(
-      trayBounds: trayBounds,
-      visibleBounds: visibleBounds,
-      windowSize: windowSize,
+    Offset position = usableTrayBounds == null
+        ? _defaultTrayFallbackPosition(
+            visibleBounds: visibleBounds,
+            windowSize: windowSize,
+          )
+        : _positionForTrayBounds(
+            trayBounds: usableTrayBounds,
+            visibleBounds: visibleBounds,
+            windowSize: windowSize,
+          );
+    await _safeWindowCall(
+      'move window near tray',
+      () => windowManager.setPosition(position, animate: false),
     );
-    await windowManager.setPosition(position, animate: false);
+  }
+
+  static Rect? _usableTrayBounds(Rect? trayBounds) {
+    if (trayBounds == null || trayBounds.isEmpty) {
+      return null;
+    }
+    if (!trayBounds.left.isFinite ||
+        !trayBounds.top.isFinite ||
+        !trayBounds.right.isFinite ||
+        !trayBounds.bottom.isFinite) {
+      return null;
+    }
+    return trayBounds;
+  }
+
+  static Future<Display> _defaultDisplay(List<Display> displays) async {
+    try {
+      return await screenRetriever.getPrimaryDisplay();
+    } catch (_) {
+      return displays.first;
+    }
+  }
+
+  static Offset _defaultTrayFallbackPosition({
+    required Rect visibleBounds,
+    required Size windowSize,
+  }) {
+    return Offset(
+      _clampToVisibleRange(
+        value: visibleBounds.right - windowSize.width - trayOffset,
+        min: visibleBounds.left + visibleMargin,
+        max: visibleBounds.right - windowSize.width - visibleMargin,
+      ),
+      _clampToVisibleRange(
+        value: visibleBounds.bottom - windowSize.height - trayOffset,
+        min: visibleBounds.top + visibleMargin,
+        max: visibleBounds.bottom - windowSize.height - visibleMargin,
+      ),
+    );
   }
 
   static Future<Size> _currentWindowSize() async {
@@ -386,24 +551,50 @@ enum _TrayEdge {
 
 class AlembicTrayListener implements TrayListener {
   @override
-  void onTrayIconMouseDown() {}
-
-  @override
-  void onTrayIconMouseUp() {
-    WindowUtil.show();
+  void onTrayIconMouseDown() {
+    // On Windows, the plugin dispatches `onTrayIconMouseDown` for
+    // `WM_LBUTTONUP`, so this is the click event we receive.
+    if (Platform.isWindows) {
+      WindowUtil.show();
+    }
   }
 
   @override
-  void onTrayIconRightMouseDown() {}
+  void onTrayIconMouseUp() {
+    // macOS dispatches both Down and Up. Use Up to mirror the original
+    // behaviour while leaving Windows handled in `onTrayIconMouseDown`.
+    if (!Platform.isWindows) {
+      WindowUtil.show();
+    }
+  }
+
+  @override
+  void onTrayIconRightMouseDown() {
+    // On Windows, the plugin dispatches `onTrayIconRightMouseDown` for
+    // `WM_RBUTTONUP`, so this is when we should pop the context menu.
+    if (Platform.isWindows) {
+      trayManager.popUpContextMenu();
+    }
+  }
 
   @override
   void onTrayIconRightMouseUp() {
-    trayManager.popUpContextMenu();
+    if (!Platform.isWindows) {
+      trayManager.popUpContextMenu();
+    }
   }
 
   @override
   void onTrayMenuItemClick(MenuItem menuItem) {
-    if (menuItem.key == "exit") {
+    if (menuItem.key == 'show') {
+      WindowUtil.show();
+      return;
+    }
+    if (menuItem.key == 'hide') {
+      WindowUtil.hide();
+      return;
+    }
+    if (menuItem.key == 'exit') {
       windowManager.destroy().then((_) => exit(0));
     }
   }
@@ -424,7 +615,9 @@ class HideOnBlurWindowListener implements WindowListener {
   }
 
   @override
-  void onWindowClose() {}
+  void onWindowClose() {
+    WindowUtil.hide();
+  }
 
   @override
   void onWindowDocked() {}

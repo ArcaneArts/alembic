@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:alembic/app/alembic_dialogs.dart';
 import 'package:alembic/app/alembic_theme.dart';
+import 'package:alembic/platform/desktop_platform_adapter.dart';
 import 'package:alembic/screen/settings/settings_navigation.dart';
 import 'package:alembic/screen/settings/settings_types.dart';
 import 'package:alembic/ui/alembic_ui.dart';
@@ -69,9 +71,11 @@ class _SettingsState extends State<Settings> {
     required String dialogTitle,
     required ValueChanged<String> onSelected,
   }) async {
+    final String? pickerInitialDirectory =
+        _safeDirectoryPickerInitialPath(initialDirectory);
     try {
       String? selectedPath = await FilePicker.platform.getDirectoryPath(
-        initialDirectory: initialDirectory,
+        initialDirectory: pickerInitialDirectory,
         dialogTitle: dialogTitle,
       );
       String? compressedPath = compressPath(selectedPath);
@@ -88,6 +92,50 @@ class _SettingsState extends State<Settings> {
         message: 'Error selecting directory: $e',
       );
     }
+  }
+
+  String? _safeDirectoryPickerInitialPath(String path) {
+    final String resolvedPath =
+        DesktopPlatformAdapter.instance.expandHomePath(path).trim();
+    if (resolvedPath.isEmpty) {
+      return null;
+    }
+
+    try {
+      if (Directory(resolvedPath).existsSync()) {
+        return Directory(resolvedPath).absolute.path;
+      }
+    } catch (_) {
+      return null;
+    }
+
+    if (!DesktopPlatformAdapter.instance.isWindows) {
+      return resolvedPath;
+    }
+
+    final String? existingParent =
+        _nearestExistingParentDirectory(resolvedPath);
+    return existingParent ??
+        DesktopPlatformAdapter.instance.defaultHomeDirectory;
+  }
+
+  String? _nearestExistingParentDirectory(String path) {
+    Directory directory = Directory(path).absolute;
+    Directory? parent = directory.parent;
+
+    while (parent != null && parent.path != directory.path) {
+      try {
+        if (parent.existsSync()) {
+          return parent.path;
+        }
+      } catch (_) {
+        return null;
+      }
+      directory = parent;
+      parent = directory.parent;
+    }
+
+    return null;
   }
 
   Future<void> _refreshSigningStatus() async {

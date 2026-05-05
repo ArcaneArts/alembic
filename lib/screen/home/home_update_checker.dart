@@ -80,13 +80,29 @@ class HomeUpdateChecker {
     await File(path).absolute.parent.create(recursive: true);
     verbose('Downloading $url to $path');
 
-    http.Request request = http.Request('GET', Uri.parse(url));
-    http.StreamedResponse streamedResponse = await http.Client().send(request);
-    IOSink sink = File(path).openWrite();
-    await streamedResponse.stream.pipe(sink);
-    await sink.close();
+    http.Client client = http.Client();
+    try {
+      http.Request request = http.Request('GET', Uri.parse(url));
+      http.StreamedResponse streamedResponse = await client.send(request);
+      if (streamedResponse.statusCode != 200) {
+        throw Exception(
+          'Failed to download update. Status: ${streamedResponse.statusCode}',
+        );
+      }
+      IOSink sink = File(path).openWrite();
+      try {
+        await streamedResponse.stream.pipe(sink);
+      } finally {
+        await sink.close();
+      }
+    } finally {
+      client.close();
+    }
 
-    await adapter.launchDownloadedUpdate(path);
+    final int launchExitCode = await adapter.launchDownloadedUpdate(path);
+    if (launchExitCode != 0) {
+      throw Exception('Failed to launch downloaded update installer');
+    }
     warn('Shutting down Alembic so the update can be installed');
     await windowManager.destroy();
     exit(0);

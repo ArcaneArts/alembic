@@ -17,6 +17,7 @@ dependencies:
   flutter_acrylic: ^1.1.4
   github: ^9.25.0
   path_provider: ^2.1.5
+  path: ^1.9.1
   url_launcher: ^6.3.2
   fast_log: ^1.0.7
   flutter_svg: ^2.2.3
@@ -63,3 +64,4 @@ scripts:
   codesign: cd build/macos/Build/Products/Release && codesign --deep --force --verify --sign "Alembic" alembic.app
   launcher_icons: flutter pub get && dart run flutter_launcher_icons
   distrib: grep '^version:' pubspec.yaml | sed -E 's/^version:\s*//; s/^[[:space:]]+//; s/[[:space:]]+$//' > version && rm -rf dist && dart pub global activate flutter_distributor && npm install -g appdmg && flutter_distributor package --platform macos --targets dmg --skip-clean
+  distrib_windows: powershell -NoProfile -ExecutionPolicy Bypass -Command "(Select-String -Path pubspec.yaml -Pattern '^version:\s*(.+)$').Matches.Groups[1].Value.Trim() | Set-Content -NoNewline version; if (Test-Path dist) { Remove-Item dist -Recurse -Force }; dart pub global activate flutter_distributor; flutter_distributor package --platform windows --targets exe --skip-clean"

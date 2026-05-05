@@ -186,25 +186,44 @@ List<int> _legacyHiveKey() {
 
 Future<void> _configureStartup(Future<PackageInfo> packageInfoFuture) async {
   verbose('Waiting for PackageInfo');
-  await packageInfoFuture.then((PackageInfo value) {
-    packageInfo = value;
-    verbose('PackageInfo: ${packageInfo.version}');
-    verbose('Configuring launch startup mode');
-    launchAtStartup.setup(
-      appName: 'Alembic',
-      appPath: Platform.resolvedExecutable,
-    );
-  });
+  packageInfo = await packageInfoFuture;
+  verbose('PackageInfo: ${packageInfo.version}');
+
+  final String startupExecutable = Platform.resolvedExecutable;
+  verbose('Configuring launch startup mode for $startupExecutable');
+  if (DesktopPlatformAdapter.instance.isWindows &&
+      !startupExecutable.toLowerCase().endsWith('.exe')) {
+    warn('Windows autolaunch executable does not look like a packaged .exe: '
+        '$startupExecutable');
+  }
+
+  launchAtStartup.setup(
+    appName: 'Alembic',
+    appPath: startupExecutable,
+  );
 
   verbose('Checking if autolaunch is enabled');
   final bool autolaunchEnabled =
-      boxSettings.get('autolaunch', defaultValue: true);
-  if (autolaunchEnabled) {
-    launchAtStartup.enable();
-    verbose('Autolaunch enabled');
-  } else {
-    launchAtStartup.disable();
-    verbose('Autolaunch disabled');
+      boxSettings.get('autolaunch', defaultValue: true) == true;
+  await applyLaunchAtStartupPreference(autolaunchEnabled);
+}
+
+Future<bool> applyLaunchAtStartupPreference(bool enabled) async {
+  final String action = enabled ? 'enable' : 'disable';
+  try {
+    final bool result = enabled
+        ? await launchAtStartup.enable()
+        : await launchAtStartup.disable();
+    if (result) {
+      success('Autolaunch ${enabled ? 'enabled' : 'disabled'}');
+    } else {
+      warn('Autolaunch $action returned false');
+    }
+    return result;
+  } catch (e, stackTrace) {
+    error('Failed to $action autolaunch: $e');
+    error('Failed to $action autolaunch stack trace: $stackTrace');
+    return false;
   }
 }
 
@@ -251,12 +270,14 @@ Future<int> cmd(
 }) async {
   final String resolvedCommand = expandPath(command);
   final List<String> resolvedArgs = args.map(expandPath).toList();
+  final String? resolvedWorkingDirectory =
+      workingDirectory == null ? null : expandPath(workingDirectory);
   _logCommand(resolvedCommand, resolvedArgs);
 
   final Process process = await Process.start(
     resolvedCommand,
     resolvedArgs,
-    workingDirectory: workingDirectory,
+    workingDirectory: resolvedWorkingDirectory,
     runInShell: true,
   );
 

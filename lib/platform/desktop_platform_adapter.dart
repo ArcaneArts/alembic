@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:alembic/main.dart';
+import 'package:path/path.dart' as p;
 
 enum AlembicDesktopPlatform {
   macos,
@@ -26,6 +27,23 @@ class DesktopPlatformAdapter {
   bool get isMacOS => currentPlatform == AlembicDesktopPlatform.macos;
 
   bool get isWindows => currentPlatform == AlembicDesktopPlatform.windows;
+
+  bool get isTrayFirstPlatform => isMacOS || isWindows;
+
+  String get defaultWorkspaceDirectory => switch (currentPlatform) {
+        AlembicDesktopPlatform.windows => 'C:\\Developer\\RemoteGit',
+        _ => '~/Developer/RemoteGit',
+      };
+
+  String get defaultArchiveDirectory => switch (currentPlatform) {
+        AlembicDesktopPlatform.windows => 'C:\\Developer\\AlembicArchive',
+        _ => '~/Developer/AlembicArchive',
+      };
+
+  String get defaultArchiveMasterDirectory => switch (currentPlatform) {
+        AlembicDesktopPlatform.windows => 'C:\\Developer\\AlembicArchiveMaster',
+        _ => '~/Developer/AlembicArchiveMaster',
+      };
 
   String get fileExplorerName => switch (currentPlatform) {
         AlembicDesktopPlatform.macos => 'Finder',
@@ -60,17 +78,37 @@ class DesktopPlatformAdapter {
   }
 
   String expandHomePath(String path) {
-    if (!path.startsWith('~')) {
+    if (path == '~') {
+      final String home = defaultHomeDirectory;
+      return home.isEmpty ? path : home;
+    }
+    if (!path.startsWith('~/') && !path.startsWith('~\\')) {
       return path;
     }
     final String home = defaultHomeDirectory;
     if (home.isEmpty) {
       return path;
     }
-    return path.replaceFirst('~', home);
+    final String relativePath = path.substring(2);
+    return p.join(home, relativePath);
+  }
+
+  String joinPath(String root, String child) {
+    String trimmedChild = child.trim();
+    if (trimmedChild.isEmpty || trimmedChild == '/' || trimmedChild == '\\') {
+      return expandHomePath(root);
+    }
+    while (trimmedChild.startsWith('/') || trimmedChild.startsWith('\\')) {
+      trimmedChild = trimmedChild.substring(1);
+    }
+    return p.join(expandHomePath(root), trimmedChild);
   }
 
   String compressHomePath(String path) {
+    if (isWindows) {
+      return path;
+    }
+
     final String home = defaultHomeDirectory;
     if (home.isEmpty) {
       return path;
@@ -90,7 +128,14 @@ class DesktopPlatformAdapter {
   String updateDownloadUrl(String version) {
     final String extension = updateArtifactExtension;
     final String target = updateArtifactTarget;
-    return 'https://github.com/ArcaneArts/alembic/raw/refs/heads/main/dist/$version/alembic-$version+$version-$target.$extension';
+    return 'https://github.com/ArcaneArts/alembic/raw/refs/heads/main/dist/$version/alembic-${updateArtifactVersionLabel(version)}-$target.$extension';
+  }
+
+  String updateArtifactVersionLabel(String version) {
+    if (version.contains('+')) {
+      return version;
+    }
+    return '$version+$version';
   }
 
   String updateDownloadPath({
@@ -99,16 +144,28 @@ class DesktopPlatformAdapter {
   }) {
     final String extension = updateArtifactExtension;
     final String target = updateArtifactTarget;
-    return '$temporaryDirectory/Alembic/alembic-$version+$version-$target.$extension';
+    return p.join(
+      temporaryDirectory,
+      'Alembic',
+      'alembic-${updateArtifactVersionLabel(version)}-$target.$extension',
+    );
   }
 
   Future<int> openInFileExplorer(String path) {
     final String resolved = expandHomePath(path);
     return switch (currentPlatform) {
       AlembicDesktopPlatform.macos => cmd('open', <String>[resolved]),
-      AlembicDesktopPlatform.windows => cmd('explorer', <String>[resolved]),
+      AlembicDesktopPlatform.windows => _openInWindowsFileExplorer(resolved),
       AlembicDesktopPlatform.other => cmd('xdg-open', <String>[resolved]),
     };
+  }
+
+  Future<int> _openInWindowsFileExplorer(String path) async {
+    final FileSystemEntityType type = FileSystemEntity.typeSync(path);
+    if (type == FileSystemEntityType.file) {
+      return cmd('explorer', <String>['/select,$path']);
+    }
+    return cmd('explorer', <String>[path]);
   }
 
   Future<int> launchDownloadedUpdate(String path) {
@@ -116,13 +173,18 @@ class DesktopPlatformAdapter {
     return switch (currentPlatform) {
       AlembicDesktopPlatform.macos => cmd('open', <String>[resolved]),
       AlembicDesktopPlatform.windows =>
-        cmd('cmd', <String>['/c', 'start', '', resolved]),
+        cmd('cmd', <String>['/c', 'start', '""', resolved]),
       AlembicDesktopPlatform.other => cmd('xdg-open', <String>[resolved]),
     };
   }
 
   Future<int> openPath(String path) {
-    return launchDownloadedUpdate(path);
+    final String resolved = expandHomePath(path);
+    if (isWindows &&
+        FileSystemEntity.typeSync(resolved) == FileSystemEntityType.directory) {
+      return openInFileExplorer(resolved);
+    }
+    return launchDownloadedUpdate(resolved);
   }
 
   String _normalize({required String path}) {
