@@ -77,7 +77,9 @@ class _AlembicTabButton<T> extends StatelessWidget {
           );
     Widget button = m.InkWell(
       onTap: onPressed,
-      borderRadius: BorderRadius.circular(AlembicShadcnTokens.controlRadius - 1),
+      canRequestFocus: false,
+      borderRadius:
+          BorderRadius.circular(AlembicShadcnTokens.controlRadius - 1),
       child: Container(
         height: AlembicShadcnTokens.compactButtonHeight - 4,
         alignment: Alignment.center,

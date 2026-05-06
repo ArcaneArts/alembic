@@ -38,7 +38,9 @@ Future<void> main() async {
     await _initializeApp();
     AWM.barTitle = _buildWindowTitle;
     AWM.barLeading = _buildWindowLeading;
-    AWM.tray = trayManager;
+    if (!windowMode) {
+      AWM.tray = trayManager;
+    }
     fw.runApp(const AlembicRoot());
   } catch (e, stackTrace) {
     error('ERROR $e');

@@ -34,13 +34,28 @@ class AlembicToolbarButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    ThemeData theme = Theme.of(context);
+    _AlembicButtonTone tone = _toneFor();
     Widget content = _buildContent(context);
-    ButtonDensity density =
-        compact ? ButtonDensity.compact : ButtonDensity.normal;
-    Widget button = _buttonFor(
-      context: context,
-      content: content,
-      density: density,
+    Widget button = _AlembicButtonSurface(
+      onPressed: busy ? null : onPressed,
+      height: iconOnly
+          ? AlembicShadcnTokens.iconButtonSize
+          : compact
+              ? AlembicShadcnTokens.compactButtonHeight
+              : AlembicShadcnTokens.buttonHeight,
+      padding: iconOnly
+          ? EdgeInsets.zero
+          : compact
+              ? AlembicShadcnTokens.compactControlPadding
+              : AlembicShadcnTokens.controlPadding,
+      borderRadius: AlembicShadcnTokens.controlRadius,
+      foreground: tone.foreground(theme),
+      background: tone.background(theme),
+      border: tone.border(theme),
+      disabledForeground: theme.colorScheme.mutedForeground,
+      disabledBackground: tone.disabledBackground(theme),
+      child: content,
     );
     Widget sizedButton = AlembicControlFrame(
       compact: compact,
@@ -54,6 +69,19 @@ class AlembicToolbarButton extends StatelessWidget {
       message: tooltip ?? label,
       child: sizedButton,
     );
+  }
+
+  _AlembicButtonTone _toneFor() {
+    if (prominent) {
+      return _AlembicButtonTone.primary;
+    }
+    if (quiet) {
+      return _AlembicButtonTone.ghost;
+    }
+    if (destructive) {
+      return _AlembicButtonTone.destructive;
+    }
+    return _AlembicButtonTone.outline;
   }
 
   Widget _buildContent(BuildContext context) {
@@ -88,53 +116,6 @@ class AlembicToolbarButton extends StatelessWidget {
       ],
     );
   }
-
-  Widget _buttonFor({
-    required BuildContext context,
-    required Widget content,
-    required ButtonDensity density,
-  }) {
-    ButtonDensity resolvedDensity = iconOnly ? ButtonDensity.icon : density;
-    Widget centered = iconOnly ? Center(child: content) : content;
-    if (prominent) {
-      return PrimaryButton(
-        onPressed: onPressed,
-        size: ButtonSize.small,
-        density: resolvedDensity,
-        child: centered,
-      );
-    }
-    if (quiet) {
-      return GhostButton(
-        onPressed: onPressed,
-        size: ButtonSize.small,
-        density: resolvedDensity,
-        child: centered,
-      );
-    }
-    if (!destructive) {
-      return OutlineButton(
-        onPressed: onPressed,
-        size: ButtonSize.small,
-        density: resolvedDensity,
-        child: centered,
-      );
-    }
-
-    ThemeData theme = Theme.of(context);
-    return m.DefaultTextStyle.merge(
-      style: m.TextStyle(color: theme.colorScheme.destructive),
-      child: IconTheme.merge(
-        data: m.IconThemeData(color: theme.colorScheme.destructive),
-        child: OutlineButton(
-          onPressed: onPressed,
-          size: ButtonSize.small,
-          density: resolvedDensity,
-          child: centered,
-        ),
-      ),
-    );
-  }
 }
 
 class AlembicSelectionToggle extends StatelessWidget {
@@ -151,25 +132,126 @@ class AlembicSelectionToggle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    ThemeData theme = Theme.of(context);
+    _AlembicButtonTone tone =
+        selected ? _AlembicButtonTone.primary : _AlembicButtonTone.outline;
     return SizedBox.square(
       dimension: AlembicShadcnTokens.compactIconButtonSize,
       child: m.Tooltip(
         message: label,
-        child: selected
-            ? PrimaryButton(
-                onPressed:
-                    onChanged == null ? null : () => onChanged!(!selected),
-                size: ButtonSize.small,
-                density: ButtonDensity.icon,
-                child: const m.Icon(m.Icons.check, size: 16),
-              )
-            : OutlineButton(
-                onPressed:
-                    onChanged == null ? null : () => onChanged!(!selected),
-                size: ButtonSize.small,
-                density: ButtonDensity.icon,
-                child: const m.Icon(m.Icons.check_box_outline_blank, size: 16),
+        child: _AlembicButtonSurface(
+          onPressed: onChanged == null ? null : () => onChanged!(!selected),
+          height: AlembicShadcnTokens.compactIconButtonSize,
+          padding: EdgeInsets.zero,
+          borderRadius: AlembicShadcnTokens.controlRadius,
+          foreground: tone.foreground(theme),
+          background: tone.background(theme),
+          border: tone.border(theme),
+          disabledForeground: theme.colorScheme.mutedForeground,
+          disabledBackground: tone.disabledBackground(theme),
+          child: m.Icon(
+            selected ? m.Icons.check : m.Icons.check_box_outline_blank,
+            size: 16,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+enum _AlembicButtonTone {
+  primary,
+  outline,
+  ghost,
+  destructive;
+
+  m.Color background(ThemeData theme) => switch (this) {
+        _AlembicButtonTone.primary => theme.colorScheme.primary,
+        _AlembicButtonTone.outline => theme.colorScheme.card,
+        _AlembicButtonTone.ghost => m.Colors.transparent,
+        _AlembicButtonTone.destructive => theme.colorScheme.card,
+      };
+
+  m.Color foreground(ThemeData theme) => switch (this) {
+        _AlembicButtonTone.primary => theme.colorScheme.primaryForeground,
+        _AlembicButtonTone.outline => theme.colorScheme.foreground,
+        _AlembicButtonTone.ghost => theme.colorScheme.foreground,
+        _AlembicButtonTone.destructive => theme.colorScheme.destructive,
+      };
+
+  m.Color border(ThemeData theme) => switch (this) {
+        _AlembicButtonTone.primary => theme.colorScheme.primary,
+        _AlembicButtonTone.outline => theme.colorScheme.border,
+        _AlembicButtonTone.ghost => m.Colors.transparent,
+        _AlembicButtonTone.destructive => theme.colorScheme.border,
+      };
+
+  m.Color disabledBackground(ThemeData theme) => switch (this) {
+        _AlembicButtonTone.primary => theme.colorScheme.muted,
+        _AlembicButtonTone.outline => theme.colorScheme.card,
+        _AlembicButtonTone.ghost => m.Colors.transparent,
+        _AlembicButtonTone.destructive => theme.colorScheme.card,
+      };
+}
+
+class _AlembicButtonSurface extends StatelessWidget {
+  final VoidCallback? onPressed;
+  final double height;
+  final EdgeInsetsGeometry padding;
+  final double borderRadius;
+  final m.Color foreground;
+  final m.Color background;
+  final m.Color border;
+  final m.Color disabledForeground;
+  final m.Color disabledBackground;
+  final Widget child;
+
+  const _AlembicButtonSurface({
+    required this.onPressed,
+    required this.height,
+    required this.padding,
+    required this.borderRadius,
+    required this.foreground,
+    required this.background,
+    required this.border,
+    required this.disabledForeground,
+    required this.disabledBackground,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    bool enabled = onPressed != null;
+    m.Color resolvedForeground = enabled ? foreground : disabledForeground;
+    m.Color resolvedBackground = enabled ? background : disabledBackground;
+    m.Color resolvedBorder = enabled ? border : border.withValues(alpha: 0.7);
+    return m.Material(
+      color: m.Colors.transparent,
+      child: m.InkWell(
+        onTap: onPressed,
+        canRequestFocus: false,
+        borderRadius: BorderRadius.circular(borderRadius),
+        child: Container(
+          height: height,
+          alignment: Alignment.center,
+          padding: padding,
+          decoration: BoxDecoration(
+            color: resolvedBackground,
+            borderRadius: BorderRadius.circular(borderRadius),
+            border: Border.all(color: resolvedBorder),
+          ),
+          child: IconTheme.merge(
+            data: m.IconThemeData(color: resolvedForeground),
+            child: m.DefaultTextStyle.merge(
+              style: TextStyle(
+                color: resolvedForeground,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
               ),
+              child: child,
+            ),
+          ),
+        ),
       ),
     );
   }

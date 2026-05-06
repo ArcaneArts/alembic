@@ -607,6 +607,7 @@ class _AuthBadgePlaceholder extends StatelessWidget {
       color: m.Colors.transparent,
       child: m.InkWell(
         onTap: onTap,
+        canRequestFocus: false,
         borderRadius: BorderRadius.circular(AlembicShadcnTokens.badgeRadius),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),

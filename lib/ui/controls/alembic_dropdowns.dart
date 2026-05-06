@@ -2,8 +2,6 @@ import 'package:alembic/ui/alembic_tokens.dart';
 import 'package:alembic/ui/controls/alembic_control_frame.dart';
 import 'package:alembic/ui/controls/alembic_models.dart';
 import 'package:arcane/arcane.dart';
-import 'package:arcane/generated/arcane_shadcn/shadcn_flutter.dart'
-    show OverlayCompleter, closeOverlay, showDropdown;
 import 'package:flutter/material.dart' as m;
 
 class AlembicDropdownMenu<T> extends StatelessWidget {
@@ -54,38 +52,64 @@ class AlembicDropdownMenu<T> extends StatelessWidget {
     );
   }
 
-  void _showMenu(BuildContext context) {
-    _AlembicDropdownSelection<T>? selected;
-    OverlayCompleter<_AlembicDropdownSelection<T>?> overlay =
-        showDropdown<_AlembicDropdownSelection<T>>(
+  Future<void> _showMenu(BuildContext context) async {
+    ThemeData theme = Theme.of(context);
+    T? selected = await m.showMenu<T>(
       context: context,
-      widthConstraint: iconOnly
-          ? PopoverConstraint.intrinsic
-          : PopoverConstraint.anchorMinSize,
-      heightConstraint: PopoverConstraint.intrinsic,
-      anchorAlignment: Alignment.bottomLeft,
-      alignment: Alignment.topLeft,
-      offset: const Offset(0, AlembicShadcnTokens.gapXs),
-      builder: (BuildContext context) => _AlembicDropdownPopup<T>(
-        items: items,
-        selectedValue: selectedValue,
-        onSelected: (T value) {
-          closeOverlay<_AlembicDropdownSelection<T>>(
-            context,
-            _AlembicDropdownSelection<T>(value),
-          );
-        },
+      position: _menuPosition(context),
+      color: theme.colorScheme.popover,
+      surfaceTintColor: m.Colors.transparent,
+      elevation: 0,
+      constraints: _menuConstraints(context),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AlembicShadcnTokens.controlRadius),
+        side: BorderSide(color: theme.colorScheme.border),
       ),
+      items: <m.PopupMenuEntry<T>>[
+        for (AlembicDropdownOption<T> item in items)
+          m.PopupMenuItem<T>(
+            value: item.value,
+            padding: EdgeInsets.zero,
+            height: 34,
+            child: _AlembicDropdownItem<T>(
+              item: item,
+              selected: selectedValue == item.value,
+            ),
+          ),
+      ],
     );
-    overlay.future.then((_AlembicDropdownSelection<T>? value) {
-      selected = value;
-    });
-    overlay.animationFuture.then((_) {
-      _AlembicDropdownSelection<T>? value = selected;
-      if (value != null) {
-        onSelected(value.value);
-      }
-    });
+    if (selected != null && context.mounted) {
+      onSelected(selected);
+    }
+  }
+
+  RelativeRect _menuPosition(BuildContext context) {
+    RenderBox anchor = context.findRenderObject()! as RenderBox;
+    RenderBox overlay =
+        Navigator.of(context).overlay!.context.findRenderObject()! as RenderBox;
+    Offset topLeft = anchor.localToGlobal(Offset.zero, ancestor: overlay);
+    double width = anchor.size.width <= 0 ? 1 : anchor.size.width;
+    Rect target = Rect.fromLTWH(
+      topLeft.dx,
+      topLeft.dy + anchor.size.height + AlembicShadcnTokens.gapXs,
+      width,
+      1,
+    );
+    return RelativeRect.fromRect(target, Offset.zero & overlay.size);
+  }
+
+  BoxConstraints _menuConstraints(BuildContext context) {
+    RenderBox anchor = context.findRenderObject()! as RenderBox;
+    double minWidth = iconOnly ? 176 : anchor.size.width;
+    if (minWidth < AlembicShadcnTokens.buttonMinWidth) {
+      minWidth = AlembicShadcnTokens.buttonMinWidth;
+    }
+    double maxWidth = minWidth > 360.0 ? minWidth : 360.0;
+    return BoxConstraints(
+      minWidth: minWidth,
+      maxWidth: maxWidth,
+      maxHeight: AlembicShadcnTokens.dropdownMenuMaxHeight,
+    );
   }
 }
 
@@ -174,26 +198,40 @@ class _AlembicDropdownTrigger extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    ButtonDensity density = iconOnly
-        ? ButtonDensity.icon
-        : (compact ? ButtonDensity.compact : ButtonDensity.normal);
-    Widget trigger = iconOnly
-        ? Center(child: m.Icon(leadingIcon ?? trailingIcon, size: 16))
-        : Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          );
-    Widget button = OutlineButton(
-      onPressed: onPressed,
-      size: ButtonSize.small,
-      density: density,
-      alignment: alignment,
-      leading: iconOnly || leadingIcon == null
-          ? null
-          : m.Icon(leadingIcon, size: 15),
-      trailing: iconOnly ? null : m.Icon(trailingIcon, size: 15),
-      child: trigger,
+    ThemeData theme = Theme.of(context);
+    Widget button = m.Material(
+      color: m.Colors.transparent,
+      child: m.InkWell(
+        onTap: onPressed,
+        canRequestFocus: false,
+        borderRadius: BorderRadius.circular(AlembicShadcnTokens.controlRadius),
+        child: Container(
+          height: iconOnly
+              ? AlembicShadcnTokens.iconButtonSize
+              : compact
+                  ? AlembicShadcnTokens.compactButtonHeight
+                  : AlembicShadcnTokens.buttonHeight,
+          alignment: alignment,
+          padding: iconOnly
+              ? EdgeInsets.zero
+              : compact
+                  ? AlembicShadcnTokens.compactControlPadding
+                  : AlembicShadcnTokens.controlPadding,
+          decoration: BoxDecoration(
+            color: theme.colorScheme.card,
+            borderRadius:
+                BorderRadius.circular(AlembicShadcnTokens.controlRadius),
+            border: Border.all(color: theme.colorScheme.border),
+          ),
+          child: iconOnly
+              ? m.Icon(leadingIcon ?? trailingIcon, size: 16)
+              : _AlembicDropdownTriggerLabel(
+                  label: label,
+                  leadingIcon: leadingIcon,
+                  trailingIcon: trailingIcon,
+                ),
+        ),
+      ),
     );
     return AlembicControlFrame(
       compact: compact,
@@ -203,112 +241,88 @@ class _AlembicDropdownTrigger extends StatelessWidget {
   }
 }
 
-class _AlembicDropdownItemLabel extends StatelessWidget {
+class _AlembicDropdownTriggerLabel extends StatelessWidget {
   final String label;
-  final bool selected;
-  final bool destructive;
+  final IconData? leadingIcon;
+  final IconData trailingIcon;
 
-  const _AlembicDropdownItemLabel({
+  const _AlembicDropdownTriggerLabel({
     required this.label,
-    required this.selected,
-    required this.destructive,
+    required this.leadingIcon,
+    required this.trailingIcon,
   });
 
   @override
   Widget build(BuildContext context) {
     ThemeData theme = Theme.of(context);
-    return Text(
-      label,
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-      style: theme.typography.small.copyWith(
-        color: destructive ? theme.colorScheme.destructive : null,
-        fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
-      ),
-    );
-  }
-}
-
-class _AlembicDropdownSelection<T> {
-  final T value;
-
-  const _AlembicDropdownSelection(this.value);
-}
-
-class _AlembicDropdownPopup<T> extends StatelessWidget {
-  final List<AlembicDropdownOption<T>> items;
-  final T? selectedValue;
-  final ValueChanged<T> onSelected;
-
-  const _AlembicDropdownPopup({
-    required this.items,
-    required this.selectedValue,
-    required this.onSelected,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    ThemeData theme = Theme.of(context);
-    return ComponentTheme<MenuPopupTheme>(
-      data: MenuPopupTheme(
-        surfaceOpacity: 1,
-        surfaceBlur: 0,
-        padding: const EdgeInsets.all(4),
-        fillColor: theme.colorScheme.popover,
-        borderColor: theme.colorScheme.border,
-        borderRadius: BorderRadius.circular(AlembicShadcnTokens.controlRadius),
-      ),
-      child: ComponentTheme<MenuTheme>(
-        data: const MenuTheme(itemPadding: EdgeInsets.zero),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(
-            maxHeight: AlembicShadcnTokens.dropdownMenuMaxHeight,
-          ),
-          child: DropdownMenu(
-            surfaceOpacity: 1,
-            surfaceBlur: 0,
-            children: <MenuItem>[
-              for (AlembicDropdownOption<T> item in items)
-                MenuButton(
-                  key: m.ValueKey<String>('dropdown:${item.label}'),
-                  leading: _leadingFor(item, theme),
-                  trailing: _trailingFor(item, theme),
-                  onPressed: () => onSelected(item.value),
-                  child: _AlembicDropdownItemLabel(
-                    label: item.label,
-                    selected: selectedValue == item.value,
-                    destructive: item.destructive,
-                  ),
-                ),
-            ],
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        if (leadingIcon != null) ...<Widget>[
+          m.Icon(leadingIcon, size: 15),
+          const Gap(AlembicShadcnTokens.gapSm),
+        ],
+        Flexible(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.typography.small.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ),
-      ),
+        const Gap(AlembicShadcnTokens.gapSm),
+        m.Icon(trailingIcon, size: 15),
+      ],
     );
   }
+}
 
-  Widget? _leadingFor(AlembicDropdownOption<T> item, ThemeData theme) {
-    if (item.icon == null) {
-      return null;
-    }
-    return IconTheme.merge(
-      data: m.IconThemeData(
-        color: item.destructive ? theme.colorScheme.destructive : null,
+class _AlembicDropdownItem<T> extends StatelessWidget {
+  final AlembicDropdownOption<T> item;
+  final bool selected;
+
+  const _AlembicDropdownItem({
+    required this.item,
+    required this.selected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    ThemeData theme = Theme.of(context);
+    m.Color foreground = item.destructive
+        ? theme.colorScheme.destructive
+        : theme.colorScheme.foreground;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+      decoration: BoxDecoration(
+        color: selected ? theme.colorScheme.secondary : m.Colors.transparent,
+        borderRadius: BorderRadius.circular(AlembicShadcnTokens.controlRadius),
       ),
-      child: m.Icon(item.icon, size: 15),
-    );
-  }
-
-  Widget? _trailingFor(AlembicDropdownOption<T> item, ThemeData theme) {
-    if (selectedValue != item.value) {
-      return null;
-    }
-    return m.Icon(
-      m.Icons.check,
-      size: 14,
-      color: item.destructive
-          ? theme.colorScheme.destructive
-          : theme.colorScheme.foreground,
+      child: Row(
+        children: <Widget>[
+          if (item.icon != null) ...<Widget>[
+            m.Icon(item.icon, size: 15, color: foreground),
+            const Gap(AlembicShadcnTokens.gapSm),
+          ],
+          Expanded(
+            child: Text(
+              item.label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.typography.small.copyWith(
+                color: foreground,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+              ),
+            ),
+          ),
+          if (selected) ...<Widget>[
+            const Gap(AlembicShadcnTokens.gapSm),
+            m.Icon(m.Icons.check, size: 14, color: foreground),
+          ],
+        ],
+      ),
     );
   }
 }

@@ -46,11 +46,14 @@ class AlembicNavItem extends StatelessWidget {
         theme: theme,
       ),
     );
-    return GhostButton(
-      onPressed: onPressed,
-      alignment: Alignment.centerLeft,
-      density: ButtonDensity.compact,
-      child: content,
+    return m.Material(
+      color: m.Colors.transparent,
+      child: m.InkWell(
+        onTap: onPressed,
+        canRequestFocus: false,
+        borderRadius: BorderRadius.circular(AlembicShadcnTokens.controlRadius),
+        child: content,
+      ),
     );
   }
 }
@@ -172,6 +175,7 @@ class _AlembicSegmentedButton<T> extends StatelessWidget {
     ThemeData theme = Theme.of(context);
     return m.InkWell(
       onTap: onPressed,
+      canRequestFocus: false,
       borderRadius: BorderRadius.circular(AlembicShadcnTokens.controlRadius),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),

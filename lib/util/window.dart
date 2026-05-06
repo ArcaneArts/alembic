@@ -1,10 +1,11 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:alembic/main.dart';
 import 'package:alembic/platform/desktop_platform_adapter.dart';
+import 'package:alembic/platform/macos_tray_service.dart';
 import 'package:fast_log/fast_log.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter/widgets.dart';
 import 'package:screen_retriever/screen_retriever.dart';
 import 'package:tray_manager/tray_manager.dart';
 import 'package:window_manager/window_manager.dart';
@@ -29,6 +30,7 @@ class WindowUtil {
   static DateTime _hideOnBlurBlockedUntil = DateTime.fromMillisecondsSinceEpoch(
     0,
   );
+  static StreamSubscription<MacOSTrayEvent>? _macOSTraySubscription;
 
   static bool get hideOnBlurEnabled =>
       _hideOnBlur &&
@@ -111,7 +113,10 @@ class WindowUtil {
   }
 
   static Future<void> _reassertFramelessVisuals() async {
-    await _safeWindowCall('make window frameless', windowManager.setAsFrameless);
+    await _safeWindowCall(
+      'make window frameless',
+      windowManager.setAsFrameless,
+    );
     await _safeWindowCall(
       'disable window shadow',
       () => windowManager.setHasShadow(false),
@@ -149,13 +154,26 @@ class WindowUtil {
     );
   }
 
-  static String get _trayIconAsset =>
-      DesktopPlatformAdapter.instance.isWindows
-          ? _windowsIconAsset
-          : _defaultTrayIconAsset;
+  static String get _trayIconAsset => DesktopPlatformAdapter.instance.isWindows
+      ? _windowsIconAsset
+      : _defaultTrayIconAsset;
 
   static Future<void> initSystemTray() async {
     if (windowMode) {
+      if (DesktopPlatformAdapter.instance.isMacOS) {
+        verbose("    Window mode active: switching macOS to regular policy");
+        await MacOSTrayService.instance.setActivationPolicy('regular');
+      }
+      return;
+    }
+    if (DesktopPlatformAdapter.instance.isMacOS) {
+      verbose("    Wiring native macOS tray service");
+      _macOSTraySubscription ??=
+          MacOSTrayService.instance.events.listen(_handleMacOSTrayEvent);
+      await MacOSTrayService.instance.init();
+      await MacOSTrayService.instance.setTooltip('Alembic');
+      verbose("    Native macOS tray ready");
+      _scheduleMacOSTrayDebugDumps();
       return;
     }
     await trayManager.setIcon(_trayIconAsset, isTemplate: Platform.isMacOS);
@@ -182,6 +200,67 @@ class WindowUtil {
     verbose("    Registering System Tray Event Handler");
     trayManager.addListener(AlembicTrayListener());
     verbose("    System Tray Ready");
+  }
+
+  static void _handleMacOSTrayEvent(MacOSTrayEvent event) {
+    if (event is MacOSTrayLeftClick) {
+      verbose('macOS tray left-click: showing window');
+      WindowUtil.show();
+      return;
+    }
+    if (event is! MacOSTrayMenuItem) {
+      return;
+    }
+    String key = event.key;
+    verbose('macOS tray menu item: $key');
+    if (key == 'hide') {
+      WindowUtil.hide();
+      return;
+    }
+    if (key == 'exit') {
+      windowManager.destroy().then((_) => exit(0));
+      return;
+    }
+    if (key == 'show' || key == 'settings' || key == 'update') {
+      WindowUtil.show();
+    }
+  }
+
+  static void _scheduleMacOSTrayDebugDumps() {
+    List<Duration> delays = <Duration>[
+      const Duration(seconds: 1),
+      const Duration(seconds: 5),
+    ];
+    for (Duration delay in delays) {
+      Future<void>.delayed(delay, () async {
+        await dumpMacOSTrayDebug(label: 'auto +${delay.inMilliseconds}ms');
+      });
+    }
+  }
+
+  static Future<void> dumpMacOSTrayDebug({String label = 'manual'}) async {
+    if (!DesktopPlatformAdapter.instance.isMacOS) {
+      return;
+    }
+    Map<String, Object?> data = await MacOSTrayService.instance.dumpFullDebug();
+    if (data.isEmpty) {
+      warn('mac-tray dump [$label]: empty payload');
+      return;
+    }
+    info('mac-tray dump [$label] BEGIN');
+    List<String> keys = data.keys.toList()..sort();
+    for (String key in keys) {
+      Object? value = data[key];
+      if (value is List) {
+        info('  $key: [list of ${value.length}]');
+        for (int i = 0; i < value.length; i++) {
+          info('    [$i] ${value[i]}');
+        }
+      } else {
+        info('  $key: $value');
+      }
+    }
+    info('mac-tray dump [$label] END');
   }
 
   static WindowOptions get _windowOptions => WindowOptions(
@@ -312,7 +391,9 @@ class WindowUtil {
   }
 
   static Future<void> _positionNearTray() async {
-    Rect? trayBounds = await trayManager.getBounds();
+    Rect? trayBounds = DesktopPlatformAdapter.instance.isMacOS
+        ? await MacOSTrayService.instance.getBounds()
+        : await trayManager.getBounds();
     List<Display> displays = await screenRetriever.getAllDisplays();
     if (displays.isEmpty) {
       return;

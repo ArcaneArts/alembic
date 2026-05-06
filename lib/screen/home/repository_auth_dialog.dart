@@ -193,9 +193,8 @@ class _RepositoryAuthDialogState extends State<_RepositoryAuthDialog> {
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: <Widget>[
                   AlembicToolbarButton(
-                    onPressed: _busy
-                        ? null
-                        : () => Navigator.of(context).pop(false),
+                    onPressed:
+                        _busy ? null : () => Navigator.of(context).pop(false),
                     label: 'Cancel',
                   ),
                   const Gap(AlembicShadcnTokens.gapSm),
@@ -234,8 +233,7 @@ class _CurrentAuthBanner extends StatelessWidget {
       ),
       decoration: BoxDecoration(
         color: theme.colorScheme.secondary,
-        borderRadius:
-            BorderRadius.circular(AlembicShadcnTokens.surfaceRadius),
+        borderRadius: BorderRadius.circular(AlembicShadcnTokens.surfaceRadius),
         border: Border.all(color: theme.colorScheme.border),
       ),
       child: Column(
@@ -315,8 +313,8 @@ class _AuthChoiceRow extends StatelessWidget {
       color: m.Colors.transparent,
       child: m.InkWell(
         onTap: onTap,
-        borderRadius:
-            BorderRadius.circular(AlembicShadcnTokens.controlRadius),
+        canRequestFocus: false,
+        borderRadius: BorderRadius.circular(AlembicShadcnTokens.controlRadius),
         child: Container(
           padding: const EdgeInsets.symmetric(
             horizontal: AlembicShadcnTokens.gapMd,
@@ -382,9 +380,8 @@ class _RadioDot extends StatelessWidget {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         border: Border.all(
-          color: selected
-              ? theme.colorScheme.primary
-              : theme.colorScheme.border,
+          color:
+              selected ? theme.colorScheme.primary : theme.colorScheme.border,
           width: 1.5,
         ),
       ),

@@ -33,6 +33,7 @@ class RepositoryAuthBadge extends StatelessWidget {
       color: m.Colors.transparent,
       child: m.InkWell(
         onTap: onTap,
+        canRequestFocus: false,
         borderRadius: BorderRadius.circular(AlembicShadcnTokens.badgeRadius),
         child: body,
       ),
@@ -68,9 +69,8 @@ class RepositoryAuthBadge extends StatelessWidget {
   String _tooltipFor(RepoAuthInfo info) {
     final List<String> parts = <String>[];
     parts.add(info.detailLabel);
-    final String? login = (info.accountLogin ?? '').trim().isEmpty
-        ? null
-        : info.accountLogin;
+    final String? login =
+        (info.accountLogin ?? '').trim().isEmpty ? null : info.accountLogin;
     if (login != null) {
       parts.add('@$login');
     }

@@ -27,6 +27,7 @@ class HomeActionTile extends StatelessWidget {
 
     return m.InkWell(
       onTap: onPressed,
+      canRequestFocus: false,
       borderRadius: BorderRadius.circular(AlembicShadcnTokens.controlRadius),
       child: Container(
         padding: const EdgeInsets.all(10),
