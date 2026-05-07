@@ -79,6 +79,14 @@ class _HomeRepositoryBrowserPaneState extends State<HomeRepositoryBrowserPane> {
 
   int get _selectedCount => _selectedRepositories().length;
 
+  String get _listScopeKey => switch (widget.selection.tab) {
+        HomeTab.active => 'active',
+        HomeTab.personal => 'personal',
+        HomeTab.organizations =>
+          'organizations:${widget.selection.organizationFilter.storageValue}',
+        HomeTab.archiveMaster => 'archiveMaster',
+      };
+
   String get _title => switch (widget.selection.tab) {
         HomeTab.active => 'Projects',
         HomeTab.personal => 'Mine',
@@ -225,19 +233,15 @@ class _HomeRepositoryBrowserPaneState extends State<HomeRepositoryBrowserPane> {
               padding: const EdgeInsets.symmetric(
                 vertical: AlembicShadcnTokens.gapSm,
               ),
-              sliver: m.SliverList.separated(
+              sliver: m.SliverList.builder(
+                key: m.ValueKey<String>(_listScopeKey),
                 itemCount: widget.repositories.length,
-                findItemIndexCallback: _findRepositoryIndex,
-                separatorBuilder: (BuildContext context, int index) {
-                  return const SizedBox(
-                    height: AlembicShadcnTokens.gapXs,
-                  );
-                },
+                findChildIndexCallback: _findRepositoryIndex,
                 itemBuilder: (
                   BuildContext context,
                   int index,
                 ) =>
-                    _buildRepositoryRow(
+                    _buildRepositoryListItem(
                   context,
                   index,
                   compact: compact,
@@ -268,19 +272,37 @@ class _HomeRepositoryBrowserPaneState extends State<HomeRepositoryBrowserPane> {
     return repositoryIndex;
   }
 
+  Widget _buildRepositoryListItem(
+    BuildContext context,
+    int index, {
+    required bool compact,
+  }) {
+    Repository repository = widget.repositories[index];
+    EdgeInsets padding = EdgeInsets.only(
+      bottom: index == widget.repositories.length - 1
+          ? 0
+          : AlembicShadcnTokens.gapXs,
+    );
+    return Padding(
+      key: _repositoryListKey(repository),
+      padding: padding,
+      child: _buildRepositoryRow(
+        context,
+        index,
+        compact: compact,
+      ),
+    );
+  }
+
   Widget _buildRepositoryRow(
     BuildContext context,
     int index, {
     required bool compact,
   }) {
     Repository repository = widget.repositories[index];
-    m.ValueKey<String> key = m.ValueKey<String>(
-      '$_repositoryListKeyPrefix${repository.fullName.toLowerCase()}',
-    );
     GitAccount? account = widget.accountForRepository(repository);
     if (_isProjects) {
       return LocalRepositoryRow(
-        key: key,
         repository: repository,
         runtime: widget.runtime,
         revision: widget.revision,
@@ -291,7 +313,6 @@ class _HomeRepositoryBrowserPaneState extends State<HomeRepositoryBrowserPane> {
       );
     }
     return BrowseRepositoryRow(
-      key: key,
       repository: repository,
       runtime: widget.runtime,
       revision: widget.revision,
@@ -368,4 +389,9 @@ class _HomeRepositoryBrowserPaneState extends State<HomeRepositoryBrowserPane> {
 
   String _repositoryKey(Repository repository) =>
       repository.fullName.toLowerCase();
+
+  m.ValueKey<String> _repositoryListKey(Repository repository) =>
+      m.ValueKey<String>(
+        '$_repositoryListKeyPrefix${_repositoryKey(repository)}',
+      );
 }

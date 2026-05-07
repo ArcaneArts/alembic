@@ -196,34 +196,34 @@ class HomeTopBar extends StatelessWidget {
     required List<AlembicDropdownOption<String>> organizationOptions,
   }) {
     Widget searchField = AlembicTextInput(
+      key: const m.ValueKey<String>('home-search-field'),
       controller: searchController,
       placeholder: 'Search...',
       onChanged: onSearchChanged,
       onSubmitted: onSearchChanged,
     );
-    if (selection.tab != HomeTab.organizations) {
-      return searchField;
-    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
         searchField,
-        const Gap(AlembicShadcnTokens.gapSm),
-        AlembicSelect<String>(
-          value: selectedOrganization,
-          options: organizationOptions,
-          onChanged: (String value) {
-            if (value == '__all__') {
-              onOrganizationFilterSelected(const OrganizationFilter.all());
-              return;
-            }
-            onOrganizationFilterSelected(
-              OrganizationFilter.organization(value),
-            );
-          },
-          leadingIcon: m.Icons.apartment_outlined,
-          compact: false,
-        ),
+        if (selection.tab == HomeTab.organizations) ...<Widget>[
+          const Gap(AlembicShadcnTokens.gapSm),
+          AlembicSelect<String>(
+            value: selectedOrganization,
+            options: organizationOptions,
+            onChanged: (String value) {
+              if (value == '__all__') {
+                onOrganizationFilterSelected(const OrganizationFilter.all());
+                return;
+              }
+              onOrganizationFilterSelected(
+                OrganizationFilter.organization(value),
+              );
+            },
+            leadingIcon: m.Icons.apartment_outlined,
+            compact: false,
+          ),
+        ],
       ],
     );
   }
