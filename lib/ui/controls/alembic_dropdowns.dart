@@ -88,10 +88,11 @@ class AlembicDropdownMenu<T> extends StatelessWidget {
     RenderBox overlay =
         Navigator.of(context).overlay!.context.findRenderObject()! as RenderBox;
     Offset topLeft = anchor.localToGlobal(Offset.zero, ancestor: overlay);
-    double width = anchor.size.width <= 0 ? 1 : anchor.size.width;
+    double width = _safeDimension(anchor.size.width, fallback: 1);
+    double height = _safeDimension(anchor.size.height, fallback: 0);
     Rect target = Rect.fromLTWH(
       topLeft.dx,
-      topLeft.dy + anchor.size.height + AlembicShadcnTokens.gapXs,
+      topLeft.dy + height + AlembicShadcnTokens.gapXs,
       width,
       1,
     );
@@ -100,16 +101,41 @@ class AlembicDropdownMenu<T> extends StatelessWidget {
 
   BoxConstraints _menuConstraints(BuildContext context) {
     RenderBox anchor = context.findRenderObject()! as RenderBox;
-    double minWidth = iconOnly ? 176 : anchor.size.width;
+    double anchorWidth = _safeDimension(
+      anchor.size.width,
+      fallback: AlembicShadcnTokens.buttonMinWidth,
+    );
+    double minWidth = iconOnly ? 176 : anchorWidth;
     if (minWidth < AlembicShadcnTokens.buttonMinWidth) {
       minWidth = AlembicShadcnTokens.buttonMinWidth;
     }
+    double overlayWidth = _safeDimension(
+      MediaQuery.maybeSizeOf(context)?.width ?? 0,
+      fallback: 0,
+    );
+    double cap = overlayWidth > 16 ? overlayWidth - 16 : 360;
+    if (minWidth > cap) {
+      minWidth = cap;
+    }
     double maxWidth = minWidth > 360.0 ? minWidth : 360.0;
+    if (maxWidth > cap) {
+      maxWidth = cap;
+    }
+    if (maxWidth < minWidth) {
+      maxWidth = minWidth;
+    }
     return BoxConstraints(
       minWidth: minWidth,
       maxWidth: maxWidth,
       maxHeight: AlembicShadcnTokens.dropdownMenuMaxHeight,
     );
+  }
+
+  double _safeDimension(double value, {required double fallback}) {
+    if (value.isNaN || value.isInfinite || value <= 0) {
+      return fallback;
+    }
+    return value;
   }
 }
 
