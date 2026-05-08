@@ -270,48 +270,77 @@ Future<int> cmd(
   String? workingDirectory,
   bool redactOutput = true,
 }) async {
-  final String resolvedCommand = expandPath(command);
-  final List<String> resolvedArgs = args.map(expandPath).toList();
-  final String? resolvedWorkingDirectory =
+  String resolvedCommand = expandPath(command);
+  List<String> resolvedArgs = args.map(expandPath).toList();
+  String? resolvedWorkingDirectory =
       workingDirectory == null ? null : expandPath(workingDirectory);
   _logCommand(resolvedCommand, resolvedArgs);
 
-  final Process process = await Process.start(
+  Process process = await Process.start(
     resolvedCommand,
     resolvedArgs,
     workingDirectory: resolvedWorkingDirectory,
     runInShell: true,
   );
 
-  process.stdout
+  bool sawStderr = false;
+  Future<void> stdoutDone = process.stdout
       .transform(utf8.decoder)
       .transform(const LineSplitter())
       .map((String line) {
-    final String safe = sanitizeSecrets(line);
-    stdout?.add(redactOutput ? safe : line);
-    return safe;
-  }).listen((String line) => verbose('cmd $resolvedCommand stdout: $line'));
+        String safe = sanitizeSecrets(line);
+        stdout?.add(redactOutput ? safe : line);
+        return safe;
+      })
+      .listen((String line) => verbose('cmd $resolvedCommand stdout: $line'))
+      .asFuture<void>();
 
-  process.stderr
+  Future<void> stderrDone = process.stderr
       .transform(utf8.decoder)
       .transform(const LineSplitter())
       .map((String line) {
-    final String safe = sanitizeSecrets(line);
-    stderr?.add(redactOutput ? safe : line);
-    return safe;
-  }).listen((String line) => error('cmd $resolvedCommand stderr: $line'));
+        sawStderr = true;
+        String safe = sanitizeSecrets(line);
+        stderr?.add(redactOutput ? safe : line);
+        return safe;
+      })
+      .listen((String line) => error('cmd $resolvedCommand stderr: $line'))
+      .asFuture<void>();
 
-  final int exitCode = await process.exitCode;
+  int exitCode = await process.exitCode;
+  await Future.wait<void>(<Future<void>>[stdoutDone, stderrDone]);
   if (exitCode == 0) {
     success('cmd $resolvedCommand exit code: $exitCode');
+  } else if (_isExpectedMissingGitConfigValue(
+    resolvedCommand,
+    resolvedArgs,
+    exitCode,
+    sawStderr,
+  )) {
+    verbose('cmd $resolvedCommand exit code: $exitCode');
   } else {
     error('cmd $resolvedCommand exit code: $exitCode');
   }
   return exitCode;
 }
 
+bool _isExpectedMissingGitConfigValue(
+  String command,
+  List<String> args,
+  int exitCode,
+  bool sawStderr,
+) {
+  String normalizedCommand = command.replaceAll('\\', '/');
+  String commandName = normalizedCommand.split('/').last.toLowerCase();
+  return commandName == 'git' &&
+      exitCode == 1 &&
+      !sawStderr &&
+      args.contains('config') &&
+      args.contains('--get');
+}
+
 void _logCommand(String command, List<String> args) {
-  final String redactedArgs = args.map((String arg) {
+  String redactedArgs = args.map((String arg) {
     return sanitizeSecrets(arg);
   }).join(' ');
   verbose('cmd $command $redactedArgs');

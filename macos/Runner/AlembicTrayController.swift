@@ -687,19 +687,10 @@ final class AlembicTrayController: NSObject {
 
     private func startObservingSystemEvents() {
         let workspace: NotificationCenter = NSWorkspace.shared.notificationCenter
-        let appCenter: NotificationCenter = NotificationCenter.default
         workspace.addObserver(self, selector: #selector(onActiveSpaceChanged(_:)),
                               name: NSWorkspace.activeSpaceDidChangeNotification, object: nil)
         workspace.addObserver(self, selector: #selector(onScreensChanged(_:)),
                               name: NSApplication.didChangeScreenParametersNotification, object: nil)
-        appCenter.addObserver(self, selector: #selector(onAppActivated(_:)),
-                              name: NSApplication.didBecomeActiveNotification, object: nil)
-        appCenter.addObserver(self, selector: #selector(onAppResigned(_:)),
-                              name: NSApplication.didResignActiveNotification, object: nil)
-        appCenter.addObserver(self, selector: #selector(onAppHidden(_:)),
-                              name: NSApplication.didHideNotification, object: nil)
-        appCenter.addObserver(self, selector: #selector(onAppUnhidden(_:)),
-                              name: NSApplication.didUnhideNotification, object: nil)
     }
 
     @objc private func onActiveSpaceChanged(_ note: Notification) {
@@ -715,25 +706,6 @@ final class AlembicTrayController: NSObject {
         if let item: NSStatusItem = statusItem {
             dumpStatusItem(item: item, label: "didChangeScreenParameters")
         }
-    }
-
-    @objc private func onAppActivated(_ note: Notification) {
-        info("notification: didBecomeActive")
-        if let item: NSStatusItem = statusItem {
-            dumpStatusItem(item: item, label: "didBecomeActive")
-        }
-    }
-
-    @objc private func onAppResigned(_ note: Notification) {
-        info("notification: didResignActive")
-    }
-
-    @objc private func onAppHidden(_ note: Notification) {
-        info("notification: didHide")
-    }
-
-    @objc private func onAppUnhidden(_ note: Notification) {
-        info("notification: didUnhide")
     }
 
     private func info(_ format: StaticString, _ args: CVarArg...) {
