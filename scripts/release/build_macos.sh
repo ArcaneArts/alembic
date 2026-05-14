@@ -5,6 +5,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 VERSION="${1:-$(grep '^version:' "$ROOT/pubspec.yaml" | sed -E 's/^version:[[:space:]]*//')}"
 OUT="${2:-$ROOT/release}"
 FLUTTER_BIN="${FLUTTER_BIN:-flutter}"
+MACOS_SKIP_SIGNING="${MACOS_SKIP_SIGNING:-1}"
 
 if ! command -v "$FLUTTER_BIN" >/dev/null 2>&1; then
   if [[ -x /Users/brianfopiano/Developer/flutter/bin/flutter ]]; then
@@ -17,7 +18,19 @@ rm -f "$OUT/Alembic-$VERSION-macos-universal.zip" "$OUT/Alembic-$VERSION-macos.d
 
 cd "$ROOT"
 "$FLUTTER_BIN" pub get
-"$FLUTTER_BIN" build macos --release
+"$FLUTTER_BIN" build macos --release --config-only
+xcodebuild \
+  -workspace macos/Runner.xcworkspace \
+  -scheme Runner \
+  -configuration Release \
+  -derivedDataPath build/macos \
+  -destination platform=macOS \
+  CODE_SIGNING_ALLOWED=NO \
+  CODE_SIGNING_REQUIRED=NO \
+  CODE_SIGN_IDENTITY="" \
+  DEVELOPMENT_TEAM="" \
+  PROVISIONING_PROFILE_SPECIFIER="" \
+  build
 
 APP_SOURCE="$ROOT/build/macos/Build/Products/Release/Alembic.app"
 if [[ ! -d "$APP_SOURCE" ]]; then

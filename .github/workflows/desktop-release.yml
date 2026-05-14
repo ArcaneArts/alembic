@@ -61,7 +61,7 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
   build-macos:
-    name: Build signed macOS release
+    name: Build unsigned macOS release
     runs-on: macos-latest
     needs:
       - validate-version
@@ -100,48 +100,7 @@ jobs:
           restore-keys: |
             pods-${{ runner.os }}-
 
-      - name: Preflight macOS signing secrets
-        env:
-          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          MACOS_CODESIGN_IDENTITY: ${{ secrets.MACOS_CODESIGN_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
-        run: |
-          set -euo pipefail
-          for value in APPLE_CERTIFICATE_BASE64 APPLE_CERTIFICATE_PASSWORD MACOS_CODESIGN_IDENTITY APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID KEYCHAIN_PASSWORD; do
-            if [[ -z "${!value:-}" ]]; then
-              echo "::error title=Missing macOS signing secret::$value is required"
-              exit 1
-            fi
-          done
-
-      - name: Import macOS signing certificate
-        env:
-          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
-        run: |
-          set -euo pipefail
-          keychain="$RUNNER_TEMP/alembic-signing.keychain-db"
-          certificate="$RUNNER_TEMP/alembic-certificate.p12"
-          echo "$APPLE_CERTIFICATE_BASE64" | base64 --decode > "$certificate"
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$keychain"
-          security set-keychain-settings -lut 21600 "$keychain"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$keychain"
-          security import "$certificate" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
-          security list-keychain -d user -s "$keychain"
-          security default-keychain -s "$keychain"
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$keychain"
-
       - name: Build macOS release assets
-        env:
-          MACOS_CODESIGN_IDENTITY: ${{ secrets.MACOS_CODESIGN_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: scripts/release/build_macos.sh "${{ needs.validate-version.outputs.version }}" release
 
       - name: Upload macOS release assets
