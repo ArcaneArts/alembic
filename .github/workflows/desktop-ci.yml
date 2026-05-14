@@ -1,0 +1,168 @@
+name: Desktop CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+concurrency:
+  group: desktop-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate Dart and Flutter
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Cache Dart packages
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.pub-cache/bin
+            ~/.pub-cache/git
+            ~/.pub-cache/global_packages
+            ~/.pub-cache/hosted
+          key: pub-cache-${{ runner.os }}-${{ hashFiles('pubspec.yaml', 'pubspec.lock') }}
+          restore-keys: |
+            pub-cache-${{ runner.os }}-
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test
+
+  build-macos:
+    name: Build macOS
+    runs-on: macos-latest
+    needs:
+      - validate
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Cache Dart packages
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.pub-cache/bin
+            ~/.pub-cache/git
+            ~/.pub-cache/global_packages
+            ~/.pub-cache/hosted
+          key: pub-cache-${{ runner.os }}-${{ hashFiles('pubspec.yaml', 'pubspec.lock') }}
+          restore-keys: |
+            pub-cache-${{ runner.os }}-
+
+      - name: Cache CocoaPods
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/Library/Caches/CocoaPods
+            macos/Pods
+          key: pods-${{ runner.os }}-${{ hashFiles('macos/Podfile.lock') }}
+          restore-keys: |
+            pods-${{ runner.os }}-
+
+      - name: Cache macOS build state
+        uses: actions/cache@v5
+        with:
+          path: |
+            .dart_tool
+            build/macos
+          key: macos-build-${{ runner.os }}-${{ hashFiles('pubspec.yaml', 'pubspec.lock', 'macos/Podfile.lock', 'lib/**', 'assets/**') }}
+          restore-keys: |
+            macos-build-${{ runner.os }}-
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build macOS app
+        run: flutter build macos --release
+
+      - name: Upload macOS app artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: alembic-macos-app
+          path: build/macos/Build/Products/Release/*.app
+          if-no-files-found: error
+          retention-days: 3
+
+  build-windows:
+    name: Build Windows
+    runs-on: windows-latest
+    needs:
+      - validate
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Cache Dart packages
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~\AppData\Local\Pub\Cache\bin
+            ~\AppData\Local\Pub\Cache\git
+            ~\AppData\Local\Pub\Cache\global_packages
+            ~\AppData\Local\Pub\Cache\hosted
+          key: pub-cache-${{ runner.os }}-${{ hashFiles('pubspec.yaml', 'pubspec.lock') }}
+          restore-keys: |
+            pub-cache-${{ runner.os }}-
+
+      - name: Cache Windows build state
+        uses: actions/cache@v5
+        with:
+          path: |
+            .dart_tool
+            build/windows
+          key: windows-build-${{ runner.os }}-${{ hashFiles('pubspec.yaml', 'pubspec.lock', 'windows/**', 'lib/**', 'assets/**') }}
+          restore-keys: |
+            windows-build-${{ runner.os }}-
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build Windows app
+        run: flutter build windows --release
+
+      - name: Upload Windows app artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: alembic-windows-app
+          path: build/windows/x64/runner/Release
+          if-no-files-found: error
+          retention-days: 3

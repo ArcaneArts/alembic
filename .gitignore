@@ -59,3 +59,9 @@ CODE_STYLE_DART.md
 CODE_STYLE_MODDING.md
 
 test/
+!test/
+test/*
+!test/release/
+!test/release/**
+!test/update/
+!test/update/**

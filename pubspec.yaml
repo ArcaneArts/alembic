@@ -25,6 +25,7 @@ dependencies:
   launch_at_startup: ^0.5.1
   package_info_plus: ^9.0.0
   http: ^1.6.0
+  crypto: ^3.0.6
   file_picker: ^10.3.10
   hive_flutter: ^1.1.0
   rxdart: ^0.28.0

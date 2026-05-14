@@ -51,13 +51,7 @@ class DesktopPlatformAdapter {
         AlembicDesktopPlatform.other => 'File Browser',
       };
 
-  String get updateArtifactExtension => switch (currentPlatform) {
-        AlembicDesktopPlatform.macos => 'dmg',
-        AlembicDesktopPlatform.windows => 'exe',
-        AlembicDesktopPlatform.other => 'zip',
-      };
-
-  String get updateArtifactTarget => switch (currentPlatform) {
+  String get updatePlatformName => switch (currentPlatform) {
         AlembicDesktopPlatform.macos => 'macos',
         AlembicDesktopPlatform.windows => 'windows',
         AlembicDesktopPlatform.other => 'desktop',
@@ -125,30 +119,184 @@ class DesktopPlatformAdapter {
     return path;
   }
 
-  String updateDownloadUrl(String version) {
-    final String extension = updateArtifactExtension;
-    final String target = updateArtifactTarget;
-    return 'https://github.com/ArcaneArts/alembic/raw/refs/heads/main/dist/$version/alembic-${updateArtifactVersionLabel(version)}-$target.$extension';
-  }
+  String currentInstallTarget() => switch (currentPlatform) {
+        AlembicDesktopPlatform.macos => _currentMacAppPath(),
+        AlembicDesktopPlatform.windows =>
+          File(Platform.resolvedExecutable).parent.path,
+        AlembicDesktopPlatform.other =>
+          File(Platform.resolvedExecutable).parent.path,
+      };
 
-  String updateArtifactVersionLabel(String version) {
-    if (version.contains('+')) {
-      return version;
+  String _currentMacAppPath() {
+    Directory directory = File(Platform.resolvedExecutable).parent;
+    while (directory.path != directory.parent.path) {
+      if (directory.path.endsWith('.app')) {
+        return directory.path;
+      }
+      directory = directory.parent;
     }
-    return '$version+$version';
+    return File(Platform.resolvedExecutable).parent.path;
   }
 
-  String updateDownloadPath({
-    required String temporaryDirectory,
-    required String version,
+  Future<int> launchSilentUpdateHelper({
+    required String payloadPath,
+    required String installTarget,
+    required String manualInstallerUrl,
   }) {
-    final String extension = updateArtifactExtension;
-    final String target = updateArtifactTarget;
-    return p.join(
-      temporaryDirectory,
-      'Alembic',
-      'alembic-${updateArtifactVersionLabel(version)}-$target.$extension',
+    return switch (currentPlatform) {
+      AlembicDesktopPlatform.macos => _launchMacUpdateHelper(
+          payloadPath: payloadPath,
+          installTarget: installTarget,
+          manualInstallerUrl: manualInstallerUrl,
+        ),
+      AlembicDesktopPlatform.windows => _launchWindowsUpdateHelper(
+          payloadPath: payloadPath,
+          installTarget: installTarget,
+          manualInstallerUrl: manualInstallerUrl,
+        ),
+      AlembicDesktopPlatform.other => launchDownloadedUpdate(payloadPath),
+    };
+  }
+
+  Future<int> _launchMacUpdateHelper({
+    required String payloadPath,
+    required String installTarget,
+    required String manualInstallerUrl,
+  }) async {
+    Directory helperDirectory =
+        await Directory.systemTemp.createTemp('alembic-update-helper-');
+    File script = File(p.join(helperDirectory.path, 'update.sh'));
+    await script.writeAsString(r'''
+#!/bin/sh
+set -eu
+payload="$1"
+target="$2"
+app_pid="$3"
+manual="$4"
+log_dir="${HOME:-/tmp}/Library/Logs"
+mkdir -p "$log_dir" 2>/dev/null || true
+log="$log_dir/AlembicUpdater.log"
+exec >>"$log" 2>&1
+while kill -0 "$app_pid" 2>/dev/null; do
+  sleep 1
+done
+staging="$(mktemp -d "${TMPDIR:-/tmp}/alembic-update.XXXXXX")"
+backup="${target}.previous"
+if ! ditto -x -k "$payload" "$staging"; then
+  [ -n "$manual" ] && open "$manual" || true
+  exit 1
+fi
+app="$(find "$staging" -maxdepth 2 -name "Alembic.app" -type d | head -n 1)"
+if [ -z "$app" ]; then
+  [ -n "$manual" ] && open "$manual" || true
+  exit 1
+fi
+rm -rf "$backup"
+if [ -d "$target" ]; then
+  mv "$target" "$backup"
+fi
+if ! mv "$app" "$target"; then
+  rm -rf "$target"
+  if [ -d "$backup" ]; then
+    mv "$backup" "$target"
+  fi
+  [ -n "$manual" ] && open "$manual" || true
+  exit 1
+fi
+rm -rf "$backup" "$staging"
+open "$target"
+''');
+    await Process.start(
+      '/bin/sh',
+      <String>[
+        script.path,
+        payloadPath,
+        installTarget,
+        '$pid',
+        manualInstallerUrl
+      ],
+      mode: ProcessStartMode.detached,
     );
+    return 0;
+  }
+
+  Future<int> _launchWindowsUpdateHelper({
+    required String payloadPath,
+    required String installTarget,
+    required String manualInstallerUrl,
+  }) async {
+    Directory helperDirectory =
+        await Directory.systemTemp.createTemp('alembic-update-helper-');
+    File script = File(p.join(helperDirectory.path, 'update.ps1'));
+    await script.writeAsString(r'''
+param(
+  [string]$Payload,
+  [string]$Target,
+  [int]$Pid,
+  [string]$Manual
+)
+$ErrorActionPreference = "Stop"
+$Log = Join-Path $env:TEMP "AlembicUpdater.log"
+$Backup = ""
+Start-Transcript -Path $Log -Append | Out-Null
+try {
+  while (Get-Process -Id $Pid -ErrorAction SilentlyContinue) {
+    Start-Sleep -Seconds 1
+  }
+  $Staging = Join-Path $env:TEMP ("alembic-update-" + [guid]::NewGuid())
+  New-Item -ItemType Directory -Path $Staging -Force | Out-Null
+  Expand-Archive -LiteralPath $Payload -DestinationPath $Staging -Force
+  $Exe = Get-ChildItem -Path $Staging -Recurse -Filter "Alembic.exe" | Select-Object -First 1
+  if ($null -eq $Exe) {
+    throw "Alembic.exe was not found in update payload"
+  }
+  $Source = $Exe.Directory.FullName
+  $Parent = Split-Path -Parent $Target
+  $Leaf = Split-Path -Leaf $Target
+  $Backup = Join-Path $Parent "$Leaf.previous"
+  Remove-Item -LiteralPath $Backup -Recurse -Force -ErrorAction SilentlyContinue
+  if (Test-Path -LiteralPath $Target) {
+    Move-Item -LiteralPath $Target -Destination $Backup -Force
+  }
+  New-Item -ItemType Directory -Path $Target -Force | Out-Null
+  Copy-Item -Path (Join-Path $Source "*") -Destination $Target -Recurse -Force
+  Remove-Item -LiteralPath $Backup -Recurse -Force -ErrorAction SilentlyContinue
+  Remove-Item -LiteralPath $Staging -Recurse -Force -ErrorAction SilentlyContinue
+  Start-Process -FilePath (Join-Path $Target "Alembic.exe")
+} catch {
+  if (![string]::IsNullOrWhiteSpace($Backup) -and (Test-Path -LiteralPath $Backup)) {
+    Remove-Item -LiteralPath $Target -Recurse -Force -ErrorAction SilentlyContinue
+    Move-Item -LiteralPath $Backup -Destination $Target -Force
+  }
+  if (![string]::IsNullOrWhiteSpace($Manual)) {
+    Start-Process $Manual
+  }
+  exit 1
+} finally {
+  Stop-Transcript | Out-Null
+}
+''');
+    await Process.start(
+      'powershell.exe',
+      <String>[
+        '-NoProfile',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-File',
+        script.path,
+        '-Payload',
+        payloadPath,
+        '-Target',
+        installTarget,
+        '-Pid',
+        '$pid',
+        '-Manual',
+        manualInstallerUrl,
+      ],
+      mode: ProcessStartMode.detached,
+      runInShell: true,
+    );
+    return 0;
   }
 
   Future<int> openInFileExplorer(String path) {
