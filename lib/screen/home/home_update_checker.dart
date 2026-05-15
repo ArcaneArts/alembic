@@ -22,9 +22,11 @@ class HomeUpdateChecker {
       return false;
     }
     AppUpdateService updateService = AppUpdateService();
+    UpdateCheckResult? update;
+    bool shouldNotifyFailure = force;
     try {
       String currentVersion = packageInfo.version.trim();
-      UpdateCheckResult? update =
+      update =
           await updateService.checkForUpdate(currentVersion: currentVersion);
       if (update == null) {
         info('The app is up to date (version: $currentVersion)');
@@ -37,10 +39,14 @@ class HomeUpdateChecker {
       if (!confirmed) {
         return true;
       }
+      shouldNotifyFailure = true;
       await _downloadAndApply(updateService, update);
       return true;
     } catch (e) {
       error('Error checking for updates: $e');
+      if (shouldNotifyFailure && context.mounted) {
+        await _showUpdateFailure(context, update, e);
+      }
       return false;
     } finally {
       updateService.dispose();
@@ -62,6 +68,46 @@ class HomeUpdateChecker {
     );
   }
 
+  Future<void> _showUpdateFailure(
+    BuildContext context,
+    UpdateCheckResult? update,
+    Object failure,
+  ) async {
+    DesktopPlatformAdapter adapter = DesktopPlatformAdapter.instance;
+    String manualInstallerUrl = _manualInstallerUrl(update);
+    if (manualInstallerUrl.isEmpty) {
+      await showAlembicInfoDialog(
+        context,
+        title: 'Update Failed',
+        message:
+            'Alembic could not complete the update check.\n\nDetails: $failure',
+      );
+      return;
+    }
+
+    bool openInstaller = await showAlembicConfirmDialog(
+      context,
+      title: 'Automatic Update Failed',
+      description:
+          'Alembic could not install the update automatically.\n\nDetails: $failure\n\nOpen the platform installer instead?',
+      confirmText: 'Open Installer',
+      cancelText: 'Close',
+    );
+    if (openInstaller) {
+      await adapter.launchDownloadedUpdate(manualInstallerUrl);
+    }
+  }
+
+  String _manualInstallerUrl(UpdateCheckResult? update) {
+    if (update == null) {
+      return '';
+    }
+    if (update.asset.manualUrl.isNotEmpty) {
+      return update.asset.manualUrl;
+    }
+    return update.asset.url;
+  }
+
   Future<void> _downloadAndApply(
     AppUpdateService updateService,
     UpdateCheckResult update,
@@ -73,9 +119,7 @@ class HomeUpdateChecker {
       temporaryDirectory: temporaryDirectory,
     );
     String installTarget = adapter.currentInstallTarget();
-    String manualInstallerUrl = update.asset.manualUrl.isNotEmpty
-        ? update.asset.manualUrl
-        : update.asset.url;
+    String manualInstallerUrl = _manualInstallerUrl(update);
 
     verbose('Launching updater for $installTarget from ${payload.path}');
     int launchExitCode = await adapter.launchSilentUpdateHelper(
@@ -84,9 +128,6 @@ class HomeUpdateChecker {
       manualInstallerUrl: manualInstallerUrl,
     );
     if (launchExitCode != 0) {
-      if (manualInstallerUrl.isNotEmpty) {
-        await adapter.launchDownloadedUpdate(manualInstallerUrl);
-      }
       throw Exception('Failed to launch silent update helper');
     }
     warn('Shutting down Alembic so the update can be installed');

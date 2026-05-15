@@ -177,17 +177,31 @@ log_dir="${HOME:-/tmp}/Library/Logs"
 mkdir -p "$log_dir" 2>/dev/null || true
 log="$log_dir/AlembicUpdater.log"
 exec >>"$log" 2>&1
+echo "Starting Alembic update"
+echo "Payload: $payload"
+echo "Target: $target"
+echo "App pid: $app_pid"
 while kill -0 "$app_pid" 2>/dev/null; do
   sleep 1
 done
-staging="$(mktemp -d "${TMPDIR:-/tmp}/alembic-update.XXXXXX")"
-backup="${target}.previous"
-if ! ditto -x -k "$payload" "$staging"; then
+if [ ! -f "$payload" ]; then
+  echo "Update payload does not exist"
   [ -n "$manual" ] && open "$manual" || true
   exit 1
 fi
-app="$(find "$staging" -maxdepth 2 -name "Alembic.app" -type d | head -n 1)"
+staging="$(mktemp -d "${TMPDIR:-/tmp}/alembic-update.XXXXXX")"
+backup="${target}.previous"
+if ! ditto -x -k "$payload" "$staging"; then
+  echo "Failed to extract update payload"
+  [ -n "$manual" ] && open "$manual" || true
+  exit 1
+fi
+app="$(find "$staging" -maxdepth 3 \( -name "Alembic.app" -o -name "alembic.app" \) -type d | head -n 1)"
 if [ -z "$app" ]; then
+  app="$(find "$staging" -maxdepth 3 -iname "*.app" -type d | head -n 1)"
+fi
+if [ -z "$app" ]; then
+  echo "Alembic app bundle was not found in the update payload"
   [ -n "$manual" ] && open "$manual" || true
   exit 1
 fi
@@ -196,6 +210,7 @@ if [ -d "$target" ]; then
   mv "$target" "$backup"
 fi
 if ! mv "$app" "$target"; then
+  echo "Failed to move update app into place"
   rm -rf "$target"
   if [ -d "$backup" ]; then
     mv "$backup" "$target"
@@ -204,6 +219,7 @@ if ! mv "$app" "$target"; then
   exit 1
 fi
 rm -rf "$backup" "$staging"
+echo "Alembic update installed"
 open "$target"
 ''');
     await Process.start(
@@ -240,8 +256,15 @@ $Log = Join-Path $env:TEMP "AlembicUpdater.log"
 $Backup = ""
 Start-Transcript -Path $Log -Append | Out-Null
 try {
+  Write-Output "Starting Alembic update"
+  Write-Output "Payload: $Payload"
+  Write-Output "Target: $Target"
+  Write-Output "App pid: $Pid"
   while (Get-Process -Id $Pid -ErrorAction SilentlyContinue) {
     Start-Sleep -Seconds 1
+  }
+  if (!(Test-Path -LiteralPath $Payload)) {
+    throw "Update payload does not exist"
   }
   $Staging = Join-Path $env:TEMP ("alembic-update-" + [guid]::NewGuid())
   New-Item -ItemType Directory -Path $Staging -Force | Out-Null
