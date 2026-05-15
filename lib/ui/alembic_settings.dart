@@ -9,7 +9,6 @@ class AlembicSettingsPane extends StatelessWidget {
   final String subtitle;
   final List<Widget> children;
   final Widget? trailing;
-  final bool shrinkWrap;
 
   const AlembicSettingsPane({
     super.key,
@@ -17,39 +16,45 @@ class AlembicSettingsPane extends StatelessWidget {
     required this.subtitle,
     required this.children,
     this.trailing,
-    this.shrinkWrap = false,
   });
 
   @override
-  Widget build(BuildContext context) => AlembicPanel(
-        child: m.ListView.separated(
-          itemCount: children.length + 1,
-          shrinkWrap: shrinkWrap,
-          separatorBuilder: (BuildContext context, int index) => m.Divider(
-            height: 1,
-            thickness: 1,
-            color: Theme.of(context).colorScheme.border,
-          ),
-          itemBuilder: (BuildContext context, int index) {
-            if (index == 0) {
-              return Padding(
-                padding: const EdgeInsets.only(
-                  bottom: AlembicShadcnTokens.gapLg,
-                ),
-                child: AlembicSectionHeader(
-                  title: title,
-                  subtitle: subtitle,
-                  trailing: trailing,
-                ),
-              );
-            }
-            return Padding(
-              padding: AlembicShadcnTokens.rowPadding,
-              child: children[index - 1],
-            );
-          },
+  Widget build(BuildContext context) {
+    ThemeData theme = Theme.of(context);
+    List<Widget> rows = <Widget>[
+      Padding(
+        padding: const EdgeInsets.only(
+          bottom: AlembicShadcnTokens.gapLg,
+        ),
+        child: AlembicSectionHeader(
+          title: title,
+          subtitle: subtitle,
+          trailing: trailing,
+        ),
+      ),
+    ];
+    for (Widget child in children) {
+      rows.add(
+        m.Divider(
+          height: 1,
+          thickness: 1,
+          color: theme.colorScheme.border,
         ),
       );
+      rows.add(
+        Padding(
+          padding: AlembicShadcnTokens.rowPadding,
+          child: child,
+        ),
+      );
+    }
+    return AlembicPanel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: rows,
+      ),
+    );
+  }
 }
 
 class AlembicSettingsToggleRow extends StatelessWidget {

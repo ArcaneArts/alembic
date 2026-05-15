@@ -7,7 +7,6 @@ import 'package:alembic/core/archive_master_service.dart';
 import 'package:alembic/core/repository_runtime.dart';
 import 'package:alembic/main.dart';
 import 'package:alembic/presentation/home_view_state.dart';
-import 'package:alembic/screen/home/home_actions.dart';
 import 'package:alembic/screen/home/home_bulk_actions.dart';
 import 'package:alembic/screen/home/home_controller.dart';
 import 'package:alembic/screen/home/home_menu_handler.dart';
@@ -19,6 +18,7 @@ import 'package:alembic/screen/home/home_tiles.dart';
 import 'package:alembic/screen/home/home_top_bar.dart';
 import 'package:alembic/screen/home/home_update_checker.dart';
 import 'package:alembic/screen/settings.dart';
+import 'package:alembic/screen/settings/settings_types.dart';
 import 'package:alembic/ui/alembic_ui.dart';
 import 'package:alembic/widget/repository_tile_actions.dart';
 import 'package:arcane/arcane.dart';
@@ -308,15 +308,21 @@ class _AlembicHomeState extends State<AlembicHome> {
   }
 
   void _openSettings() {
-    unawaited(showSettingsModal(context));
+    unawaited(
+      showSettingsModal(
+        context,
+        quickActions: _menuHandler.availableSettingsActions(),
+        onQuickActionSelected: _openSettingsAction,
+      ),
+    );
   }
 
   void _openImport() {
     unawaited(_importer.import(context));
   }
 
-  void _openTopMenuAction(HomeTopMenuAction action) {
-    unawaited(_menuHandler.handle(context, action));
+  void _openSettingsAction(SettingsQuickAction action) {
+    unawaited(_menuHandler.handleSettingsAction(context, action));
   }
 
   @override
@@ -358,13 +364,11 @@ class _AlembicHomeState extends State<AlembicHome> {
           progressLabel: _controller.progressLabel,
           searchController: _searchController,
           organizationLogins: _controller.organizationLogins(),
-          topMenuActions: _menuHandler.availableActions(),
           onOpenSettings: _openSettings,
           onSearchChanged: _onSearchChanged,
           onTabSelected: _selectHomeTab,
           onOrganizationFilterSelected: _selectOrganizationFilter,
           onImportRepository: _openImport,
-          onTopMenuSelected: _openTopMenuAction,
         ),
         const Gap(AlembicShadcnTokens.gapMd),
         m.Divider(

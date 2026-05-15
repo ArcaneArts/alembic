@@ -26,29 +26,138 @@ class SettingsNavigation extends StatelessWidget {
     return AlembicPanel(
       padding: AlembicShadcnTokens.compactSurfacePadding,
       tone: AlembicSurfaceTone.elevated,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          const AlembicSectionHeader(
-            title: 'Preferences',
-            subtitle: 'Configure desktop behavior and repository defaults.',
-          ),
-          const Gap(14),
+      child: AlembicTabs<SettingsPane>(
+        value: pane,
+        collapsed: true,
+        expanded: true,
+        items: <AlembicNavigationItem<SettingsPane>>[
           for (SettingsPane item in SettingsPane.values)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: AlembicNavItem(
-                title: item.title,
-                subtitle: item.subtitle,
-                selected: pane == item,
-                leading: m.Icon(item.iconData, size: 16),
-                onPressed: () => onSelected(item),
-              ),
+            AlembicNavigationItem<SettingsPane>(
+              value: item,
+              label: item.title,
+              icon: item.iconData,
+              tooltip: item.title,
             ),
         ],
+        onChanged: onSelected,
       ),
     );
   }
+}
+
+class SettingsQuickActions extends StatelessWidget {
+  final List<SettingsQuickAction> actions;
+  final ValueChanged<SettingsQuickAction>? onSelected;
+
+  const SettingsQuickActions({
+    super.key,
+    required this.actions,
+    this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (actions.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        int columns = constraints.maxWidth < 760 ? 3 : actions.length;
+        return AlembicPanel(
+          padding: AlembicShadcnTokens.compactSurfacePadding,
+          tone: AlembicSurfaceTone.elevated,
+          child: _SettingsQuickActionGrid(
+            actions: actions,
+            columns: columns,
+            onSelected: onSelected,
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _SettingsQuickActionGrid extends StatelessWidget {
+  final List<SettingsQuickAction> actions;
+  final int columns;
+  final ValueChanged<SettingsQuickAction>? onSelected;
+
+  const _SettingsQuickActionGrid({
+    required this.actions,
+    required this.columns,
+    this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    int rowCount = (actions.length / columns).ceil();
+    return Column(
+      children: <Widget>[
+        for (int row = 0; row < rowCount; row++) ...<Widget>[
+          _SettingsQuickActionRow(
+            actions: actions
+                .skip(row * columns)
+                .take(columns)
+                .toList(growable: false),
+            columns: columns,
+            onSelected: onSelected,
+          ),
+          if (row < rowCount - 1) const Gap(AlembicShadcnTokens.gapXs),
+        ],
+      ],
+    );
+  }
+}
+
+class _SettingsQuickActionRow extends StatelessWidget {
+  final List<SettingsQuickAction> actions;
+  final int columns;
+  final ValueChanged<SettingsQuickAction>? onSelected;
+
+  const _SettingsQuickActionRow({
+    required this.actions,
+    required this.columns,
+    this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: <Widget>[
+        for (int index = 0; index < columns; index++) ...<Widget>[
+          Expanded(
+            child: index < actions.length
+                ? _SettingsQuickActionButton(
+                    action: actions[index],
+                    onSelected: onSelected,
+                  )
+                : const SizedBox.shrink(),
+          ),
+          if (index < columns - 1) const Gap(AlembicShadcnTokens.gapXs),
+        ],
+      ],
+    );
+  }
+}
+
+class _SettingsQuickActionButton extends StatelessWidget {
+  final SettingsQuickAction action;
+  final ValueChanged<SettingsQuickAction>? onSelected;
+
+  const _SettingsQuickActionButton({
+    required this.action,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) => AlembicToolbarButton(
+        label: action.compactTitle,
+        leadingIcon: action.iconData,
+        compact: true,
+        smallLabel: true,
+        tooltip: action.title,
+        onPressed: onSelected == null ? null : () => onSelected!(action),
+      );
 }
 
 class SettingsContent extends StatelessWidget {

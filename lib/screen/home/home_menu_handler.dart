@@ -3,10 +3,10 @@ import 'dart:io';
 import 'package:alembic/app/alembic_dialogs.dart';
 import 'package:alembic/main.dart';
 import 'package:alembic/platform/desktop_platform_adapter.dart';
-import 'package:alembic/screen/home/home_actions.dart';
 import 'package:alembic/screen/home/home_bulk_actions.dart';
 import 'package:alembic/screen/home/home_session.dart';
 import 'package:alembic/screen/home/home_update_checker.dart';
+import 'package:alembic/screen/settings/settings_types.dart';
 import 'package:alembic/screen/splash.dart';
 import 'package:alembic/util/repo_config.dart';
 import 'package:arcane/arcane.dart';
@@ -23,41 +23,44 @@ class HomeTopMenuHandler {
     required this.updateChecker,
   });
 
-  List<HomeTopMenuAction> availableActions() {
+  List<SettingsQuickAction> availableSettingsActions() {
     String workspacePath = expandPath(config.workspaceDirectory);
     String archivePath = _archivePath();
-    return <HomeTopMenuAction>[
+    return <SettingsQuickAction>[
       if (Directory(workspacePath).existsSync())
-        HomeTopMenuAction.workspaceFolder,
+        SettingsQuickAction.workspaceFolder,
       if (Directory(archivePath).existsSync())
-        HomeTopMenuAction.archivesFolder,
-      HomeTopMenuAction.bulkActions,
-      HomeTopMenuAction.checkUpdates,
-      HomeTopMenuAction.restart,
-      HomeTopMenuAction.logout,
+        SettingsQuickAction.archivesFolder,
+      SettingsQuickAction.bulkActions,
+      SettingsQuickAction.checkUpdates,
+      SettingsQuickAction.restart,
+      SettingsQuickAction.logout,
     ];
   }
 
-  Future<void> handle(BuildContext context, HomeTopMenuAction action) async {
+  Future<void> handleSettingsAction(
+    BuildContext context,
+    SettingsQuickAction action,
+  ) async {
     DesktopPlatformAdapter adapter = DesktopPlatformAdapter.instance;
     switch (action) {
-      case HomeTopMenuAction.workspaceFolder:
+      case SettingsQuickAction.workspaceFolder:
         await adapter.openInFileExplorer(
           Directory(expandPath(config.workspaceDirectory)).absolute.path,
         );
         return;
-      case HomeTopMenuAction.archivesFolder:
+      case SettingsQuickAction.archivesFolder:
         await adapter.openInFileExplorer(
           Directory(_archivePath()).absolute.path,
         );
         return;
-      case HomeTopMenuAction.bulkActions:
+      case SettingsQuickAction.bulkActions:
         await bulkActions.showActionsDialog(context);
         return;
-      case HomeTopMenuAction.checkUpdates:
+      case SettingsQuickAction.checkUpdates:
         await _checkForUpdatesNotifying(context);
         return;
-      case HomeTopMenuAction.restart:
+      case SettingsQuickAction.restart:
         if (!context.mounted) {
           return;
         }
@@ -66,7 +69,7 @@ class HomeTopMenuHandler {
           (_) => false,
         );
         return;
-      case HomeTopMenuAction.logout:
+      case SettingsQuickAction.logout:
         await session.confirmLogout(context);
         return;
     }

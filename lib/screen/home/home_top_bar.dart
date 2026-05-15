@@ -1,6 +1,5 @@
 import 'package:alembic/main.dart';
 import 'package:alembic/presentation/home_view_state.dart';
-import 'package:alembic/screen/home/home_actions.dart';
 import 'package:alembic/ui/alembic_ui.dart';
 import 'package:arcane/arcane.dart';
 import 'package:flutter/material.dart' as m;
@@ -16,8 +15,6 @@ class HomeTopBar extends StatelessWidget {
   final ValueChanged<OrganizationFilter> onOrganizationFilterSelected;
   final VoidCallback onOpenSettings;
   final VoidCallback onImportRepository;
-  final List<HomeTopMenuAction> topMenuActions;
-  final ValueChanged<HomeTopMenuAction> onTopMenuSelected;
 
   const HomeTopBar({
     super.key,
@@ -31,14 +28,10 @@ class HomeTopBar extends StatelessWidget {
     required this.onOrganizationFilterSelected,
     required this.onOpenSettings,
     required this.onImportRepository,
-    required this.topMenuActions,
-    required this.onTopMenuSelected,
   });
 
   @override
   Widget build(BuildContext context) {
-    List<AlembicDropdownOption<HomeTopMenuAction>> menuOptions =
-        _buildMenuOptions();
     List<AlembicDropdownOption<String>> organizationOptions =
         _buildOrganizationOptions();
     String selectedOrganization =
@@ -50,7 +43,6 @@ class HomeTopBar extends StatelessWidget {
         Widget navigation = _buildTabs(collapseToIcons);
         Widget actions = _buildActions(
           collapseToIcons: collapseToIcons,
-          menuOptions: menuOptions,
         );
         Widget searchRow = _buildSearchRow(
           selectedOrganization: selectedOrganization,
@@ -91,16 +83,6 @@ class HomeTopBar extends StatelessWidget {
       },
     );
   }
-
-  List<AlembicDropdownOption<HomeTopMenuAction>> _buildMenuOptions() =>
-      <AlembicDropdownOption<HomeTopMenuAction>>[
-        for (HomeTopMenuAction action in topMenuActions)
-          AlembicDropdownOption<HomeTopMenuAction>(
-            value: action,
-            label: action.label,
-            icon: action.icon,
-          ),
-      ];
 
   List<AlembicDropdownOption<String>> _buildOrganizationOptions() =>
       <AlembicDropdownOption<String>>[
@@ -143,7 +125,6 @@ class HomeTopBar extends StatelessWidget {
 
   Widget _buildActions({
     required bool collapseToIcons,
-    required List<AlembicDropdownOption<HomeTopMenuAction>> menuOptions,
   }) =>
       Wrap(
         spacing: AlembicShadcnTokens.gapSm,
@@ -165,21 +146,15 @@ class HomeTopBar extends StatelessWidget {
             ),
           ),
           SizedBox(
-            width: AlembicShadcnTokens.commandIconWidth,
+            width: collapseToIcons
+                ? AlembicShadcnTokens.commandIconWidth
+                : AlembicShadcnTokens.commandButtonWidth,
             child: AlembicToolbarButton(
               label: 'Settings',
               leadingIcon: m.Icons.tune,
               onPressed: onOpenSettings,
-              iconOnly: true,
+              iconOnly: collapseToIcons,
               tooltip: 'Settings',
-            ),
-          ),
-          SizedBox(
-            width: AlembicShadcnTokens.commandIconWidth,
-            child: AlembicOverflowMenu<HomeTopMenuAction>(
-              label: 'More options',
-              items: menuOptions,
-              onSelected: onTopMenuSelected,
             ),
           ),
         ],

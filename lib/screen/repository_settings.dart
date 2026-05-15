@@ -72,7 +72,6 @@ class _RepositorySettingsState extends State<RepositorySettings> {
         child: AlembicSettingsPane(
           title: 'Repository Settings',
           subtitle: widget.repository.fullName,
-          shrinkWrap: true,
           trailing: AlembicToolbarButton(
             onPressed: () => Navigator.of(context).pop(),
             label: 'Done',

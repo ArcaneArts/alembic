@@ -8,6 +8,7 @@ class AlembicTabs<T> extends StatelessWidget {
   final List<AlembicNavigationItem<T>> items;
   final ValueChanged<T> onChanged;
   final bool collapsed;
+  final bool expanded;
 
   const AlembicTabs({
     super.key,
@@ -15,6 +16,7 @@ class AlembicTabs<T> extends StatelessWidget {
     required this.items,
     required this.onChanged,
     this.collapsed = false,
+    this.expanded = false,
   });
 
   @override
@@ -28,20 +30,30 @@ class AlembicTabs<T> extends StatelessWidget {
         border: Border.all(color: theme.colorScheme.border),
       ),
       child: Row(
-        mainAxisSize: MainAxisSize.min,
+        mainAxisSize: expanded ? MainAxisSize.max : MainAxisSize.min,
         children: <Widget>[
           for (AlembicNavigationItem<T> item in items)
-            SizedBox(
-              width: collapsed
-                  ? AlembicShadcnTokens.tabIconWidth
-                  : AlembicShadcnTokens.tabWidth,
-              child: _AlembicTabButton<T>(
-                item: item,
-                selected: item.value == value,
-                collapsed: collapsed,
-                onPressed: () => onChanged(item.value),
+            if (expanded)
+              Expanded(
+                child: _AlembicTabButton<T>(
+                  item: item,
+                  selected: item.value == value,
+                  collapsed: collapsed,
+                  onPressed: () => onChanged(item.value),
+                ),
+              )
+            else
+              SizedBox(
+                width: collapsed
+                    ? AlembicShadcnTokens.tabIconWidth
+                    : AlembicShadcnTokens.tabWidth,
+                child: _AlembicTabButton<T>(
+                  item: item,
+                  selected: item.value == value,
+                  collapsed: collapsed,
+                  onPressed: () => onChanged(item.value),
+                ),
               ),
-            ),
         ],
       ),
     );

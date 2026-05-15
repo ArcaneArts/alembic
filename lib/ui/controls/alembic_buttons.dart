@@ -15,6 +15,7 @@ class AlembicToolbarButton extends StatelessWidget {
   final bool compact;
   final bool iconOnly;
   final bool busy;
+  final bool smallLabel;
   final String? tooltip;
 
   const AlembicToolbarButton({
@@ -29,6 +30,7 @@ class AlembicToolbarButton extends StatelessWidget {
     this.compact = false,
     this.iconOnly = false,
     this.busy = false,
+    this.smallLabel = false,
     this.tooltip,
   }) : assert(!iconOnly || leadingIcon != null || trailingIcon != null);
 
@@ -99,19 +101,24 @@ class AlembicToolbarButton extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.center,
       children: <Widget>[
         if (leadingIcon != null) ...<Widget>[
-          m.Icon(leadingIcon, size: 15),
-          const Gap(AlembicShadcnTokens.gapSm),
+          m.Icon(leadingIcon, size: smallLabel ? 13 : 15),
+          Gap(
+            smallLabel ? AlembicShadcnTokens.gapXs : AlembicShadcnTokens.gapSm,
+          ),
         ],
         Flexible(
           child: Text(
             label,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
+            style: smallLabel ? const TextStyle(fontSize: 11) : null,
           ),
         ),
         if (trailingIcon != null) ...<Widget>[
-          const Gap(AlembicShadcnTokens.gapSm),
-          m.Icon(trailingIcon, size: 15),
+          Gap(
+            smallLabel ? AlembicShadcnTokens.gapXs : AlembicShadcnTokens.gapSm,
+          ),
+          m.Icon(trailingIcon, size: smallLabel ? 13 : 15),
         ],
       ],
     );

@@ -15,25 +15,43 @@ import 'package:arcane/arcane.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart' as m;
 
-Future<void> showSettingsModal(BuildContext context) {
+Future<void> showSettingsModal(
+  BuildContext context, {
+  SettingsPane initialPane = SettingsPane.general,
+  List<SettingsQuickAction> quickActions = const <SettingsQuickAction>[],
+  ValueChanged<SettingsQuickAction>? onQuickActionSelected,
+}) {
   return Navigator.of(context, rootNavigator: true).push(
-    m.MaterialPageRoute<void>(builder: (_) => const Settings()),
+    m.MaterialPageRoute<void>(
+      builder: (_) => Settings(
+        initialPane: initialPane,
+        quickActions: quickActions,
+        onQuickActionSelected: onQuickActionSelected,
+        modal: true,
+      ),
+    ),
   );
 }
 
 class Settings extends StatefulWidget {
   final bool modal;
+  final SettingsPane initialPane;
+  final List<SettingsQuickAction> quickActions;
+  final ValueChanged<SettingsQuickAction>? onQuickActionSelected;
 
   const Settings({
     super.key,
     this.modal = false,
+    this.initialPane = SettingsPane.general,
+    this.quickActions = const <SettingsQuickAction>[],
+    this.onQuickActionSelected,
   });
 
   @override
   State<Settings> createState() => _SettingsState();
 }
 
-class _SettingsState extends State<Settings> {
+class _SettingsState extends State<Settings> with m.WidgetsBindingObserver {
   late final m.TextEditingController _archiveDaysController;
   late final GitSigningManager _signingManager;
   late CloneTransportMode _cloneTransportMode;
@@ -44,6 +62,8 @@ class _SettingsState extends State<Settings> {
   @override
   void initState() {
     super.initState();
+    m.WidgetsBinding.instance.addObserver(this);
+    _pane = widget.initialPane;
     _signingManager = const GitSigningManager();
     _cloneTransportMode = loadCloneTransportMode();
     _archiveDaysController = m.TextEditingController(
@@ -62,8 +82,24 @@ class _SettingsState extends State<Settings> {
 
   @override
   void dispose() {
+    m.WidgetsBinding.instance.removeObserver(this);
     _archiveDaysController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(m.AppLifecycleState state) {
+    if (state != m.AppLifecycleState.inactive &&
+        state != m.AppLifecycleState.hidden &&
+        state != m.AppLifecycleState.paused) {
+      return;
+    }
+    if (_pane == SettingsPane.general || !mounted) {
+      return;
+    }
+    setState(() {
+      _pane = SettingsPane.general;
+    });
   }
 
   Future<void> _selectDirectory({
@@ -214,56 +250,70 @@ class _SettingsState extends State<Settings> {
 
   @override
   Widget build(BuildContext context) {
+    Widget navigation = SettingsNavigation(
+      pane: _pane,
+      onSelected: _selectPane,
+    );
+    Widget content = SettingsContent(
+      pane: _pane,
+      archiveDaysController: _archiveDaysController,
+      cloneTransportMode: _cloneTransportMode,
+      signingBusy: _signingBusy,
+      signingStatus: _signingStatus,
+      onSelectDirectory: _selectDirectory,
+      onCloneTransportChanged: _onCloneTransportChanged,
+      onConfigureCommitSigning: _configureCommitSigning,
+      onThemeModeChanged: _setThemeMode,
+    );
     return m.Scaffold(
       backgroundColor: m.Colors.transparent,
       body: AlembicScaffold(
-        child: LayoutBuilder(
-          builder: (BuildContext context, BoxConstraints constraints) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                AlembicPageHeader(
-                  title: 'Settings',
-                  subtitle:
-                      'Configure startup, workspace, accounts, and tooling.',
-                  trailing: AlembicToolbarButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    label: 'Done',
-                  ),
-                ),
-                const Gap(AlembicShadcnTokens.gapLg),
-                Expanded(
-                  child: m.ListView(
-                    children: <Widget>[
-                      SettingsNavigation(
-                        pane: _pane,
-                        onSelected: _selectPane,
-                      ),
-                      const Gap(AlembicShadcnTokens.gapLg),
-                      SizedBox(
-                        height: (constraints.maxHeight * 0.9)
-                            .clamp(440, 980)
-                            .toDouble(),
-                        child: SettingsContent(
-                          pane: _pane,
-                          archiveDaysController: _archiveDaysController,
-                          cloneTransportMode: _cloneTransportMode,
-                          signingBusy: _signingBusy,
-                          signingStatus: _signingStatus,
-                          onSelectDirectory: _selectDirectory,
-                          onCloneTransportChanged: _onCloneTransportChanged,
-                          onConfigureCommitSigning: _configureCommitSigning,
-                          onThemeModeChanged: _setThemeMode,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            );
-          },
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            AlembicPageHeader(
+              title: 'Settings',
+              subtitle: 'Configure startup, workspace, accounts, and tooling.',
+              trailing: AlembicToolbarButton(
+                onPressed: () => Navigator.of(context).pop(),
+                label: 'Done',
+              ),
+            ),
+            const Gap(AlembicShadcnTokens.gapLg),
+            navigation,
+            const Gap(AlembicShadcnTokens.gapLg),
+            Expanded(
+              child: _SettingsBody(
+                content: content,
+              ),
+            ),
+            if (widget.quickActions.isNotEmpty) ...<Widget>[
+              const Gap(AlembicShadcnTokens.gapLg),
+              SettingsQuickActions(
+                actions: widget.quickActions,
+                onSelected: widget.onQuickActionSelected,
+              ),
+            ],
+          ],
         ),
       ),
+    );
+  }
+}
+
+class _SettingsBody extends StatelessWidget {
+  final Widget content;
+
+  const _SettingsBody({
+    required this.content,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return m.ListView(
+      children: <Widget>[
+        content,
+      ],
     );
   }
 }

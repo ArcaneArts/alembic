@@ -10,15 +10,6 @@ enum HomeBulkAction {
   activateEverything,
 }
 
-enum HomeTopMenuAction {
-  workspaceFolder,
-  archivesFolder,
-  bulkActions,
-  checkUpdates,
-  restart,
-  logout,
-}
-
 extension HomeBulkActionMeta on HomeBulkAction {
   String get label => switch (this) {
         HomeBulkAction.pullActive => 'Pull active repositories',
@@ -44,27 +35,6 @@ extension HomeBulkActionMeta on HomeBulkAction {
   bool get prominent =>
       this == HomeBulkAction.pullActive ||
       this == HomeBulkAction.activateEverything;
-}
-
-extension HomeTopMenuActionMeta on HomeTopMenuAction {
-  String get label => switch (this) {
-        HomeTopMenuAction.workspaceFolder => 'Open workspace folder',
-        HomeTopMenuAction.archivesFolder => 'Open archives folder',
-        HomeTopMenuAction.bulkActions => 'Bulk actions',
-        HomeTopMenuAction.checkUpdates => 'Check for updates',
-        HomeTopMenuAction.restart => 'Restart app',
-        HomeTopMenuAction.logout => 'Log out',
-      };
-
-  IconData get icon => switch (this) {
-        HomeTopMenuAction.workspaceFolder => m.Icons.folder_open,
-        HomeTopMenuAction.archivesFolder => m.Icons.archive_outlined,
-        HomeTopMenuAction.bulkActions =>
-          m.Icons.playlist_add_check_circle_outlined,
-        HomeTopMenuAction.checkUpdates => m.Icons.system_update_alt,
-        HomeTopMenuAction.restart => m.Icons.restart_alt,
-        HomeTopMenuAction.logout => m.Icons.logout,
-      };
 }
 
 extension RepoStateMeta on RepoState {
