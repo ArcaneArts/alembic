@@ -69,4 +69,19 @@ void main() {
     );
     expect(pubspec, isNot(contains('flutter_distributor')));
   });
+
+  test('Flutter release assets are explicitly listed', () async {
+    String pubspec = await File('pubspec.yaml').readAsString();
+
+    expect(
+        pubspec, isNot(contains(RegExp(r'^    - assets/$', multiLine: true))));
+    expect(pubspec, contains('    - assets/app_icon.ico'));
+    expect(pubspec, contains('    - assets/icon.svg'));
+    expect(pubspec, contains('    - assets/launcher.png'));
+    expect(pubspec, contains('    - assets/login.svg'));
+    expect(pubspec, contains('    - assets/tray.png'));
+    expect(pubspec, isNot(contains('.pem')));
+    expect(File('assets/alembictool.2024-08-06.private-key.pem').existsSync(),
+        isFalse);
+  });
 }
