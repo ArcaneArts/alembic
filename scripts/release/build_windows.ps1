@@ -12,7 +12,6 @@ if ([string]::IsNullOrWhiteSpace($Version)) {
 }
 
 $FlutterBin = if ([string]::IsNullOrWhiteSpace($env:FLUTTER_BIN)) { "flutter" } else { $env:FLUTTER_BIN }
-$DartBin = if ([string]::IsNullOrWhiteSpace($env:DART_BIN)) { "dart" } else { $env:DART_BIN }
 $OutPath = Join-Path $Root $Out
 $ZipPath = Join-Path $OutPath "Alembic-$Version-windows-x64.zip"
 $ExePath = Join-Path $OutPath "Alembic-$Version-windows-x64.exe"
@@ -40,6 +39,85 @@ function Write-WindowsBuildDiagnostics {
       Write-Host "==== $($_.FullName) ===="
       Get-Content -Path $_.FullName -Tail 200
     }
+}
+
+function Get-InnoSetupCompiler {
+  if (![string]::IsNullOrWhiteSpace($env:INNO_SETUP_COMPILER)) {
+    if (Test-Path $env:INNO_SETUP_COMPILER) {
+      return $env:INNO_SETUP_COMPILER
+    }
+    throw "INNO_SETUP_COMPILER points to a missing file: $env:INNO_SETUP_COMPILER"
+  }
+
+  $Command = Get-Command "iscc.exe" -ErrorAction SilentlyContinue
+  if ($null -ne $Command) {
+    return $Command.Source
+  }
+
+  $Candidates = @()
+  $ProgramFilesX86 = [Environment]::GetEnvironmentVariable("ProgramFiles(x86)")
+  if (![string]::IsNullOrWhiteSpace($ProgramFilesX86)) {
+    $Candidates += Join-Path $ProgramFilesX86 "Inno Setup 6/ISCC.exe"
+  }
+  if (![string]::IsNullOrWhiteSpace($env:ProgramFiles)) {
+    $Candidates += Join-Path $env:ProgramFiles "Inno Setup 6/ISCC.exe"
+  }
+
+  foreach ($Candidate in $Candidates) {
+    if (Test-Path $Candidate) {
+      return $Candidate
+    }
+  }
+
+  throw "Could not find Inno Setup compiler. Install Inno Setup or set INNO_SETUP_COMPILER."
+}
+
+function Write-InnoSetupScript {
+  param(
+    [string]$BuildDir,
+    [string]$OutputDir,
+    [string]$OutputBaseName
+  )
+
+  $ScriptDir = Join-Path $Root "build/release/windows"
+  $ScriptPath = Join-Path $ScriptDir "Alembic.iss"
+  $IconPath = Join-Path $Root "windows/runner/resources/app_icon.ico"
+  $ResolvedBuildDir = (Resolve-Path $BuildDir).Path
+  $ResolvedOutputDir = (Resolve-Path $OutputDir).Path
+  $ResolvedIconPath = (Resolve-Path $IconPath).Path
+
+  New-Item -ItemType Directory -Path $ScriptDir -Force | Out-Null
+  @"
+[Setup]
+AppId={{8A7D6F09-7F5C-4E41-8B39-A01A87E78D41}
+AppName=Alembic
+AppVersion=$Version
+AppPublisher=Arcane Arts
+DefaultDirName={localappdata}\Programs\Alembic
+DefaultGroupName=Alembic
+DisableProgramGroupPage=yes
+OutputDir=$ResolvedOutputDir
+OutputBaseFilename=$OutputBaseName
+SetupIconFile=$ResolvedIconPath
+UninstallDisplayIcon={app}\Alembic.exe
+Compression=lzma2
+SolidCompression=yes
+WizardStyle=modern
+ArchitecturesAllowed=x64
+ArchitecturesInstallIn64BitMode=x64
+PrivilegesRequired=lowest
+
+[Files]
+Source: "$ResolvedBuildDir\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+
+[Icons]
+Name: "{autoprograms}\Alembic"; Filename: "{app}\Alembic.exe"
+
+[Run]
+Filename: "{app}\Alembic.exe"; Description: "Launch Alembic"; Flags: nowait postinstall skipifsilent
+"@ | Set-Content -LiteralPath $ScriptPath -Encoding UTF8
+
+  return $ScriptPath
 }
 
 New-Item -ItemType Directory -Path $OutPath -Force | Out-Null
@@ -71,19 +149,13 @@ try {
     return
   }
 
-  Invoke-Native $DartBin @("pub", "global", "activate", "flutter_distributor")
-  $PubCacheBin = Join-Path $env:LOCALAPPDATA "Pub/Cache/bin"
-  if (Test-Path $PubCacheBin) {
-    $env:PATH = "$PubCacheBin;$env:PATH"
+  $InnoCompiler = Get-InnoSetupCompiler
+  $OutputBaseName = "Alembic-$Version-windows-x64"
+  $InstallerScript = Write-InnoSetupScript -BuildDir $BuildDir -OutputDir $OutPath -OutputBaseName $OutputBaseName
+  Invoke-Native $InnoCompiler @($InstallerScript)
+  if (!(Test-Path $ExePath)) {
+    throw "Inno Setup did not produce $ExePath"
   }
-  Invoke-Native "flutter_distributor" @("package", "--platform", "windows", "--targets", "exe", "--skip-clean")
-  $Installer = Get-ChildItem -Path (Join-Path $Root "dist") -Recurse -Filter "*.exe" |
-    Sort-Object Length -Descending |
-    Select-Object -First 1
-  if ($null -eq $Installer) {
-    throw "flutter_distributor did not produce an exe installer"
-  }
-  Copy-Item -LiteralPath $Installer.FullName -Destination $ExePath -Force
 } finally {
   Pop-Location
 }

@@ -40,4 +40,33 @@ void main() {
     expect(script, contains('ALEMBIC_BUILD_ID'));
     expect(script, contains('Native assets after failed macOS build:'));
   });
+
+  test('Windows release script packages installer with Inno Setup', () async {
+    String script = await File(
+      p.join('scripts', 'release', 'build_windows.ps1'),
+    ).readAsString();
+
+    expect(script, contains('Get-InnoSetupCompiler'));
+    expect(script, contains('ISCC.exe'));
+    expect(
+        script, contains('DefaultDirName={localappdata}\\Programs\\Alembic'));
+    expect(script, contains(r'OutputBaseFilename=$OutputBaseName'));
+    expect(script, contains('AppId={{8A7D6F09-7F5C-4E41-8B39-A01A87E78D41}'));
+    expect(script, isNot(contains('flutter_distributor')));
+    expect(script, isNot(contains('make_config.yaml')));
+  });
+
+  test('local release shortcuts use shared release scripts', () async {
+    String pubspec = await File('pubspec.yaml').readAsString();
+
+    expect(pubspec, contains('distrib: bash scripts/release/build_macos.sh'));
+    expect(
+      pubspec,
+      contains(
+        'distrib_windows: powershell -NoProfile -ExecutionPolicy Bypass '
+        '-File scripts/release/build_windows.ps1',
+      ),
+    );
+    expect(pubspec, isNot(contains('flutter_distributor')));
+  });
 }
