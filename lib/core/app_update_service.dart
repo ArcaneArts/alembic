@@ -168,11 +168,13 @@ class UpdatePlatformAsset {
 class UpdateManifest {
   final String version;
   final String publishedAt;
+  final String buildId;
   final List<UpdatePlatformAsset> assets;
 
   const UpdateManifest({
     required this.version,
     required this.publishedAt,
+    required this.buildId,
     required this.assets,
   });
 
@@ -184,6 +186,7 @@ class UpdateManifest {
     return UpdateManifest(
       version: version,
       publishedAt: json['publishedAt']?.toString().trim() ?? '',
+      buildId: json['buildId']?.toString().trim() ?? '',
       assets: _assets(json['assets']),
     );
   }
@@ -202,8 +205,19 @@ class UpdateManifest {
     return null;
   }
 
-  bool isNewerThan(String currentVersion) =>
-      AppVersion.parse(version).compareTo(AppVersion.parse(currentVersion)) > 0;
+  bool isNewerThan({
+    required String currentVersion,
+    required String currentBuildId,
+  }) {
+    int versionComparison =
+        AppVersion.parse(version).compareTo(AppVersion.parse(currentVersion));
+    if (versionComparison != 0) {
+      return versionComparison > 0;
+    }
+    return buildId.isNotEmpty &&
+        currentBuildId.isNotEmpty &&
+        buildId != currentBuildId;
+  }
 
   static List<UpdatePlatformAsset> _assets(Object? rawAssets) {
     if (rawAssets is! List) {
@@ -249,10 +263,14 @@ class AppUpdateService {
 
   Future<UpdateCheckResult?> checkForUpdate({
     required String currentVersion,
+    String currentBuildId = AppBuild.currentBuildId,
     AlembicDesktopPlatform? platform,
   }) async {
     UpdateManifest manifest = await fetchManifest();
-    if (!manifest.isNewerThan(currentVersion)) {
+    if (!manifest.isNewerThan(
+      currentVersion: currentVersion,
+      currentBuildId: currentBuildId,
+    )) {
       return null;
     }
     AlembicDesktopPlatform selectedPlatform =
@@ -336,4 +354,11 @@ class AppUpdateService {
       _client.close();
     }
   }
+}
+
+class AppBuild {
+  static const String currentBuildId =
+      String.fromEnvironment('ALEMBIC_BUILD_ID');
+
+  const AppBuild._();
 }

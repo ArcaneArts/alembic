@@ -101,6 +101,8 @@ jobs:
             pods-${{ runner.os }}-
 
       - name: Build macOS release assets
+        env:
+          ALEMBIC_BUILD_ID: ${{ github.sha }}
         run: scripts/release/build_macos.sh "${{ needs.validate-version.outputs.version }}" release
 
       - name: Upload macOS release assets
@@ -113,7 +115,7 @@ jobs:
 
   build-windows:
     name: Build Windows release
-    runs-on: windows-latest
+    runs-on: windows-2022
     needs:
       - validate-version
 
@@ -146,6 +148,8 @@ jobs:
 
       - name: Build Windows release assets
         shell: pwsh
+        env:
+          ALEMBIC_BUILD_ID: ${{ github.sha }}
         run: ./scripts/release/build_windows.ps1 -Version "${{ needs.validate-version.outputs.version }}" -Out release
 
       - name: Upload Windows release assets
@@ -193,6 +197,7 @@ jobs:
             --version "${{ needs.validate-version.outputs.version }}" \
             --repository "$GITHUB_REPOSITORY" \
             --tag "${{ needs.validate-version.outputs.tag }}" \
+            --build-id "$GITHUB_SHA" \
             --published-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
       - name: Verify release assets

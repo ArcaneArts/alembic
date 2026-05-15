@@ -41,6 +41,7 @@ void main() {
     expect(firstManifest, secondManifest);
     expect(firstChecksums, secondChecksums);
     expect(manifest['version'], version);
+    expect(manifest['buildId'], 'abc123');
     expect(assets.length, 2);
     expect(firstChecksums.trim().split('\n').length, 4);
     expect(firstManifest, contains('Alembic-$version-macos-universal.zip'));
@@ -67,6 +68,8 @@ Future<ProcessResult> _runGenerator(String distPath, String version) {
       'v$version',
       '--published-at',
       '2026-01-01T00:00:00Z',
+      '--build-id',
+      'abc123',
     ],
     workingDirectory: Directory.current.path,
   );

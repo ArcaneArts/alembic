@@ -92,19 +92,21 @@ jobs:
             pods-${{ runner.os }}-
 
       - name: Build macOS app
+        env:
+          ALEMBIC_BUILD_ID: ${{ github.sha }}
         run: scripts/release/build_macos.sh "$(grep '^version:' pubspec.yaml | sed -E 's/^version:[[:space:]]*//')" release-ci
 
       - name: Upload macOS app artifact
         uses: actions/upload-artifact@v6
         with:
           name: alembic-macos-app
-          path: release-ci/Alembic-*-macos-universal.zip
+          path: release-ci/Alembic-*-macos*
           if-no-files-found: error
           retention-days: 3
 
   build-windows:
     name: Build Windows
-    runs-on: windows-latest
+    runs-on: windows-2022
     needs:
       - validate
 
@@ -117,6 +119,9 @@ jobs:
         with:
           channel: stable
           cache: true
+
+      - name: Setup Inno Setup
+        run: choco install innosetup -y
 
       - name: Cache Dart packages
         uses: actions/cache@v5
@@ -141,14 +146,98 @@ jobs:
 
       - name: Build Windows app
         shell: pwsh
+        env:
+          ALEMBIC_BUILD_ID: ${{ github.sha }}
         run: |
           $version = (Select-String -Path pubspec.yaml -Pattern '^version:\s*(.+)$').Matches[0].Groups[1].Value.Trim()
-          ./scripts/release/build_windows.ps1 -Version $version -Out release-ci -SkipInstaller
+          ./scripts/release/build_windows.ps1 -Version $version -Out release-ci
 
       - name: Upload Windows app artifact
         uses: actions/upload-artifact@v6
         with:
           name: alembic-windows-app
-          path: release-ci/Alembic-*-windows-x64.zip
+          path: release-ci/Alembic-*-windows-x64.*
           if-no-files-found: error
           retention-days: 3
+
+  publish-main-release:
+    name: Publish latest updater release
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs:
+      - build-macos
+      - build-windows
+    permissions:
+      actions: read
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Download desktop assets
+        uses: actions/download-artifact@v7
+        with:
+          pattern: alembic-*-app
+          merge-multiple: true
+          path: release
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Generate update manifest
+        run: |
+          set -euo pipefail
+          version="$(grep '^version:' pubspec.yaml | sed -E 's/^version:[[:space:]]*//')"
+          dart run scripts/release/generate_release_manifest.dart \
+            --dist release \
+            --version "$version" \
+            --repository "$GITHUB_REPOSITORY" \
+            --tag latest \
+            --build-id "$GITHUB_SHA" \
+            --published-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+      - name: Verify release assets
+        run: |
+          set -euo pipefail
+          version="$(grep '^version:' pubspec.yaml | sed -E 's/^version:[[:space:]]*//')"
+          for asset in \
+            "Alembic-$version-macos-universal.zip" \
+            "Alembic-$version-macos.dmg" \
+            "Alembic-$version-windows-x64.zip" \
+            "Alembic-$version-windows-x64.exe" \
+            update.json \
+            checksums.txt; do
+            test -s "release/$asset"
+          done
+
+      - name: Publish latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="$(grep '^version:' pubspec.yaml | sed -E 's/^version:[[:space:]]*//')"
+          tag="latest"
+          notes="Continuous Alembic desktop build from ${GITHUB_SHA}."
+          git tag -f "$tag" "$GITHUB_SHA"
+          git push origin "refs/tags/$tag" --force
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release view "$tag" --json assets -q '.assets[].name' |
+              while IFS= read -r asset; do
+                if [ -n "$asset" ]; then
+                  gh release delete-asset "$tag" "$asset" -y
+                fi
+              done
+            gh release upload "$tag" release/*
+            gh release edit "$tag" --title "Alembic $version Latest" --notes "$notes" --latest
+          else
+            gh release create "$tag" release/* --target "$GITHUB_SHA" --title "Alembic $version Latest" --notes "$notes" --latest
+          fi

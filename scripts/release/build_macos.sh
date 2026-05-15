@@ -6,6 +6,7 @@ VERSION="${1:-$(grep '^version:' "$ROOT/pubspec.yaml" | sed -E 's/^version:[[:sp
 OUT="${2:-$ROOT/release}"
 FLUTTER_BIN="${FLUTTER_BIN:-flutter}"
 MACOS_SKIP_SIGNING="${MACOS_SKIP_SIGNING:-1}"
+ALEMBIC_BUILD_ID="${ALEMBIC_BUILD_ID:-}"
 
 if ! command -v "$FLUTTER_BIN" >/dev/null 2>&1; then
   if [[ -x /Users/brianfopiano/Developer/flutter/bin/flutter ]]; then
@@ -19,7 +20,11 @@ rm -f "$OUT/Alembic-$VERSION-macos-universal.zip" "$OUT/Alembic-$VERSION-macos.d
 cd "$ROOT"
 "$FLUTTER_BIN" pub get
 rm -rf "$ROOT/build/macos" "$ROOT/build/native_assets/macos"
-"$FLUTTER_BIN" build macos --release --config-only --no-pub
+FLUTTER_BUILD_ARGS=(build macos --release --config-only --no-pub)
+if [[ -n "$ALEMBIC_BUILD_ID" ]]; then
+  FLUTTER_BUILD_ARGS+=(--dart-define="ALEMBIC_BUILD_ID=$ALEMBIC_BUILD_ID")
+fi
+"$FLUTTER_BIN" "${FLUTTER_BUILD_ARGS[@]}"
 if ! xcodebuild \
   -workspace macos/Runner.xcworkspace \
   -scheme Runner \

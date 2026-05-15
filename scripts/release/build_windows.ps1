@@ -50,8 +50,12 @@ Push-Location $Root
 try {
   Invoke-Native $FlutterBin @("pub", "get")
   Remove-Item -LiteralPath (Join-Path $Root "build/windows") -Recurse -Force -ErrorAction SilentlyContinue
+  $BuildArguments = @("build", "windows", "--release")
+  if (![string]::IsNullOrWhiteSpace($env:ALEMBIC_BUILD_ID)) {
+    $BuildArguments += "--dart-define=ALEMBIC_BUILD_ID=$env:ALEMBIC_BUILD_ID"
+  }
   try {
-    Invoke-Native $FlutterBin @("build", "windows", "--release")
+    Invoke-Native $FlutterBin $BuildArguments
   } catch {
     Write-WindowsBuildDiagnostics
     throw

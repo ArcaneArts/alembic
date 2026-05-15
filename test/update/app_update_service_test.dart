@@ -67,6 +67,45 @@ void main() {
       service.dispose();
     });
 
+    test('detects same-version releases when build id changes', () async {
+      Map<String, dynamic> manifest = _manifestJson('1.0.10');
+      manifest['buildId'] = 'new-build';
+      AppUpdateService service = AppUpdateService(
+        client:
+            MockClient((_) async => http.Response(jsonEncode(manifest), 200)),
+        manifestUrl: 'https://example.com/update.json',
+      );
+
+      UpdateCheckResult? result = await service.checkForUpdate(
+        currentVersion: '1.0.10',
+        currentBuildId: 'old-build',
+        platform: AlembicDesktopPlatform.macos,
+      );
+
+      expect(result, isNotNull);
+      expect(result?.manifest.buildId, 'new-build');
+      service.dispose();
+    });
+
+    test('ignores same-version release when build id is unchanged', () async {
+      Map<String, dynamic> manifest = _manifestJson('1.0.10');
+      manifest['buildId'] = 'same-build';
+      AppUpdateService service = AppUpdateService(
+        client:
+            MockClient((_) async => http.Response(jsonEncode(manifest), 200)),
+        manifestUrl: 'https://example.com/update.json',
+      );
+
+      UpdateCheckResult? result = await service.checkForUpdate(
+        currentVersion: '1.0.10',
+        currentBuildId: 'same-build',
+        platform: AlembicDesktopPlatform.macos,
+      );
+
+      expect(result, isNull);
+      service.dispose();
+    });
+
     test('throws when a newer release has no platform payload', () async {
       Map<String, dynamic> manifest = _manifestJson('1.0.11');
       manifest['assets'] = <Map<String, Object>>[

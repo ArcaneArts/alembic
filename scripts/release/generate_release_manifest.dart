@@ -16,6 +16,7 @@ class ReleaseManifestCommand {
   final String repository;
   final String tag;
   final String publishedAt;
+  final String buildId;
 
   const ReleaseManifestCommand({
     required this.distPath,
@@ -23,6 +24,7 @@ class ReleaseManifestCommand {
     required this.repository,
     required this.tag,
     required this.publishedAt,
+    required this.buildId,
   });
 
   factory ReleaseManifestCommand.parse(List<String> args) {
@@ -46,6 +48,7 @@ class ReleaseManifestCommand {
     String repository = values['repository']?.trim() ?? defaultRepository;
     String publishedAt = values['published-at']?.trim() ??
         DateTime.now().toUtc().toIso8601String();
+    String buildId = values['build-id']?.trim() ?? '';
 
     if (version.isEmpty) {
       throw const FormatException('Version is required');
@@ -63,6 +66,7 @@ class ReleaseManifestCommand {
       repository: repository,
       tag: tag,
       publishedAt: publishedAt,
+      buildId: buildId,
     );
   }
 
@@ -123,12 +127,14 @@ class ReleaseManifestCommand {
 
     JsonEncoder encoder = const JsonEncoder.withIndent('  ');
     File updateFile = File('${dist.path}/update.json');
+    Map<String, Object> manifest = <String, Object>{
+      'version': version,
+      'publishedAt': publishedAt,
+      if (buildId.isNotEmpty) 'buildId': buildId,
+      'assets': updateAssets,
+    };
     await updateFile.writeAsString(
-      '${encoder.convert(<String, Object>{
-            'version': version,
-            'publishedAt': publishedAt,
-            'assets': updateAssets
-          })}\n',
+      '${encoder.convert(manifest)}\n',
     );
 
     String checksums = artifacts
