@@ -73,26 +73,24 @@ class _HomeRepositoryBrowserPaneState extends State<HomeRepositoryBrowserPane> {
 
   bool get _isArchiveMaster => widget.selection.tab == HomeTab.archiveMaster;
 
-  bool get _selectionEnabled =>
-      widget.selection.tab == HomeTab.personal ||
-      widget.selection.tab == HomeTab.organizations;
+  bool get _isRepositories => widget.selection.tab == HomeTab.repositories;
+
+  bool get _selectionEnabled => _isRepositories;
 
   int get _selectedCount => _selectedRepositories().length;
 
   String get _listScopeKey => switch (widget.selection.tab) {
         HomeTab.active => 'active',
-        HomeTab.personal => 'personal',
-        HomeTab.organizations =>
-          'organizations:${widget.selection.organizationFilter.storageValue}',
+        HomeTab.repositories =>
+          'repositories:${widget.selection.organizationFilter.storageValue}',
         HomeTab.archiveMaster => 'archiveMaster',
       };
 
   String get _title => switch (widget.selection.tab) {
         HomeTab.active => 'Projects',
-        HomeTab.personal => 'Mine',
-        HomeTab.organizations =>
+        HomeTab.repositories =>
           widget.selection.organizationFilter.organizationLogin ??
-              'Organizations',
+              'Repositories',
         HomeTab.archiveMaster => 'Archive Master',
       };
 
@@ -104,18 +102,17 @@ class _HomeRepositoryBrowserPaneState extends State<HomeRepositoryBrowserPane> {
     }
     return switch (widget.selection.tab) {
       HomeTab.active => 'Local repositories in your workspace.',
-      HomeTab.personal => 'Repositories from your account.',
-      HomeTab.organizations => _organizationSubtitle(),
+      HomeTab.repositories => _repositoriesSubtitle(),
       HomeTab.archiveMaster => widget.archiveMasterRunning
           ? 'Archive Master is refreshing repositories now...'
           : 'Repositories tracked and pulled by Archive Master on a schedule.',
     };
   }
 
-  String _organizationSubtitle() {
+  String _repositoriesSubtitle() {
     String? selected = widget.selection.organizationFilter.organizationLogin;
     if (selected == null) {
-      return 'Repositories across your organizations.';
+      return 'Personal and organization repositories available to your accounts.';
     }
     return 'Repositories from $selected.';
   }
@@ -218,7 +215,7 @@ class _HomeRepositoryBrowserPaneState extends State<HomeRepositoryBrowserPane> {
       return 'Open Settings → Archive Master to enroll repositories or organizations and let Alembic keep them up to date.';
     }
     if (_isProjects) {
-      return 'Use Clone Link, or browse Mine and Orgs to bring repositories into your workspace.';
+      return 'Use Clone Link, or browse Repositories to bring repositories into your workspace.';
     }
     return 'Try another search or change the organization filter.';
   }

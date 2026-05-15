@@ -106,7 +106,7 @@ class HomeTopBar extends StatelessWidget {
       <AlembicDropdownOption<String>>[
         const AlembicDropdownOption<String>(
           value: '__all__',
-          label: 'All organizations',
+          label: 'All repositories',
         ),
         for (String organization in organizationLogins)
           AlembicDropdownOption<String>(
@@ -127,16 +127,10 @@ class HomeTopBar extends StatelessWidget {
             tooltip: 'Local',
           ),
           AlembicNavigationItem<HomeTab>(
-            value: HomeTab.personal,
-            label: 'Personal',
-            icon: m.Icons.person_outline,
-            tooltip: 'Personal',
-          ),
-          AlembicNavigationItem<HomeTab>(
-            value: HomeTab.organizations,
-            label: 'Teams',
-            icon: m.Icons.apartment_outlined,
-            tooltip: 'Teams',
+            value: HomeTab.repositories,
+            label: 'Repositories',
+            icon: m.Icons.source_outlined,
+            tooltip: 'Repositories',
           ),
           AlembicNavigationItem<HomeTab>(
             value: HomeTab.archiveMaster,
@@ -206,7 +200,7 @@ class HomeTopBar extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
         searchField,
-        if (selection.tab == HomeTab.organizations) ...<Widget>[
+        if (selection.tab == HomeTab.repositories) ...<Widget>[
           const Gap(AlembicShadcnTokens.gapSm),
           AlembicSelect<String>(
             value: selectedOrganization,

@@ -3,9 +3,11 @@ import 'dart:io';
 
 import 'package:alembic/core/app_update_service.dart';
 import 'package:alembic/platform/desktop_platform_adapter.dart';
+import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:path/path.dart' as p;
 
 void main() {
   group('AppVersion', () {
@@ -108,6 +110,67 @@ void main() {
       service.dispose();
       await directory.delete(recursive: true);
     });
+
+    test('uses generated release manifest to download Windows payload',
+        () async {
+      Directory directory =
+          await Directory.systemTemp.createTemp('alembic-release-flow-');
+      String version = '9.8.7';
+      Map<String, String> files = <String, String>{
+        'Alembic-$version-macos-universal.zip': 'macos zip',
+        'Alembic-$version-macos.dmg': 'macos dmg',
+        'Alembic-$version-windows-x64.zip': 'windows zip payload',
+        'Alembic-$version-windows-x64.exe': 'windows installer',
+      };
+      for (MapEntry<String, String> entry in files.entries) {
+        await File(p.join(directory.path, entry.key))
+            .writeAsString(entry.value);
+      }
+
+      ProcessResult result = await _runManifestGenerator(
+        distPath: directory.path,
+        version: version,
+      );
+      expect(result.exitCode, 0, reason: '${result.stdout}\n${result.stderr}');
+
+      String manifestBody =
+          await File(p.join(directory.path, 'update.json')).readAsString();
+      List<int> progressEvents = <int>[];
+      AppUpdateService service = AppUpdateService(
+        client: MockClient((request) async {
+          if (request.url.path.endsWith('/update.json')) {
+            return http.Response(manifestBody, 200);
+          }
+          String name = request.url.pathSegments.last;
+          File file = File(p.join(directory.path, name));
+          return http.Response.bytes(await file.readAsBytes(), 200);
+        }),
+        manifestUrl: 'https://example.com/update.json',
+      );
+
+      UpdateCheckResult? update = await service.checkForUpdate(
+        currentVersion: '9.8.6',
+        platform: AlembicDesktopPlatform.windows,
+      );
+      expect(update, isNotNull);
+      expect(update!.asset.name, 'Alembic-$version-windows-x64.zip');
+
+      File payload = await service.downloadAsset(
+        asset: update.asset,
+        temporaryDirectory: directory.path,
+        onProgress: (receivedBytes, _) => progressEvents.add(receivedBytes),
+      );
+
+      expect(await payload.readAsString(), 'windows zip payload');
+      expect(progressEvents, isNotEmpty);
+      expect(
+        update.asset.sha256,
+        sha256.convert('windows zip payload'.codeUnits).toString(),
+      );
+
+      service.dispose();
+      await directory.delete(recursive: true);
+    });
   });
 }
 
@@ -146,3 +209,28 @@ Map<String, Object> _assetJson({
       'manualName': manualName,
       'manualUrl': 'https://example.com/$manualName',
     };
+
+Future<ProcessResult> _runManifestGenerator({
+  required String distPath,
+  required String version,
+}) {
+  String dartExecutable = Platform.environment['DART_BIN']?.trim() ?? 'dart';
+  return Process.run(
+    dartExecutable,
+    <String>[
+      'run',
+      'scripts/release/generate_release_manifest.dart',
+      '--dist',
+      distPath,
+      '--version',
+      version,
+      '--repository',
+      'ArcaneArts/alembic',
+      '--tag',
+      'v$version',
+      '--published-at',
+      '2026-01-01T00:00:00Z',
+    ],
+    workingDirectory: Directory.current.path,
+  );
+}

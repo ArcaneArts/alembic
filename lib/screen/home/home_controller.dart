@@ -36,7 +36,9 @@ class HomeController {
   );
 
   Timer? _staleCheckTimer;
+  Timer? _repositoryRefreshTimer;
   bool _staleCheckRunning = false;
+  bool _repositoryRefreshRunning = false;
   bool _classicMigrationPromptConsumed = false;
 
   HomeController({
@@ -94,6 +96,7 @@ class HomeController {
 
   Future<void> dispose() async {
     _staleCheckTimer?.cancel();
+    _repositoryRefreshTimer?.cancel();
     await fetching.close();
     await progress.close();
     await progressLabel.close();
@@ -140,6 +143,39 @@ class HomeController {
     );
   }
 
+  void scheduleRepositoryAccessRefresh({
+    required Future<void> Function() onChanged,
+    Duration interval = const Duration(minutes: 15),
+  }) {
+    _repositoryRefreshTimer?.cancel();
+    _repositoryRefreshTimer = Timer.periodic(
+      interval,
+      (_) => unawaited(refreshRepositoryAccessInBackground(
+        onChanged: onChanged,
+      )),
+    );
+  }
+
+  Future<void> refreshRepositoryAccessInBackground({
+    required Future<void> Function() onChanged,
+  }) async {
+    if (_repositoryRefreshRunning) {
+      return;
+    }
+    _repositoryRefreshRunning = true;
+    try {
+      allRepos = _buildRepositoryFuture();
+      await allRepos;
+      await updateAllRepositoryTokens(quiet: true);
+      await onChanged();
+    } catch (e, stackTrace) {
+      error('Background repository refresh failed: $e');
+      error(stackTrace);
+    } finally {
+      _repositoryRefreshRunning = false;
+    }
+  }
+
   Future<void> runStaleCheck() async {
     if (_staleCheckRunning) {
       return;
@@ -174,14 +210,16 @@ class HomeController {
     runtime.setActiveRepositories(activeRepositories);
   }
 
-  Future<int> updateAllRepositoryTokens() async {
-    final List<GitAccount> accounts = registry.accounts;
+  Future<int> updateAllRepositoryTokens({bool quiet = false}) async {
+    List<GitAccount> accounts = registry.accounts;
     if (accounts.isEmpty) {
       return 0;
     }
 
-    progressLabel.add('Checking repository tokens');
-    progress.add(0.0);
+    if (!quiet) {
+      progressLabel.add('Checking repository tokens');
+      progress.add(0.0);
+    }
 
     List<Repository> repositories = await allRepos;
     int total = repositories.length;
@@ -201,11 +239,15 @@ class HomeController {
         }
       }
       current++;
-      progress.add(total == 0 ? null : current / total);
+      if (!quiet) {
+        progress.add(total == 0 ? null : current / total);
+      }
     }
 
-    progress.add(null);
-    progressLabel.add(null);
+    if (!quiet) {
+      progress.add(null);
+      progressLabel.add(null);
+    }
     return updated;
   }
 
@@ -638,9 +680,8 @@ class HomeController {
   }) =>
       switch (selection.tab) {
         HomeTab.active => sortedProjects(all, query),
-        HomeTab.personal => sortedPersonal(query),
-        HomeTab.organizations =>
-          organizationRepositoriesFor(selection.organizationFilter, query),
+        HomeTab.repositories =>
+          remoteRepositoriesFor(selection.organizationFilter, query),
         HomeTab.archiveMaster => archiveMasterRepositories(all, query),
       };
 
@@ -665,30 +706,26 @@ class HomeController {
     return repositories;
   }
 
-  List<Repository> sortedPersonal(String? query) {
-    List<Repository> repositories = <Repository>[
-      ...personalRepos.filterBy(query),
-    ];
-    repositories.sort(
-      (Repository a, Repository b) => a.fullName.compareTo(b.fullName),
-    );
-    return repositories;
-  }
-
-  List<Repository> organizationRepositoriesFor(
+  List<Repository> remoteRepositoriesFor(
     OrganizationFilter filter,
     String? query,
   ) {
+    List<Repository> repositories = <Repository>[
+      ...personalRepos,
+    ];
     if (filter.isAll) {
       List<Organization> organizations = orgRepos.keys.toList()
         ..sort((Organization a, Organization b) {
           return (a.login ?? '').compareTo(b.login ?? '');
         });
-      List<Repository> repositories = <Repository>[];
       for (Organization organization in organizations) {
-        repositories.addAll(orgRepos[organization]!.filterBy(query));
+        repositories.addAll(orgRepos[organization]!);
       }
-      return repositories;
+      List<Repository> filtered = repositories.filterBy(query);
+      filtered.sort(
+        (Repository a, Repository b) => a.fullName.compareTo(b.fullName),
+      );
+      return filtered;
     }
 
     String? selectedLogin = filter.organizationLogin;
@@ -699,7 +736,11 @@ class HomeController {
     for (Organization organization in orgRepos.keys) {
       String login = organization.login ?? '';
       if (login == selectedLogin) {
-        return orgRepos[organization]!.filterBy(query);
+        List<Repository> filtered = orgRepos[organization]!.filterBy(query);
+        filtered.sort(
+          (Repository a, Repository b) => a.fullName.compareTo(b.fullName),
+        );
+        return filtered;
       }
     }
 

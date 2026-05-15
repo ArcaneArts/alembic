@@ -143,26 +143,25 @@ jobs:
           restore-keys: |
             pub-cache-${{ runner.os }}-
 
-      - name: Cache Windows build state
+      - name: Cache Windows Flutter metadata
         uses: actions/cache@v5
         with:
           path: |
             .dart_tool
-            build/windows
           key: windows-build-${{ runner.os }}-${{ hashFiles('pubspec.yaml', 'pubspec.lock', 'windows/**', 'lib/**', 'assets/**') }}
           restore-keys: |
             windows-build-${{ runner.os }}-
 
-      - name: Get dependencies
-        run: flutter pub get
-
       - name: Build Windows app
-        run: flutter build windows --release
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path pubspec.yaml -Pattern '^version:\s*(.+)$').Matches[0].Groups[1].Value.Trim()
+          ./scripts/release/build_windows.ps1 -Version $version -Out release-ci -SkipInstaller
 
       - name: Upload Windows app artifact
         uses: actions/upload-artifact@v6
         with:
           name: alembic-windows-app
-          path: build/windows/x64/runner/Release
+          path: release-ci/Alembic-*-windows-x64.zip
           if-no-files-found: error
           retention-days: 3

@@ -54,6 +54,7 @@ class _AlembicHomeState extends State<AlembicHome> {
   final HomeUpdateChecker _updateChecker = const HomeUpdateChecker();
   StreamSubscription<int>? _runtimeSubscription;
   StreamSubscription<bool>? _archiveMasterRunningSubscription;
+  Timer? _updateCheckTimer;
   HomeSelectionState _selection = const HomeSelectionState.initial();
   String? _searchQuery;
   int _repositoryRevision = 0;
@@ -91,6 +92,9 @@ class _AlembicHomeState extends State<AlembicHome> {
       tab: _restoreLastHomeTab(),
     );
     _allRepositories = _controller.initialize(updateTokens: false);
+    _controller.scheduleRepositoryAccessRefresh(
+      onChanged: _refreshBackgroundRepositoryState,
+    );
     _allRepositories.then(
       (List<Repository> _) => _showTokenUpdateSummaryIfNeeded(),
     );
@@ -114,6 +118,7 @@ class _AlembicHomeState extends State<AlembicHome> {
     widget.archiveMasterService.start();
     _scheduleTokenMigrationPrompt();
     unawaited(_updateChecker.check(context: context, force: false));
+    _scheduleBackgroundUpdateChecks();
   }
 
   @override
@@ -121,6 +126,7 @@ class _AlembicHomeState extends State<AlembicHome> {
     _searchController.dispose();
     _runtimeSubscription?.cancel();
     _archiveMasterRunningSubscription?.cancel();
+    _updateCheckTimer?.cancel();
     unawaited(_controller.dispose());
     if (identical(archiveMasterService, widget.archiveMasterService)) {
       setArchiveMasterService(null);
@@ -140,6 +146,9 @@ class _AlembicHomeState extends State<AlembicHome> {
       _lastHomeTabSettingsKey,
       defaultValue: HomeTab.active.name,
     );
+    if (storedTab == 'personal' || storedTab == 'organizations') {
+      return HomeTab.repositories;
+    }
     for (HomeTab tab in HomeTab.values) {
       if (tab.name == storedTab) {
         return tab;
@@ -154,7 +163,7 @@ class _AlembicHomeState extends State<AlembicHome> {
     }
     HomeSelectionState nextSelection = _selection.copyWith(
       tab: tab,
-      organizationFilter: tab == HomeTab.organizations
+      organizationFilter: tab == HomeTab.repositories
           ? _selection.organizationFilter
           : const OrganizationFilter.all(),
     );
@@ -195,6 +204,15 @@ class _AlembicHomeState extends State<AlembicHome> {
     }
   }
 
+  Future<void> _refreshBackgroundRepositoryState() async {
+    if (!mounted) {
+      return;
+    }
+    _allRepositories = _controller.allRepos;
+    _repositoryRevision++;
+    setState(() {});
+  }
+
   Future<void> _showTokenUpdateSummaryIfNeeded() async {
     int updated = await _controller.updateAllRepositoryTokens();
     if (updated > 0 && mounted) {
@@ -213,6 +231,19 @@ class _AlembicHomeState extends State<AlembicHome> {
       }
       await _session.promptTokenMigrationIfNeeded(context);
     });
+  }
+
+  void _scheduleBackgroundUpdateChecks() {
+    _updateCheckTimer?.cancel();
+    _updateCheckTimer = Timer.periodic(
+      const Duration(hours: 6),
+      (_) {
+        if (!mounted) {
+          return;
+        }
+        unawaited(_updateChecker.check(context: context, force: false));
+      },
+    );
   }
 
   Future<void> _dispatchRepositoryAction({

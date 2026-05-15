@@ -1,7 +1,6 @@
 enum HomeTab {
   active,
-  personal,
-  organizations,
+  repositories,
   archiveMaster,
 }
 
