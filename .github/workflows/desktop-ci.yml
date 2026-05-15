@@ -91,19 +91,6 @@ jobs:
           restore-keys: |
             pods-${{ runner.os }}-
 
-      - name: Cache macOS build state
-        uses: actions/cache@v5
-        with:
-          path: |
-            .dart_tool
-            build/macos
-          key: macos-build-${{ runner.os }}-${{ hashFiles('pubspec.yaml', 'pubspec.lock', 'macos/Podfile.lock', 'lib/**', 'assets/**') }}
-          restore-keys: |
-            macos-build-${{ runner.os }}-
-
-      - name: Get dependencies
-        run: flutter pub get
-
       - name: Build macOS app
         run: scripts/release/build_macos.sh "$(grep '^version:' pubspec.yaml | sed -E 's/^version:[[:space:]]*//')" release-ci
 

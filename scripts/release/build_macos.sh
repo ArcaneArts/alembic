@@ -18,8 +18,9 @@ rm -f "$OUT/Alembic-$VERSION-macos-universal.zip" "$OUT/Alembic-$VERSION-macos.d
 
 cd "$ROOT"
 "$FLUTTER_BIN" pub get
-"$FLUTTER_BIN" build macos --release --config-only
-xcodebuild \
+rm -rf "$ROOT/build/macos" "$ROOT/build/native_assets/macos"
+"$FLUTTER_BIN" build macos --release --config-only --no-pub
+if ! xcodebuild \
   -workspace macos/Runner.xcworkspace \
   -scheme Runner \
   -configuration Release \
@@ -30,7 +31,13 @@ xcodebuild \
   CODE_SIGN_IDENTITY="" \
   DEVELOPMENT_TEAM="" \
   PROVISIONING_PROFILE_SPECIFIER="" \
-  build
+  build; then
+  echo "Native assets after failed macOS build:" >&2
+  find "$ROOT/build/native_assets" -maxdepth 4 -print 2>/dev/null >&2 || true
+  echo "Bundled native asset manifests after failed macOS build:" >&2
+  find "$ROOT/build/macos" -name NativeAssetsManifest.json -print 2>/dev/null >&2 || true
+  exit 1
+fi
 
 APP_SOURCE="$ROOT/build/macos/Build/Products/Release/Alembic.app"
 if [[ ! -d "$APP_SOURCE" ]]; then
