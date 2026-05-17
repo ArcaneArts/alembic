@@ -268,15 +268,21 @@ class ArcaneRepository {
     bool updateActive = true,
   }) {
     return doWork<void>("Activating", () async {
-      final Directory repoDir = Directory(repoPath);
-      if (!await repoDir.exists()) {
+      Directory repoDir = Directory(repoPath);
+      bool hasActiveCheckout = await isActive;
+      if (!hasActiveCheckout) {
         if (await isArchived) {
           await unarchive(github, waitForPull: false, notifyActive: true);
+        } else if (await repoDir.exists()) {
+          throw Exception('Path exists but is not a git checkout: $repoPath');
         } else {
           await _cloneRepository(updateActive);
         }
       } else {
         info("Repository ${repository.fullName} already exists at $repoPath");
+        if (updateActive) {
+          runtime.addActiveRepository(repository);
+        }
       }
       await _ensureSigningGuard();
       runtime.notifyChanged();
@@ -427,14 +433,14 @@ class ArcaneRepository {
         repoPath,
         getRepoConfig(repository).openDirectory,
       );
-      tool.launch(openPath);
+      await tool.launch(openPath);
 
       final GitTool gitTool = getRepoConfig(repository).gitTool ??
           config.gitTool ??
           GitTool.gitkraken;
       info(
           "Opening ${repository.fullName} with Git Client ${gitTool.displayName}");
-      gitTool.launch(repoPath);
+      await gitTool.launch(repoPath);
 
       await Future.wait<void>(<Future<void>>[
         ensureRepositoryUpdated(github),

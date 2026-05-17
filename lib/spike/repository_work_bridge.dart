@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:alembic/bloc/repository_list_store.dart';
 import 'package:alembic/core/repository_runtime.dart';
+import 'package:alembic/platform/desktop_platform_adapter.dart';
 import 'package:alembic/spike/spike_channels.dart';
 import 'package:alembic/spike/spike_diagnostics.dart';
 import 'package:alembic/spike/spike_repository_runtime.dart';
@@ -15,11 +16,13 @@ class RepositoryWorkBridge {
   RepositoryWorkBridge({
     required RepositoryListStore store,
     SpikeDiagnostics? diagnostics,
-  })  : _diagnostics = diagnostics ?? SpikeDiagnostics.instance,
+  })  : _store = store,
+        _diagnostics = diagnostics ?? SpikeDiagnostics.instance,
         _channel = const MethodChannel(SpikeChannels.repositoryWork);
 
   static const String _logTag = 'repo_work_bridge';
 
+  final RepositoryListStore _store;
   final SpikeDiagnostics _diagnostics;
   final MethodChannel _channel;
 
@@ -28,7 +31,9 @@ class RepositoryWorkBridge {
   StreamSubscription<int>? _changedSub;
 
   Timer? _debounceTimer;
+  Timer? _rescanTimer;
   bool _attached = false;
+  bool _scanBusy = false;
 
   final Set<String> _activeRepositories = <String>{};
   final Set<String> _archivedRepositories = <String>{};
@@ -39,7 +44,8 @@ class RepositoryWorkBridge {
       return;
     }
     _attached = true;
-    _diagnostics.log(_logTag, 'attaching to channel ${SpikeChannels.repositoryWork}');
+    _diagnostics.log(
+        _logTag, 'attaching to channel ${SpikeChannels.repositoryWork}');
     _channel.setMethodCallHandler(_handle);
 
     _workSub = spikeRepositoryRuntime.repoWork.stream.listen((_) {
@@ -49,11 +55,14 @@ class RepositoryWorkBridge {
       _schedulePush();
     });
     _changedSub = spikeRepositoryRuntime.changed.stream.listen((_) {
-      _schedulePush();
+      unawaited(_rescanAndPushIfChanged(forcePush: true));
     });
 
     await _rescanFromDisk();
     _push();
+    _rescanTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      unawaited(_rescanAndPushIfChanged());
+    });
     _diagnostics.success(_logTag, 'work bridge attached');
   }
 
@@ -61,6 +70,8 @@ class RepositoryWorkBridge {
     _attached = false;
     _debounceTimer?.cancel();
     _debounceTimer = null;
+    _rescanTimer?.cancel();
+    _rescanTimer = null;
     await _workSub?.cancel();
     await _syncingSub?.cancel();
     await _changedSub?.cancel();
@@ -81,9 +92,30 @@ class RepositoryWorkBridge {
     }
   }
 
-  Future<void> _rescanFromDisk() async {
-    final String workspaceDir = _safeWorkspaceDir();
-    final String archiveDir = _safeArchiveDir();
+  Future<bool> _rescanAndPushIfChanged({bool forcePush = false}) async {
+    if (_scanBusy) {
+      if (forcePush) {
+        _schedulePush();
+      }
+      return false;
+    }
+    _scanBusy = true;
+    try {
+      bool changed = await _rescanFromDisk();
+      if (changed || forcePush) {
+        _push();
+      }
+      return changed;
+    } finally {
+      _scanBusy = false;
+    }
+  }
+
+  Future<bool> _rescanFromDisk() async {
+    Set<String> previousActive = Set<String>.from(_activeRepositories);
+    Set<String> previousArchived = Set<String>.from(_archivedRepositories);
+    String workspaceDir = _safeWorkspaceDir();
+    String archiveDir = _safeArchiveDir();
     _activeRepositories.clear();
     _archivedRepositories.clear();
 
@@ -101,11 +133,17 @@ class RepositoryWorkBridge {
         _diagnostics.warn(_logTag, 'archive scan failed: $e');
       }
     }
+    _refreshDerivedSets();
 
-    _diagnostics.log(
-      _logTag,
-      'disk scan complete: active=${_activeRepositories.length} archived=${_archivedRepositories.length}',
-    );
+    bool changed = !_sameStringSet(previousActive, _activeRepositories) ||
+        !_sameStringSet(previousArchived, _archivedRepositories);
+    if (changed) {
+      _diagnostics.trace(
+        _logTag,
+        'disk scan changed: active=${_activeRepositories.length} archived=${_archivedRepositories.length}',
+      );
+    }
+    return changed;
   }
 
   String _safeWorkspaceDir() {
@@ -224,18 +262,15 @@ class RepositoryWorkBridge {
   Map<String, Object?> _buildSnapshot() {
     _refreshDerivedSets();
 
-    final List<RepositoryWork> liveWork = spikeRepositoryRuntime.repoWork.value;
-    final List<Repository> syncing =
-        spikeRepositoryRuntime.syncingRepositories.value;
-    final Map<String, ArchiveMasterRepoState> masterStates =
+    List<RepositoryWork> liveWork = spikeRepositoryRuntime.repoWork.value;
+    List<Repository> syncing = spikeRepositoryRuntime.syncingRepositories.value;
+    Map<String, ArchiveMasterRepoState> masterStates =
         loadArchiveMasterRepoStates();
 
-    final List<Map<String, Object?>> workEntries = liveWork
-        .map(_workEntryToJson)
-        .toList(growable: false);
+    List<Map<String, Object?>> workEntries =
+        liveWork.map(_workEntryToJson).toList(growable: false);
 
-    final List<Map<String, Object?>> masterStatesJson =
-        <Map<String, Object?>>[];
+    List<Map<String, Object?>> masterStatesJson = <Map<String, Object?>>[];
     masterStates.forEach((String key, ArchiveMasterRepoState state) {
       masterStatesJson.add(<String, Object?>{
         'fullName': state.fullName,
@@ -246,6 +281,10 @@ class RepositoryWorkBridge {
       });
     });
 
+    List<Map<String, Object?>> localStates = _store.cachedRepositories
+        .map(_localStateToJson)
+        .toList(growable: false);
+
     return <String, Object?>{
       'activeRepositories': _activeRepositories.toList()..sort(),
       'archivedRepositories': _archivedRepositories.toList()..sort(),
@@ -254,13 +293,100 @@ class RepositoryWorkBridge {
           .toList(growable: false),
       'workEntries': workEntries,
       'archiveMasterStates': masterStatesJson,
+      'localStates': localStates,
     };
   }
 
   void _refreshDerivedSets() {
-    for (final Repository active in spikeRepositoryRuntime.activeRepositories) {
-      _activeRepositories.add(active.fullName.toLowerCase());
+    List<Repository> verifiedActive = <Repository>[];
+    for (Repository active in spikeRepositoryRuntime.activeRepositories) {
+      if (_repositoryIsActiveSync(active)) {
+        _activeRepositories.add(_repositoryKey(active));
+        verifiedActive.add(active);
+      }
     }
+    if (verifiedActive.length !=
+        spikeRepositoryRuntime.activeRepositories.length) {
+      spikeRepositoryRuntime.setActiveRepositories(verifiedActive);
+    }
+  }
+
+  Map<String, Object?> _localStateToJson(Repository repository) {
+    String key = _repositoryKey(repository);
+    String state = SpikeRepoStateValue.cloud;
+    if (_activeRepositories.contains(key)) {
+      state = SpikeRepoStateValue.active;
+    } else if (_archivedRepositories.contains(key)) {
+      state = SpikeRepoStateValue.archived;
+    }
+    AlembicRepoConfig repoConfig = getRepoConfig(repository);
+    int daysUntilArchive = state == SpikeRepoStateValue.active
+        ? _daysUntilArchive(repository, repoConfig.lastOpen)
+        : 0;
+    return <String, Object?>{
+      'fullName': repository.fullName,
+      'state': state,
+      'daysUntilArchive': daysUntilArchive,
+      'lastOpenMs': repoConfig.lastOpen,
+    };
+  }
+
+  int _daysUntilArchive(Repository repository, int? lastOpenMs) {
+    int thresholdDays = config.daysToArchive;
+    if (thresholdDays <= 0) {
+      return 0;
+    }
+    int latestActivity = lastOpenMs ?? 0;
+    try {
+      FileStat repoStat = Directory(_repositoryPath(repository)).statSync();
+      int modifiedMs = repoStat.modified.millisecondsSinceEpoch;
+      if (modifiedMs > latestActivity) {
+        latestActivity = modifiedMs;
+      }
+    } catch (_) {}
+    if (latestActivity == 0) {
+      return thresholdDays;
+    }
+    int elapsedDays = Duration(
+      milliseconds:
+          DateTime.timestamp().millisecondsSinceEpoch - latestActivity,
+    ).inDays;
+    int remainingDays = thresholdDays - elapsedDays;
+    return remainingDays < 0 ? 0 : remainingDays;
+  }
+
+  bool _repositoryIsActiveSync(Repository repository) {
+    return Directory(
+      DesktopPlatformAdapter.instance.joinPath(
+        _repositoryPath(repository),
+        '.git',
+      ),
+    ).existsSync();
+  }
+
+  String _repositoryPath(Repository repository) {
+    String owner = repository.owner?.login ?? 'unknown';
+    String ownerPath = DesktopPlatformAdapter.instance.joinPath(
+      _safeWorkspaceDir(),
+      owner,
+    );
+    return DesktopPlatformAdapter.instance.joinPath(ownerPath, repository.name);
+  }
+
+  String _repositoryKey(Repository repository) {
+    return repository.fullName.toLowerCase();
+  }
+
+  bool _sameStringSet(Set<String> a, Set<String> b) {
+    if (a.length != b.length) {
+      return false;
+    }
+    for (String item in a) {
+      if (!b.contains(item)) {
+        return false;
+      }
+    }
+    return true;
   }
 
   Map<String, Object?> _workEntryToJson(RepositoryWork work) {

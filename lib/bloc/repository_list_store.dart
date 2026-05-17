@@ -27,6 +27,7 @@ class RepositoryListStore {
         );
 
   static const String _logTag = 'repo_store';
+  static const int _parallelPageWindow = 4;
 
   final AccountRegistry _registry;
   final BehaviorSubject<RepositoryListState> _subject;
@@ -233,140 +234,156 @@ class RepositoryListStore {
     required GitHub github,
     required String accountLogin,
   }) async {
-    final List<RepositoryDto> results = <RepositoryDto>[];
-    final Map<String, Repository> nextCache = <String, Repository>{};
-    int pageNumber = 1;
+    List<RepositoryDto> results = <RepositoryDto>[];
+    Map<String, Repository> nextCache = <String, Repository>{};
     int pagesCompleted = 0;
 
-    while (pageNumber <= _maxPages) {
+    _RepositoryPageResult firstPage = await _fetchRepositoryPage(
+      github: github,
+      pageNumber: 1,
+    );
+    pagesCompleted = _applyPageResult(
+      page: firstPage,
+      results: results,
+      nextCache: nextCache,
+      pagesCompleted: pagesCompleted,
+    );
+
+    if (!firstPage.hasNext ||
+        firstPage.recordCount == 0 ||
+        firstPage.rateLimitRemaining == 0) {
+      _completePagination(
+        pagesCompleted: pagesCompleted,
+        results: results,
+        nextCache: nextCache,
+      );
+      return results;
+    }
+
+    int? lastPageNumber = firstPage.lastPageNumber;
+    if (lastPageNumber == null) {
+      pagesCompleted = await _fetchRemainingPagesSequentially(
+        github: github,
+        results: results,
+        nextCache: nextCache,
+        pagesCompleted: pagesCompleted,
+        firstNextPage: 2,
+      );
+    } else {
+      pagesCompleted = await _fetchRemainingPagesConcurrently(
+        github: github,
+        results: results,
+        nextCache: nextCache,
+        pagesCompleted: pagesCompleted,
+        lastPageNumber: lastPageNumber,
+      );
+    }
+
+    _completePagination(
+      pagesCompleted: pagesCompleted,
+      results: results,
+      nextCache: nextCache,
+    );
+
+    return results;
+  }
+
+  Future<int> _fetchRemainingPagesConcurrently({
+    required GitHub github,
+    required List<RepositoryDto> results,
+    required Map<String, Repository> nextCache,
+    required int pagesCompleted,
+    required int lastPageNumber,
+  }) async {
+    int cappedLastPage =
+        lastPageNumber > _maxPages ? _maxPages : lastPageNumber;
+    int completed = pagesCompleted;
+    int nextPage = 2;
+    bool rateLimited = false;
+
+    while (nextPage <= cappedLastPage && !rateLimited) {
+      int chunkEnd = nextPage + _parallelPageWindow - 1;
+      if (chunkEnd > cappedLastPage) {
+        chunkEnd = cappedLastPage;
+      }
       _emit(value.copyWith(
-        phase: 'requesting_page',
-        pageNumber: pageNumber,
-        endpoint: 'GET /user/repos?page=$pageNumber',
-        diagnosticTail: 'Requesting page $pageNumber...',
+        phase: 'requesting_pages',
+        pageNumber: nextPage,
+        endpoint: 'GET /user/repos?page=$nextPage..$chunkEnd',
+        diagnosticTail: nextPage == chunkEnd
+            ? 'Requesting page $nextPage...'
+            : 'Requesting pages $nextPage-$chunkEnd...',
       ));
 
-      final Stopwatch pageStopwatch = Stopwatch()..start();
-      final Map<String, dynamic> params = <String, dynamic>{
-        'type': 'all',
-        'sort': 'updated',
-        'direction': 'desc',
-        'per_page': 100,
-        'page': pageNumber,
-      };
-      _diagnostics.trace(_logTag,
-          'GET /user/repos page=$pageNumber per_page=100 sort=updated');
-
-      final http.Response response;
-      try {
-        response =
-            await github.request('GET', '/user/repos', params: params).timeout(
-          _perPageTimeout,
-          onTimeout: () {
-            throw TimeoutException('page $pageNumber did not respond in '
-                '${_perPageTimeout.inSeconds}s');
-          },
-        );
-      } catch (e) {
-        pageStopwatch.stop();
-        _diagnostics.error(_logTag,
-            'page $pageNumber request failed after ${pageStopwatch.elapsedMilliseconds}ms: $e');
-        rethrow;
-      }
-      pageStopwatch.stop();
-      final int pageDurationMillis = pageStopwatch.elapsedMilliseconds;
-
-      final int rateLimitRemaining =
-          int.tryParse(response.headers['x-ratelimit-remaining'] ?? '') ?? -1;
-      final int rateLimitLimit =
-          int.tryParse(response.headers['x-ratelimit-limit'] ?? '') ?? -1;
-      final int rateLimitResetSec =
-          int.tryParse(response.headers['x-ratelimit-reset'] ?? '') ?? 0;
-      final int rateLimitResetMillis = rateLimitResetSec * 1000;
-      final int contentLength = response.bodyBytes.length;
-      final String linkHeader = response.headers['link'] ?? '';
-      final bool hasNext = linkHeader.contains('rel="next"');
-
-      _diagnostics.trace(
-          _logTag,
-          'page $pageNumber HTTP ${response.statusCode} in ${pageDurationMillis}ms '
-          'bytes=$contentLength ratelimit=$rateLimitRemaining/$rateLimitLimit '
-          'next=${hasNext ? 'yes' : 'no'}');
-
-      if (response.statusCode != 200) {
-        _diagnostics.error(_logTag,
-            'page $pageNumber returned non-200 status: ${response.statusCode}');
-        _emit(value.copyWith(
-          phase: 'http_error',
-          pageNumber: pageNumber,
-          lastHttpStatus: response.statusCode,
-          lastResponseBytes: contentLength,
-          lastResponseDurationMillis: pageDurationMillis,
-          rateLimitRemaining: rateLimitRemaining,
-          rateLimitLimit: rateLimitLimit,
-          rateLimitResetMillis: rateLimitResetMillis,
-          diagnosticTail:
-              'HTTP ${response.statusCode} on page $pageNumber: ${_extractMessage(response.body)}',
+      List<Future<_RepositoryPageResult>> requests =
+          <Future<_RepositoryPageResult>>[];
+      for (int page = nextPage; page <= chunkEnd; page += 1) {
+        requests.add(_fetchRepositoryPage(
+          github: github,
+          pageNumber: page,
+          emitRequestState: false,
         ));
-        throw GitHubError(
-          github,
-          'GitHub returned HTTP ${response.statusCode}: '
-          '${_extractMessage(response.body)}',
-        );
       }
 
-      final List<dynamic> decoded = jsonDecode(response.body) as List<dynamic>;
-      _diagnostics.trace(_logTag,
-          'page $pageNumber decoded ${decoded.length} repository records');
+      List<_RepositoryPageResult> pages = await Future.wait(requests);
+      pages.sort((_RepositoryPageResult a, _RepositoryPageResult b) {
+        return a.pageNumber.compareTo(b.pageNumber);
+      });
 
-      final List<RepositoryDto> pageDtos = <RepositoryDto>[];
-      for (final dynamic record in decoded) {
-        if (record is Map<String, dynamic>) {
-          try {
-            final Repository repository = Repository.fromJson(record);
-            pageDtos.add(_toDto(repository));
-            nextCache[repository.fullName.toLowerCase()] = repository;
-          } catch (e) {
-            _diagnostics.warn(_logTag,
-                'skipped a malformed repository record on page $pageNumber: $e');
-          }
+      for (_RepositoryPageResult page in pages) {
+        completed = _applyPageResult(
+          page: page,
+          results: results,
+          nextCache: nextCache,
+          pagesCompleted: completed,
+        );
+        if (page.rateLimitRemaining == 0) {
+          rateLimited = true;
+          _emitRateLimited(results.length);
+          break;
         }
       }
-      results.addAll(pageDtos);
-      pagesCompleted += 1;
 
-      _emit(value.copyWith(
-        phase: 'page_complete',
+      nextPage = chunkEnd + 1;
+    }
+
+    if (lastPageNumber > _maxPages) {
+      _diagnostics.warn(
+          _logTag, 'reached page limit $_maxPages; returning partial results');
+    }
+
+    return completed;
+  }
+
+  Future<int> _fetchRemainingPagesSequentially({
+    required GitHub github,
+    required List<RepositoryDto> results,
+    required Map<String, Repository> nextCache,
+    required int pagesCompleted,
+    required int firstNextPage,
+  }) async {
+    int pageNumber = firstNextPage;
+    int completed = pagesCompleted;
+
+    while (pageNumber <= _maxPages) {
+      _RepositoryPageResult page = await _fetchRepositoryPage(
+        github: github,
         pageNumber: pageNumber,
-        pagesCompleted: pagesCompleted,
-        fetchedCount: results.length,
-        lastHttpStatus: response.statusCode,
-        lastResponseBytes: contentLength,
-        lastResponseDurationMillis: pageDurationMillis,
-        rateLimitRemaining: rateLimitRemaining,
-        rateLimitLimit: rateLimitLimit,
-        rateLimitResetMillis: rateLimitResetMillis,
-        diagnosticTail: 'Page $pageNumber: +${pageDtos.length} repos '
-            '(total ${results.length}) in ${pageDurationMillis}ms',
-      ));
+      );
+      completed = _applyPageResult(
+        page: page,
+        results: results,
+        nextCache: nextCache,
+        pagesCompleted: completed,
+      );
 
-      if (!hasNext || decoded.isEmpty) {
-        _diagnostics.trace(_logTag,
-            'pagination complete after $pagesCompleted page(s) with ${results.length} total repos');
+      if (!page.hasNext || page.recordCount == 0) {
         break;
       }
-
-      if (rateLimitRemaining == 0) {
-        _diagnostics.warn(_logTag,
-            'rate limit exhausted; stopping pagination with partial results');
-        _emit(value.copyWith(
-          phase: 'rate_limited',
-          diagnosticTail:
-              'Rate limit exhausted at ${results.length} repos. Retry after reset.',
-        ));
+      if (page.rateLimitRemaining == 0) {
+        _emitRateLimited(results.length);
         break;
       }
-
       pageNumber += 1;
     }
 
@@ -375,11 +392,199 @@ class RepositoryListStore {
           _logTag, 'reached page limit $_maxPages; returning partial results');
     }
 
+    return completed;
+  }
+
+  Future<_RepositoryPageResult> _fetchRepositoryPage({
+    required GitHub github,
+    required int pageNumber,
+    bool emitRequestState = true,
+  }) async {
+    if (emitRequestState) {
+      _emit(value.copyWith(
+        phase: 'requesting_page',
+        pageNumber: pageNumber,
+        endpoint: 'GET /user/repos?page=$pageNumber',
+        diagnosticTail: 'Requesting page $pageNumber...',
+      ));
+    }
+
+    Stopwatch pageStopwatch = Stopwatch()..start();
+    Map<String, dynamic> params = <String, dynamic>{
+      'type': 'all',
+      'sort': 'updated',
+      'direction': 'desc',
+      'per_page': 100,
+      'page': pageNumber,
+    };
+    _diagnostics.trace(
+        _logTag, 'GET /user/repos page=$pageNumber per_page=100 sort=updated');
+
+    http.Response response;
+    try {
+      response =
+          await github.request('GET', '/user/repos', params: params).timeout(
+        _perPageTimeout,
+        onTimeout: () {
+          throw TimeoutException('page $pageNumber did not respond in '
+              '${_perPageTimeout.inSeconds}s');
+        },
+      );
+    } catch (e) {
+      pageStopwatch.stop();
+      _diagnostics.error(_logTag,
+          'page $pageNumber request failed after ${pageStopwatch.elapsedMilliseconds}ms: $e');
+      rethrow;
+    }
+    pageStopwatch.stop();
+
+    int pageDurationMillis = pageStopwatch.elapsedMilliseconds;
+    int rateLimitRemaining =
+        int.tryParse(response.headers['x-ratelimit-remaining'] ?? '') ?? -1;
+    int rateLimitLimit =
+        int.tryParse(response.headers['x-ratelimit-limit'] ?? '') ?? -1;
+    int rateLimitResetSec =
+        int.tryParse(response.headers['x-ratelimit-reset'] ?? '') ?? 0;
+    int rateLimitResetMillis = rateLimitResetSec * 1000;
+    int contentLength = response.bodyBytes.length;
+    String linkHeader = response.headers['link'] ?? '';
+    bool hasNext = linkHeader.contains('rel="next"');
+
+    _diagnostics.trace(
+        _logTag,
+        'page $pageNumber HTTP ${response.statusCode} in ${pageDurationMillis}ms '
+        'bytes=$contentLength ratelimit=$rateLimitRemaining/$rateLimitLimit '
+        'next=${hasNext ? 'yes' : 'no'}');
+
+    if (response.statusCode != 200) {
+      _diagnostics.error(_logTag,
+          'page $pageNumber returned non-200 status: ${response.statusCode}');
+      _emit(value.copyWith(
+        phase: 'http_error',
+        pageNumber: pageNumber,
+        lastHttpStatus: response.statusCode,
+        lastResponseBytes: contentLength,
+        lastResponseDurationMillis: pageDurationMillis,
+        rateLimitRemaining: rateLimitRemaining,
+        rateLimitLimit: rateLimitLimit,
+        rateLimitResetMillis: rateLimitResetMillis,
+        diagnosticTail:
+            'HTTP ${response.statusCode} on page $pageNumber: ${_extractMessage(response.body)}',
+      ));
+      throw GitHubError(
+        github,
+        'GitHub returned HTTP ${response.statusCode}: '
+        '${_extractMessage(response.body)}',
+      );
+    }
+
+    List<dynamic> decoded = jsonDecode(response.body) as List<dynamic>;
+    _diagnostics.trace(_logTag,
+        'page $pageNumber decoded ${decoded.length} repository records');
+
+    List<RepositoryDto> pageDtos = <RepositoryDto>[];
+    Map<String, Repository> cacheEntries = <String, Repository>{};
+    for (dynamic record in decoded) {
+      if (record is Map<String, dynamic>) {
+        try {
+          Repository repository = Repository.fromJson(record);
+          pageDtos.add(_toDto(repository));
+          cacheEntries[repository.fullName.toLowerCase()] = repository;
+        } catch (e) {
+          _diagnostics.warn(_logTag,
+              'skipped a malformed repository record on page $pageNumber: $e');
+        }
+      }
+    }
+
+    return _RepositoryPageResult(
+      pageNumber: pageNumber,
+      repositories: pageDtos,
+      cacheEntries: cacheEntries,
+      recordCount: decoded.length,
+      statusCode: response.statusCode,
+      responseBytes: contentLength,
+      responseDurationMillis: pageDurationMillis,
+      rateLimitRemaining: rateLimitRemaining,
+      rateLimitLimit: rateLimitLimit,
+      rateLimitResetMillis: rateLimitResetMillis,
+      hasNext: hasNext,
+      lastPageNumber: _lastPageNumberFromLinkHeader(linkHeader),
+    );
+  }
+
+  int _applyPageResult({
+    required _RepositoryPageResult page,
+    required List<RepositoryDto> results,
+    required Map<String, Repository> nextCache,
+    required int pagesCompleted,
+  }) {
+    results.addAll(page.repositories);
+    nextCache.addAll(page.cacheEntries);
     _repositoryCache
       ..clear()
       ..addAll(nextCache);
+    int completed = pagesCompleted + 1;
 
-    return results;
+    _emit(value.copyWith(
+      status: SpikeRepositoryStatus.loading,
+      phase: 'page_complete',
+      repositories: List<RepositoryDto>.unmodifiable(results),
+      pageNumber: page.pageNumber,
+      pagesCompleted: completed,
+      fetchedCount: results.length,
+      lastHttpStatus: page.statusCode,
+      lastResponseBytes: page.responseBytes,
+      lastResponseDurationMillis: page.responseDurationMillis,
+      rateLimitRemaining: page.rateLimitRemaining,
+      rateLimitLimit: page.rateLimitLimit,
+      rateLimitResetMillis: page.rateLimitResetMillis,
+      diagnosticTail: 'Page ${page.pageNumber}: +${page.repositories.length} '
+          'repos (total ${results.length}) in ${page.responseDurationMillis}ms',
+    ));
+
+    return completed;
+  }
+
+  void _completePagination({
+    required int pagesCompleted,
+    required List<RepositoryDto> results,
+    required Map<String, Repository> nextCache,
+  }) {
+    _diagnostics.trace(_logTag,
+        'pagination complete after $pagesCompleted page(s) with ${results.length} total repos');
+
+    _repositoryCache
+      ..clear()
+      ..addAll(nextCache);
+  }
+
+  void _emitRateLimited(int fetchedCount) {
+    _diagnostics.warn(_logTag,
+        'rate limit exhausted; stopping pagination with partial results');
+    _emit(value.copyWith(
+      phase: 'rate_limited',
+      diagnosticTail:
+          'Rate limit exhausted at $fetchedCount repos. Retry after reset.',
+    ));
+  }
+
+  int? _lastPageNumberFromLinkHeader(String linkHeader) {
+    if (linkHeader.isEmpty) {
+      return null;
+    }
+    RegExp pageExpression = RegExp(r'[?&]page=(\d+)');
+    for (String segment in linkHeader.split(',')) {
+      if (!segment.contains('rel="last"')) {
+        continue;
+      }
+      RegExpMatch? match = pageExpression.firstMatch(segment);
+      if (match == null) {
+        continue;
+      }
+      return int.tryParse(match.group(1) ?? '');
+    }
+    return null;
   }
 
   String _extractMessage(String body) {
@@ -429,4 +634,34 @@ class RepositoryListStore {
   Future<void> close() async {
     await _subject.close();
   }
+}
+
+class _RepositoryPageResult {
+  _RepositoryPageResult({
+    required this.pageNumber,
+    required this.repositories,
+    required this.cacheEntries,
+    required this.recordCount,
+    required this.statusCode,
+    required this.responseBytes,
+    required this.responseDurationMillis,
+    required this.rateLimitRemaining,
+    required this.rateLimitLimit,
+    required this.rateLimitResetMillis,
+    required this.hasNext,
+    required this.lastPageNumber,
+  });
+
+  final int pageNumber;
+  final List<RepositoryDto> repositories;
+  final Map<String, Repository> cacheEntries;
+  final int recordCount;
+  final int statusCode;
+  final int responseBytes;
+  final int responseDurationMillis;
+  final int rateLimitRemaining;
+  final int rateLimitLimit;
+  final int rateLimitResetMillis;
+  final bool hasNext;
+  final int? lastPageNumber;
 }

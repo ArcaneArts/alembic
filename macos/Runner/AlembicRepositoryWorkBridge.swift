@@ -25,12 +25,20 @@ struct ArchiveMasterRepoStateDto: Hashable {
     let lastErrorMessage: String?
 }
 
+struct RepositoryLocalState: Hashable {
+    let fullName: String
+    let state: String
+    let daysUntilArchive: Int
+    let lastOpenMs: Int64?
+}
+
 final class RepositoryWorkBridgeState: ObservableObject {
     @Published var activeRepositories: Set<String> = []
     @Published var archivedRepositories: Set<String> = []
     @Published var syncingRepositories: Set<String> = []
     @Published var workEntries: [RepositoryWorkEntry] = []
     @Published var archiveMasterStates: [String: ArchiveMasterRepoStateDto] = [:]
+    @Published var localStates: [String: RepositoryLocalState] = [:]
     @Published var lastUpdateMs: Int64 = 0
 
     func isActive(_ fullName: String) -> Bool {
@@ -52,6 +60,10 @@ final class RepositoryWorkBridgeState: ObservableObject {
 
     func archiveMasterState(for fullName: String) -> ArchiveMasterRepoStateDto? {
         return archiveMasterStates[fullName.lowercased()]
+    }
+
+    func localState(for fullName: String) -> RepositoryLocalState? {
+        return localStates[fullName.lowercased()]
     }
 }
 
@@ -120,6 +132,7 @@ final class AlembicRepositoryWorkBridge: NSObject {
         let syncing: [String] = (map["syncingRepositories"] as? [String]) ?? []
         let workEntriesRaw: [[String: Any]] = (map["workEntries"] as? [[String: Any]]) ?? []
         let masterStatesRaw: [[String: Any]] = (map["archiveMasterStates"] as? [[String: Any]]) ?? []
+        let localStatesRaw: [[String: Any]] = (map["localStates"] as? [[String: Any]]) ?? []
 
         let workEntries: [RepositoryWorkEntry] = workEntriesRaw.compactMap { raw in
             guard let fullName: String = raw["fullName"] as? String else { return nil }
@@ -149,6 +162,18 @@ final class AlembicRepositoryWorkBridge: NSObject {
             masterStates[fullName.lowercased()] = state
         }
 
+        var localStates: [String: RepositoryLocalState] = [:]
+        for raw in localStatesRaw {
+            guard let fullName: String = raw["fullName"] as? String else { continue }
+            let state: RepositoryLocalState = RepositoryLocalState(
+                fullName: fullName,
+                state: (raw["state"] as? String) ?? "cloud",
+                daysUntilArchive: Int(AlembicRepositoryWorkBridge.intValue(from: raw["daysUntilArchive"])),
+                lastOpenMs: AlembicRepositoryWorkBridge.optionalIntValue(from: raw["lastOpenMs"])
+            )
+            localStates[fullName.lowercased()] = state
+        }
+
         let nowMillis: Int64 = Int64(Date().timeIntervalSince1970 * 1000)
 
         AlembicDiagnosticsBridge.shared.recordNative(
@@ -164,8 +189,16 @@ final class AlembicRepositoryWorkBridge: NSObject {
             self.state.syncingRepositories = Set(syncing.map { $0.lowercased() })
             self.state.workEntries = workEntries
             self.state.archiveMasterStates = masterStates
+            self.state.localStates = localStates
             self.state.lastUpdateMs = nowMillis
         }
+    }
+
+    private static func intValue(from raw: Any?) -> Int64 {
+        if let v: Int64 = raw as? Int64 { return v }
+        if let v: Int = raw as? Int { return Int64(v) }
+        if let v: NSNumber = raw as? NSNumber { return v.int64Value }
+        return 0
     }
 
     private static func optionalIntValue(from raw: Any?) -> Int64? {

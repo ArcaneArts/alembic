@@ -32,6 +32,7 @@ struct AlembicRepositoryListView: View {
     @State private var searchQuery: String = ""
     @State private var ownerFilter: String = ""
     @State private var stateFilter: String = "all"
+    @State private var sortMode: String = "attention"
     @State private var detailRepository: RepositoryItem? = nil
 
     private var filteredRepositories: [RepositoryItem] {
@@ -43,7 +44,7 @@ struct AlembicRepositoryListView: View {
             let matchesOwner: Bool = ownerFilter.isEmpty || item.owner == ownerFilter
             let matchesState: Bool = stateMatches(item)
             return matchesQuery && matchesOwner && matchesState
-        }
+        }.sorted(by: compareRepositories)
     }
 
     private func stateMatches(_ item: RepositoryItem) -> Bool {
@@ -63,6 +64,87 @@ struct AlembicRepositoryListView: View {
             owners.insert(repo.owner)
         }
         return Array(owners).sorted()
+    }
+
+    private func compareRepositories(_ lhs: RepositoryItem, _ rhs: RepositoryItem) -> Bool {
+        switch sortMode {
+        case "name":
+            return lhs.fullName.localizedCaseInsensitiveCompare(rhs.fullName) == .orderedAscending
+        case "owner":
+            let ownerOrder: ComparisonResult = lhs.owner.localizedCaseInsensitiveCompare(rhs.owner)
+            if ownerOrder != .orderedSame {
+                return ownerOrder == .orderedAscending
+            }
+            return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+        case "updated":
+            if lhs.updatedAtMillis != rhs.updatedAtMillis {
+                return lhs.updatedAtMillis > rhs.updatedAtMillis
+            }
+            return lhs.fullName.localizedCaseInsensitiveCompare(rhs.fullName) == .orderedAscending
+        case "archiveSoon":
+            let lhsActive: Bool = workState.isActive(lhs.fullName)
+            let rhsActive: Bool = workState.isActive(rhs.fullName)
+            if lhsActive != rhsActive {
+                return lhsActive
+            }
+            let lhsDays: Int = daysUntilArchive(for: lhs)
+            let rhsDays: Int = daysUntilArchive(for: rhs)
+            if lhsActive && lhsDays != rhsDays {
+                return lhsDays < rhsDays
+            }
+            let lhsRank: Int = stateRank(lhs)
+            let rhsRank: Int = stateRank(rhs)
+            if lhsRank != rhsRank {
+                return lhsRank < rhsRank
+            }
+            return lhs.fullName.localizedCaseInsensitiveCompare(rhs.fullName) == .orderedAscending
+        case "state":
+            let lhsRank: Int = stateRank(lhs)
+            let rhsRank: Int = stateRank(rhs)
+            if lhsRank != rhsRank {
+                return lhsRank < rhsRank
+            }
+            return lhs.fullName.localizedCaseInsensitiveCompare(rhs.fullName) == .orderedAscending
+        default:
+            let lhsRank: Int = attentionRank(lhs)
+            let rhsRank: Int = attentionRank(rhs)
+            if lhsRank != rhsRank {
+                return lhsRank < rhsRank
+            }
+            if workState.isActive(lhs.fullName) && workState.isActive(rhs.fullName) {
+                let lhsDays: Int = daysUntilArchive(for: lhs)
+                let rhsDays: Int = daysUntilArchive(for: rhs)
+                if lhsDays != rhsDays {
+                    return lhsDays < rhsDays
+                }
+            }
+            if lhs.updatedAtMillis != rhs.updatedAtMillis {
+                return lhs.updatedAtMillis > rhs.updatedAtMillis
+            }
+            return lhs.fullName.localizedCaseInsensitiveCompare(rhs.fullName) == .orderedAscending
+        }
+    }
+
+    private func attentionRank(_ item: RepositoryItem) -> Int {
+        if workState.isSyncing(item.fullName) { return 0 }
+        if workState.isActive(item.fullName) && daysUntilArchive(for: item) <= 3 { return 1 }
+        if workState.isActive(item.fullName) { return 2 }
+        if workState.isArchived(item.fullName) { return 3 }
+        return 4
+    }
+
+    private func stateRank(_ item: RepositoryItem) -> Int {
+        if workState.isSyncing(item.fullName) { return 0 }
+        if workState.isActive(item.fullName) { return 1 }
+        if workState.isArchived(item.fullName) { return 2 }
+        return 3
+    }
+
+    private func daysUntilArchive(for item: RepositoryItem) -> Int {
+        if let local: RepositoryLocalState = workState.localState(for: item.fullName) {
+            return local.daysUntilArchive
+        }
+        return settingsState.daysToArchive
     }
 
     var body: some View {
@@ -100,7 +182,11 @@ struct AlembicRepositoryListView: View {
     private var content: some View {
         switch state.status {
         case "loading":
-            loadingState
+            if state.repositories.isEmpty {
+                loadingState
+            } else {
+                readyState
+            }
         case "noAccount":
             welcomeState
         case "error", "timeout":
@@ -223,6 +309,7 @@ struct AlembicRepositoryListView: View {
             return state.pageNumber > 0
                 ? "Fetching page \(state.pageNumber)"
                 : "Fetching repositories"
+        case "requesting_pages": return "Fetching pages"
         case "page_complete": return "Loading more"
         case "rate_limited": return "Rate limited"
         default: return "Loading repositories"
@@ -300,7 +387,10 @@ struct AlembicRepositoryListView: View {
                 Text("@\(state.accountLogin) has no repositories.")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
-                Button("Refresh", action: onRefresh)
+                Button("Refresh") {
+                    AlembicRepositoryWorkBridge.shared.rescan()
+                    onRefresh()
+                }
                     .buttonStyle(.bordered)
             }
             .padding(32)
@@ -380,6 +470,25 @@ struct AlembicRepositoryListView: View {
             .menuStyle(.borderlessButton)
             .frame(width: 130)
 
+            Menu {
+                Button("Needs attention") { sortMode = "attention" }
+                Divider()
+                Button("Archive soon") { sortMode = "archiveSoon" }
+                Button("Recently updated") { sortMode = "updated" }
+                Button("State") { sortMode = "state" }
+                Button("Name") { sortMode = "name" }
+                Button("Owner") { sortMode = "owner" }
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.up.arrow.down")
+                        .font(.system(size: 11))
+                    Text(sortModeLabel)
+                        .font(.system(size: 11, weight: .medium))
+                }
+            }
+            .menuStyle(.borderlessButton)
+            .frame(width: 150)
+
             if availableOwners.count > 1 {
                 Menu {
                     Button("All organizations") { ownerFilter = "" }
@@ -406,6 +515,7 @@ struct AlembicRepositoryListView: View {
                 .foregroundStyle(.secondary)
 
             Button {
+                AlembicRepositoryWorkBridge.shared.rescan()
                 onRefresh()
             } label: {
                 Image(systemName: "arrow.clockwise")
@@ -439,11 +549,25 @@ struct AlembicRepositoryListView: View {
         }
     }
 
+    private var sortModeLabel: String {
+        switch sortMode {
+        case "archiveSoon": return "Archive soon"
+        case "updated": return "Updated"
+        case "state": return "State"
+        case "name": return "Name"
+        case "owner": return "Owner"
+        default: return "Attention"
+        }
+    }
+
     private var repositoryCountLabel: String {
         let total: Int = state.repositories.count
         let shown: Int = filteredRepositories.count
+        if state.isLoading {
+            return "\(shown) shown  \(state.fetchedCount) fetched  loading"
+        }
         if total == shown {
-            return "\(total) repos"
+            return "\(workState.activeRepositories.count) active  \(workState.archivedRepositories.count) archived  \(total) repos"
         }
         return "\(shown) of \(total)"
     }
@@ -455,6 +579,7 @@ struct AlembicRepositoryListView: View {
                     AlembicRepositoryRow(
                         item: item,
                         workState: workState,
+                        settingsState: settingsState,
                         onOpenBrowser: { onOpen(item.htmlUrl) },
                         onShowDetail: { detailRepository = item }
                     )
@@ -510,6 +635,7 @@ struct AlembicRepositoryListView: View {
 struct AlembicRepositoryRow: View {
     let item: RepositoryItem
     @ObservedObject var workState: RepositoryWorkBridgeState
+    @ObservedObject var settingsState: SettingsBridgeState
     let onOpenBrowser: () -> Void
     let onShowDetail: () -> Void
     @State private var isHovering: Bool = false
@@ -519,12 +645,11 @@ struct AlembicRepositoryRow: View {
     private var isArchived: Bool { workState.isArchived(item.fullName) }
     private var isSyncing: Bool { workState.isSyncing(item.fullName) }
     private var workEntries: [RepositoryWorkEntry] { workState.workForRepo(item.fullName) }
+    private var localState: RepositoryLocalState? { workState.localState(for: item.fullName) }
 
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
-            stateColumn
-            languageIndicator
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(item.owner)
                         .font(.system(size: 12, weight: .regular))
@@ -538,75 +663,21 @@ struct AlembicRepositoryRow: View {
                     if item.isPrivate {
                         Image(systemName: "lock.fill")
                             .font(.system(size: 9))
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(.secondary)
                     }
                     if item.isFork {
                         Image(systemName: "tuningfork")
                             .font(.system(size: 9))
-                            .foregroundStyle(.purple)
-                    }
-                    if item.isArchived {
-                        Text("github archived")
-                            .font(.system(size: 8, weight: .bold))
-                            .tracking(0.4)
-                            .foregroundStyle(.secondary.opacity(0.75))
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 1)
-                            .background(
-                                RoundedRectangle(cornerRadius: 3)
-                                    .fill(Color.primary.opacity(0.06))
-                            )
-                    }
-                }
-                if let work: RepositoryWorkEntry = workEntries.first {
-                    HStack(spacing: 6) {
-                        ProgressView()
-                            .scaleEffect(0.45)
-                            .frame(width: 10, height: 10)
-                        Text(work.message.isEmpty ? work.kind : work.message)
-                            .font(.system(size: 11))
                             .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
                     }
-                } else if !item.description.isEmpty {
-                    Text(item.description)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
                 }
+                rowSubtitle
             }
-            Spacer()
-            HStack(spacing: 14) {
-                if item.starCount > 0 {
-                    metric(icon: "star", value: item.starCount)
-                }
-                if item.forkCount > 0 {
-                    metric(icon: "arrow.triangle.branch", value: item.forkCount)
-                }
-            }
-            .opacity(isHovering ? 1.0 : 0.6)
-            HStack(spacing: 4) {
-                primaryActionButton
-                Button {
-                    onShowDetail()
-                } label: {
-                    Image(systemName: "info.circle")
-                        .font(.system(size: 12))
-                }
-                .buttonStyle(.borderless)
-                .foregroundStyle(isHovering ? Color.accentColor : .secondary)
-                .help("Show details")
-                Button {
-                    onOpenBrowser()
-                } label: {
-                    Image(systemName: "arrow.up.right.square")
-                        .font(.system(size: 12, weight: .semibold))
-                }
-                .buttonStyle(.borderless)
-                .foregroundStyle(isHovering ? Color.accentColor : .secondary)
-                .help("Open on GitHub")
+            Spacer(minLength: 12)
+            if let action: String = actionInFlight {
+                actionStatus(action)
+            } else {
+                rowBadges
             }
         }
         .padding(.horizontal, 12)
@@ -630,86 +701,102 @@ struct AlembicRepositoryRow: View {
     }
 
     @ViewBuilder
-    private var stateColumn: some View {
-        ZStack {
-            Circle()
-                .fill(stateColor.opacity(0.16))
-                .frame(width: 22, height: 22)
-            if isSyncing {
-                ProgressView()
-                    .scaleEffect(0.45)
-                    .frame(width: 12, height: 12)
-            } else {
-                Image(systemName: stateSymbol)
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(stateColor)
-            }
-        }
-        .help(stateTooltip)
-    }
-
-    private var stateColor: Color {
-        if isSyncing { return .accentColor }
-        if isActive { return .green }
-        if isArchived { return .blue }
-        return .secondary
-    }
-
-    private var stateSymbol: String {
-        if isActive { return "checkmark" }
-        if isArchived { return "archivebox.fill" }
-        return "cloud"
-    }
-
-    private var stateTooltip: String {
-        if isSyncing { return "Syncing" }
-        if isActive { return "Active locally" }
-        if isArchived { return "Archived" }
-        return "Cloud only"
-    }
-
-    @ViewBuilder
-    private var primaryActionButton: some View {
-        if let action: String = actionInFlight {
-            HStack(spacing: 4) {
+    private var rowSubtitle: some View {
+        if let work: RepositoryWorkEntry = workEntries.first {
+            HStack(spacing: 6) {
                 ProgressView()
                     .scaleEffect(0.45)
                     .frame(width: 10, height: 10)
-                Text(action)
-                    .font(.system(size: 10))
+                Text(work.message.isEmpty ? work.kind : work.message)
+                    .font(.system(size: 11))
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
             }
-        } else if isActive {
-            Button {
-                runAction("open") { AlembicRepositoryActionsBridge.shared.open(fullName: item.fullName, completion: $0) }
-            } label: {
-                Image(systemName: "play.fill")
-                    .font(.system(size: 11, weight: .semibold))
-            }
-            .buttonStyle(.borderless)
-            .foregroundStyle(isHovering ? Color.accentColor : .secondary)
-            .help("Open in editor")
-        } else if isArchived {
-            Button {
-                runAction("unarchive") { AlembicRepositoryActionsBridge.shared.unarchive(fullName: item.fullName, completion: $0) }
-            } label: {
-                Image(systemName: "archivebox.fill")
-                    .font(.system(size: 11, weight: .semibold))
-            }
-            .buttonStyle(.borderless)
-            .foregroundStyle(isHovering ? Color.accentColor : .secondary)
-            .help("Unarchive")
+        } else if !item.description.isEmpty {
+            Text(item.description)
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
         } else {
-            Button {
-                runAction("clone") { AlembicRepositoryActionsBridge.shared.clone(fullName: item.fullName, completion: $0) }
-            } label: {
-                Image(systemName: "arrow.down.circle")
-                    .font(.system(size: 11, weight: .semibold))
-            }
-            .buttonStyle(.borderless)
-            .foregroundStyle(isHovering ? Color.accentColor : .secondary)
-            .help("Clone")
+            Text(item.fullName)
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
         }
+    }
+
+    private var rowBadges: some View {
+        HStack(spacing: 6) {
+            statusBadge
+            if isActive {
+                badge(archiveTimingLabel, tint: archiveTimingColor)
+            }
+            if item.isArchived {
+                badge("GitHub archived", tint: .secondary)
+            }
+        }
+    }
+
+    private var statusBadge: some View {
+        if isSyncing {
+            return badge("Syncing", tint: .accentColor)
+        }
+        if isActive {
+            return badge("Active", tint: .green)
+        }
+        if isArchived {
+            return badge("Archived", tint: .blue)
+        }
+        return badge("Cloud", tint: .secondary)
+    }
+
+    private var archiveTimingLabel: String {
+        let days: Int = localState?.daysUntilArchive ?? settingsState.daysToArchive
+        if days <= 0 {
+            return "Archive due"
+        }
+        if days == 1 {
+            return "1d to archive"
+        }
+        return "\(days)d to archive"
+    }
+
+    private var archiveTimingColor: Color {
+        let days: Int = localState?.daysUntilArchive ?? settingsState.daysToArchive
+        if days <= 3 {
+            return .orange
+        }
+        return .secondary
+    }
+
+    private func actionStatus(_ action: String) -> some View {
+        HStack(spacing: 5) {
+            ProgressView()
+                .scaleEffect(0.45)
+                .frame(width: 10, height: 10)
+            Text(action)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func badge(_ text: String, tint: Color) -> some View {
+        Text(text)
+            .font(.system(size: 10, weight: .medium))
+            .foregroundStyle(tint)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(tint.opacity(0.10))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .strokeBorder(tint.opacity(0.20), lineWidth: 0.5)
+            )
     }
 
     @ViewBuilder
@@ -749,62 +836,6 @@ struct AlembicRepositoryRow: View {
         actionInFlight = name
         invoke { _ in
             actionInFlight = nil
-        }
-    }
-
-    private var languageIndicator: some View {
-        HStack(spacing: 6) {
-            Circle()
-                .fill(languageColor(item.language))
-                .frame(width: 8, height: 8)
-            if let language: String = item.language {
-                Text(language)
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 60, alignment: .leading)
-            } else {
-                Text(" ")
-                    .font(.system(size: 10))
-                    .frame(width: 60, alignment: .leading)
-            }
-        }
-    }
-
-    private func metric(icon: String, value: Int) -> some View {
-        HStack(spacing: 3) {
-            Image(systemName: icon)
-                .font(.system(size: 10))
-            Text(formatMetric(value))
-                .font(.system(size: 10, weight: .medium))
-        }
-        .foregroundStyle(.secondary)
-    }
-
-    private func formatMetric(_ value: Int) -> String {
-        if value >= 1000 {
-            return String(format: "%.1fk", Double(value) / 1000.0)
-        }
-        return "\(value)"
-    }
-
-    private func languageColor(_ language: String?) -> Color {
-        guard let lang: String = language else {
-            return Color.secondary.opacity(0.4)
-        }
-        switch lang.lowercased() {
-        case "swift": return .orange
-        case "dart": return Color(red: 0.04, green: 0.65, blue: 0.84)
-        case "rust": return Color(red: 0.86, green: 0.45, blue: 0.16)
-        case "javascript", "typescript": return .yellow
-        case "python": return Color(red: 0.30, green: 0.55, blue: 0.80)
-        case "go": return Color(red: 0.30, green: 0.72, blue: 0.86)
-        case "ruby": return Color(red: 0.78, green: 0.20, blue: 0.20)
-        case "kotlin": return .purple
-        case "java": return Color(red: 0.70, green: 0.32, blue: 0.16)
-        case "c", "c++": return .blue
-        case "html", "css": return Color(red: 0.90, green: 0.36, blue: 0.20)
-        case "shell", "bash": return .green
-        default: return .accentColor
         }
     }
 }

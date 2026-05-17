@@ -32,7 +32,8 @@ class RepositoryActionsBridge {
       return;
     }
     _attached = true;
-    _diagnostics.log(_logTag, 'attaching to channel ${SpikeChannels.repositoryActions}');
+    _diagnostics.log(
+        _logTag, 'attaching to channel ${SpikeChannels.repositoryActions}');
     _channel.setMethodCallHandler(_handle);
     _diagnostics.success(_logTag, 'actions bridge attached');
   }
@@ -105,8 +106,7 @@ class RepositoryActionsBridge {
   }
 
   _ActionContext? _resolveContext(Object? rawArgs) {
-    final Map<dynamic, dynamic>? args =
-        rawArgs is Map ? rawArgs : null;
+    final Map<dynamic, dynamic>? args = rawArgs is Map ? rawArgs : null;
     final String fullName = (args?['fullName'] as String? ?? '').trim();
     if (fullName.isEmpty) {
       _diagnostics.warn(_logTag, 'missing fullName argument');
@@ -163,7 +163,7 @@ class RepositoryActionsBridge {
   }
 
   Future<Map<String, Object?>> _open(_ActionContext ctx) async {
-    unawaited(ctx.arcane.open(ctx.github));
+    await ctx.arcane.open(ctx.github);
     return await _stateResult(ctx);
   }
 
@@ -258,7 +258,8 @@ class RepositoryActionsBridge {
     }
     final RepoState state = await ctx.arcane.state;
     final int daysUntilArchival = await ctx.arcane.daysUntilArchival;
-    final int? latestModification = await ctx.arcane.getLatestFileModificationTime();
+    final int? latestModification =
+        await ctx.arcane.getLatestFileModificationTime();
     final ArchiveMasterRepoState? masterState =
         getArchiveMasterRepoState(ctx.repository.fullName);
     final int? lastOpen = getRepoConfig(ctx.repository).lastOpen;
