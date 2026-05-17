@@ -13,7 +13,6 @@ import 'package:alembic/util/git_signing.dart';
 import 'package:alembic/util/repo_config.dart';
 import 'package:archive/archive_io.dart';
 import 'package:fast_log/fast_log.dart';
-import 'package:flutter/widgets.dart';
 import 'package:github/github.dart';
 import 'package:rxdart/rxdart.dart';
 
@@ -416,7 +415,7 @@ class ArcaneRepository {
     });
   }
 
-  Future<void> open(GitHub github, BuildContext context) {
+  Future<void> open(GitHub github) {
     return doWork<void>("Opening", () async {
       await ensureRepositoryActive(github);
 

@@ -1,22 +1,33 @@
 import Cocoa
 import FlutterMacOS
 import LaunchAtLogin
+import SwiftUI
 
 class MainFlutterWindow: NSWindow {
   private let hostCornerRadius: CGFloat = 14
-  private var hostGlassView: NSVisualEffectView?
+  private var backdropView: AlembicGlassBackdrop?
+  private var flutterEngine: FlutterEngine?
+
+  override var canBecomeKey: Bool {
+    return true
+  }
+
+  override var canBecomeMain: Bool {
+    return true
+  }
 
   override func awakeFromNib() {
     self.orderOut(nil)
-    let flutterViewController: FlutterViewController = FlutterViewController()
-    let windowFrame: NSRect = self.frame
-    self.contentViewController = flutterViewController
-    self.setFrame(windowFrame, display: true)
-    self.appearance = NSAppearance(named: .aqua)
 
+    self.isReleasedWhenClosed = false
+    self.hidesOnDeactivate = false
+    self.level = .floating
+    self.collectionBehavior.insert(.moveToActiveSpace)
+    self.collectionBehavior.insert(.fullScreenAuxiliary)
+    self.collectionBehavior.insert(.transient)
+    self.appearance = NSAppearance(named: .aqua)
     self.isOpaque = false
     self.backgroundColor = NSColor.clear
-    flutterViewController.backgroundColor = NSColor.clear
     self.titlebarAppearsTransparent = true
     self.titleVisibility = .hidden
     self.styleMask.insert(.fullSizeContentView)
@@ -29,25 +40,7 @@ class MainFlutterWindow: NSWindow {
     self.contentView?.wantsLayer = true
     self.contentView?.layer?.backgroundColor = NSColor.clear.cgColor
 
-    flutterViewController.view.wantsLayer = true
-    flutterViewController.view.layer?.backgroundColor = NSColor.clear.cgColor
-
-    if let flutterRootView: NSView = self.contentView {
-      let glassView: NSVisualEffectView = NSVisualEffectView(frame: flutterRootView.bounds)
-      glassView.autoresizingMask = [.width, .height]
-      glassView.material = .underWindowBackground
-      glassView.blendingMode = .behindWindow
-      glassView.state = .active
-      glassView.isEmphasized = false
-      glassView.appearance = NSAppearance(named: .aqua)
-      glassView.alphaValue = 1.0
-      glassView.wantsLayer = true
-      glassView.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.10).cgColor
-      glassView.layer?.cornerRadius = hostCornerRadius
-      glassView.layer?.masksToBounds = true
-      flutterRootView.addSubview(glassView, positioned: .below, relativeTo: nil)
-      hostGlassView = glassView
-    }
+    _installNativeUi()
 
     NotificationCenter.default.addObserver(
       self,
@@ -57,9 +50,99 @@ class MainFlutterWindow: NSWindow {
     )
     _applyHostMask()
 
+    super.awakeFromNib()
+    self.orderOut(nil)
+    DispatchQueue.main.async {
+      self.orderOut(nil)
+    }
+  }
+
+  override func close() {
+    AlembicTrayController.shared.hideWindow()
+  }
+
+  deinit {
+    NotificationCenter.default.removeObserver(self)
+    flutterEngine?.shutDownEngine()
+    flutterEngine = nil
+  }
+
+  private func _installNativeUi() {
+    NSLog("[Alembic] Launching native SwiftUI UI with headless Flutter engine")
+
+    let engine: FlutterEngine = FlutterEngine(name: "alembic", project: nil)
+    let started: Bool = engine.run(withEntrypoint: nil)
+    if !started {
+      NSLog("[Alembic] FlutterEngine.run() returned false")
+    }
+    RegisterGeneratedPlugins(registry: engine)
+    flutterEngine = engine
+
+    let messenger: FlutterBinaryMessenger = engine.binaryMessenger
+    _attachBridges(messenger: messenger)
+
+    let rootView: AlembicSpikeRootView = AlembicSpikeRootView(
+      state: AlembicSpikeBridge.shared.state,
+      repositoryState: AlembicRepositoryListBridge.shared.state,
+      diagnosticsState: AlembicDiagnosticsBridge.shared.state,
+      workspaceState: AlembicWorkspaceBridge.shared.state,
+      workState: AlembicRepositoryWorkBridge.shared.state,
+      settingsState: AlembicSettingsBridge.shared.state,
+      accountsState: AlembicAccountsBridge.shared.state,
+      onRepositoryRefresh: {
+        AlembicRepositoryListBridge.shared.refresh()
+      },
+      onRepositoryRetry: {
+        AlembicRepositoryListBridge.shared.retry()
+      },
+      onRepositoryOpen: { url in
+        AlembicRepositoryListBridge.shared.openInBrowser(url)
+      }
+    )
+
+    let hostingController: NSHostingController<AlembicSpikeRootView> = NSHostingController(rootView: rootView)
+    hostingController.view.wantsLayer = true
+    hostingController.view.layer?.backgroundColor = NSColor.clear.cgColor
+
+    self.contentViewController = hostingController
+
+    if let rootContent: NSView = self.contentView {
+      let backdrop: AlembicGlassBackdrop = AlembicGlassBackdrop(
+        frame: rootContent.bounds,
+        cornerRadius: hostCornerRadius
+      )
+      rootContent.addSubview(backdrop, positioned: .below, relativeTo: nil)
+      backdropView = backdrop
+    }
+  }
+
+  private func _attachBridges(messenger: FlutterBinaryMessenger) {
+    AlembicDiagnosticsBridge.shared.attach(messenger: messenger)
+    AlembicSpikeBridge.shared.attach(messenger: messenger)
+    AlembicRepositoryListBridge.shared.attach(messenger: messenger)
+    AlembicWorkspaceBridge.shared.attach(messenger: messenger)
+    AlembicWorkspaceBridge.shared.setHostWindow(self)
+    AlembicRepositoryActionsBridge.shared.attach(messenger: messenger)
+    AlembicRepositoryWorkBridge.shared.attach(messenger: messenger)
+    AlembicAccountsBridge.shared.attach(messenger: messenger)
+    AlembicSettingsBridge.shared.attach(messenger: messenger)
+    AlembicWindowBridge.shared.attach(
+      window: self,
+      backdrop: backdropView,
+      binaryMessenger: messenger
+    )
+    AlembicModalsBridge.shared.attach(
+      window: self,
+      binaryMessenger: messenger
+    )
+    AlembicMenusBridge.shared.attach(
+      window: self,
+      binaryMessenger: messenger
+    )
+
     FlutterMethodChannel(
       name: "launch_at_startup",
-      binaryMessenger: flutterViewController.engine.binaryMessenger
+      binaryMessenger: messenger
     )
     .setMethodCallHandler { (_ call: FlutterMethodCall, result: @escaping FlutterResult) in
       switch call.method {
@@ -77,13 +160,12 @@ class MainFlutterWindow: NSWindow {
 
     let trayChannel: FlutterMethodChannel = FlutterMethodChannel(
       name: "alembic_tray",
-      binaryMessenger: flutterViewController.engine.binaryMessenger
+      binaryMessenger: messenger
     )
     AlembicTrayController.shared.attach(window: self, channel: trayChannel)
     trayChannel.setMethodCallHandler { (_ call: FlutterMethodCall, result: @escaping FlutterResult) in
       switch call.method {
       case "init":
-        AlembicTrayController.shared.install()
         result(nil)
       case "dispose":
         AlembicTrayController.shared.dispose()
@@ -94,11 +176,6 @@ class MainFlutterWindow: NSWindow {
         let arguments: [String: Any]? = call.arguments as? [String: Any]
         let tooltip: String = (arguments?["tooltip"] as? String) ?? "Alembic"
         AlembicTrayController.shared.setTooltip(tooltip)
-        result(nil)
-      case "setActivationPolicy":
-        let arguments: [String: Any]? = call.arguments as? [String: Any]
-        let mode: String = (arguments?["mode"] as? String) ?? "accessory"
-        AlembicTrayController.shared.setActivationPolicy(mode)
         result(nil)
       case "dumpFullDebug":
         result(AlembicTrayController.shared.dumpFullDebug())
@@ -111,18 +188,6 @@ class MainFlutterWindow: NSWindow {
         result(FlutterMethodNotImplemented)
       }
     }
-
-    RegisterGeneratedPlugins(registry: flutterViewController)
-
-    super.awakeFromNib()
-    self.orderOut(nil)
-    DispatchQueue.main.async {
-      self.orderOut(nil)
-    }
-  }
-
-  deinit {
-    NotificationCenter.default.removeObserver(self)
   }
 
   @objc private func _windowDidResize(_ notification: Notification) {
@@ -146,10 +211,10 @@ class MainFlutterWindow: NSWindow {
     rootView.layer?.masksToBounds = true
     rootView.layer?.borderWidth = 0
 
-    if let hostGlassView: NSVisualEffectView = hostGlassView {
-      hostGlassView.layer?.cornerRadius = hostCornerRadius
-      hostGlassView.layer?.masksToBounds = true
-      hostGlassView.layer?.borderWidth = 0
+    if let backdrop: AlembicGlassBackdrop = backdropView {
+      backdrop.setCornerRadius(hostCornerRadius)
+      backdrop.layer?.masksToBounds = true
+      backdrop.layer?.borderWidth = 0
     }
   }
 }

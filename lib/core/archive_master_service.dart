@@ -4,7 +4,6 @@ import 'package:alembic/core/account_registry.dart';
 import 'package:alembic/core/arcane_repository.dart';
 import 'package:alembic/core/repository_runtime.dart';
 import 'package:alembic/util/archive_master.dart';
-import 'package:alembic/util/environment.dart';
 import 'package:alembic/util/repo_config.dart';
 import 'package:alembic/util/semaphore.dart';
 import 'package:fast_log/fast_log.dart';
@@ -53,9 +52,6 @@ class ArchiveMasterService {
     }
     _scheduleTimer?.cancel();
     _initialDelayTimer?.cancel();
-    if (alembicIsFlutterTestEnvironment()) {
-      return;
-    }
     final int intervalMinutes = config.archiveMasterIntervalMinutes;
     final Duration period = Duration(
       minutes: intervalMinutes <= 0 ? 60 : intervalMinutes,
