@@ -43,6 +43,7 @@ final class SettingsBridgeState: ObservableObject {
     @Published var defaultWorkspaceDirectory: String = ""
     @Published var defaultArchiveDirectory: String = ""
     @Published var defaultArchiveMasterDirectory: String = ""
+    @Published var archiveEnabled: Bool = true
     @Published var daysToArchive: Int = 7
     @Published var archiveMasterIntervalMinutes: Int = 60
     @Published var editorTool: String? = nil
@@ -121,6 +122,7 @@ final class AlembicSettingsBridge: NSObject {
         workspaceDirectory: String?,
         archiveDirectory: String?,
         archiveMasterDirectory: String?,
+        archiveEnabled: Bool?,
         daysToArchive: Int?,
         completion: @escaping (OperationResult) -> Void
     ) {
@@ -128,6 +130,7 @@ final class AlembicSettingsBridge: NSObject {
         if let v: String = workspaceDirectory, !v.isEmpty { arguments["workspaceDirectory"] = v }
         if let v: String = archiveDirectory, !v.isEmpty { arguments["archiveDirectory"] = v }
         if let v: String = archiveMasterDirectory, !v.isEmpty { arguments["archiveMasterDirectory"] = v }
+        if let v: Bool = archiveEnabled { arguments["archiveEnabled"] = v }
         if let v: Int = daysToArchive, v > 0 { arguments["daysToArchive"] = v }
         channel?.invokeMethod("setWorkspace", arguments: arguments) { result in
             DispatchQueue.main.async {
@@ -227,6 +230,7 @@ final class AlembicSettingsBridge: NSObject {
         let defaultWorkspaceDirectory: String = (map["defaultWorkspaceDirectory"] as? String) ?? ""
         let defaultArchiveDirectory: String = (map["defaultArchiveDirectory"] as? String) ?? ""
         let defaultArchiveMasterDirectory: String = (map["defaultArchiveMasterDirectory"] as? String) ?? ""
+        let archiveEnabled: Bool = (map["archiveEnabled"] as? Bool) ?? true
         let daysToArchive: Int = Int(AlembicSettingsBridge.intValue(from: map["daysToArchive"]))
         let archiveMasterIntervalMinutes: Int = Int(AlembicSettingsBridge.intValue(from: map["archiveMasterIntervalMinutes"]))
         let editorTool: String? = map["editorTool"] as? String
@@ -276,6 +280,7 @@ final class AlembicSettingsBridge: NSObject {
             self.state.defaultWorkspaceDirectory = defaultWorkspaceDirectory
             self.state.defaultArchiveDirectory = defaultArchiveDirectory
             self.state.defaultArchiveMasterDirectory = defaultArchiveMasterDirectory
+            self.state.archiveEnabled = archiveEnabled
             self.state.daysToArchive = daysToArchive > 0 ? daysToArchive : 7
             self.state.archiveMasterIntervalMinutes = archiveMasterIntervalMinutes > 0 ? archiveMasterIntervalMinutes : 60
             self.state.editorTool = editorTool

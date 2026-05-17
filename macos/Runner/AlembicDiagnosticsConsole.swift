@@ -15,7 +15,10 @@ struct AlembicDiagnosticsConsole: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
-        .background(AlembicSpikeGlassPanel())
+        .alembicGlassSurface(
+            .panel,
+            padding: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
+        )
     }
 
     private var header: some View {

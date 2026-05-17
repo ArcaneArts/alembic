@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:alembic/bloc/repository_list_store.dart';
+import 'package:alembic/core/archive_master_service.dart';
 import 'package:alembic/main.dart' as alembic_main;
 import 'package:alembic/platform/desktop_platform_adapter.dart';
 import 'package:alembic/spike/spike_channels.dart';
@@ -104,9 +105,13 @@ class SettingsChannelBridge {
   Future<Map<String, Object?>> _handleSetWorkspace(Object? rawArgs) async {
     final Map<dynamic, dynamic>? args = rawArgs is Map ? rawArgs : null;
     final AlembicConfig cfg = config;
-    final String? workspaceDirectory = (args?['workspaceDirectory'] as String?)?.trim();
-    final String? archiveDirectory = (args?['archiveDirectory'] as String?)?.trim();
-    final String? archiveMasterDirectory = (args?['archiveMasterDirectory'] as String?)?.trim();
+    final String? workspaceDirectory =
+        (args?['workspaceDirectory'] as String?)?.trim();
+    final String? archiveDirectory =
+        (args?['archiveDirectory'] as String?)?.trim();
+    final String? archiveMasterDirectory =
+        (args?['archiveMasterDirectory'] as String?)?.trim();
+    bool? archiveEnabled = args?['archiveEnabled'] as bool?;
     final int? daysToArchive = args?['daysToArchive'] as int?;
     if (workspaceDirectory != null && workspaceDirectory.isNotEmpty) {
       cfg.workspaceDirectory = workspaceDirectory;
@@ -117,10 +122,14 @@ class SettingsChannelBridge {
     if (archiveMasterDirectory != null && archiveMasterDirectory.isNotEmpty) {
       cfg.archiveMasterDirectory = archiveMasterDirectory;
     }
+    if (archiveEnabled != null) {
+      cfg.archiveEnabled = archiveEnabled;
+    }
     if (daysToArchive != null && daysToArchive > 0) {
       cfg.daysToArchive = daysToArchive;
     }
     setConfig(cfg);
+    archiveMasterService?.rescheduleAfterConfigChange();
     return <String, Object?>{'ok': true};
   }
 
@@ -155,6 +164,7 @@ class SettingsChannelBridge {
       cfg.archiveMasterIntervalMinutes = interval;
     }
     setConfig(cfg);
+    archiveMasterService?.rescheduleAfterConfigChange();
     return <String, Object?>{'ok': true};
   }
 
@@ -213,7 +223,8 @@ class SettingsChannelBridge {
       cfg.editorTool = ApplicationTool.values.firstWhere(
         (ApplicationTool tool) =>
             tool.name == editorToolName && tool.supportedOnCurrentPlatform,
-        orElse: () => cfg.editorTool ?? config.editorTool ?? ApplicationTool.intellij,
+        orElse: () =>
+            cfg.editorTool ?? config.editorTool ?? ApplicationTool.intellij,
       );
     }
     if (clearGit == true) {
@@ -286,6 +297,7 @@ class SettingsChannelBridge {
       'defaultWorkspaceDirectory': cfg.defaultWorkspaceDirectory,
       'defaultArchiveDirectory': cfg.defaultArchiveDirectory,
       'defaultArchiveMasterDirectory': cfg.defaultArchiveMasterDirectory,
+      'archiveEnabled': cfg.archiveEnabled,
       'daysToArchive': cfg.daysToArchive,
       'archiveMasterIntervalMinutes': cfg.archiveMasterIntervalMinutes,
       'editorTool': cfg.editorTool?.name,

@@ -1,24 +1,6 @@
 import AppKit
 import SwiftUI
 
-struct AlembicGlassCardBackground: NSViewRepresentable {
-    let cornerRadius: CGFloat
-
-    func makeNSView(context: Context) -> NSView {
-        return AlembicGlassBackdrop(
-            frame: NSRect(x: 0, y: 0, width: 1, height: 1),
-            cornerRadius: cornerRadius
-        )
-    }
-
-    func updateNSView(_ nsView: NSView, context: Context) {
-        if let backdrop: AlembicGlassBackdrop = nsView as? AlembicGlassBackdrop {
-            backdrop.setCornerRadius(cornerRadius)
-            backdrop.refresh()
-        }
-    }
-}
-
 struct AlembicRepositoryListView: View {
     @ObservedObject var state: RepositoryListBridgeState
     @ObservedObject var workState: RepositoryWorkBridgeState
@@ -27,6 +9,11 @@ struct AlembicRepositoryListView: View {
     let onRefresh: () -> Void
     let onRetry: () -> Void
     let onOpen: (String) -> Void
+    let onImport: () -> Void
+    let onSettings: () -> Void
+    let onRuntimeInfo: () -> Void
+    let onDiagnostics: () -> Void
+    let diagnosticsVisible: Bool
 
     @State private var isSignInSheetVisible: Bool = false
     @State private var searchQuery: String = ""
@@ -82,6 +69,9 @@ struct AlembicRepositoryListView: View {
             }
             return lhs.fullName.localizedCaseInsensitiveCompare(rhs.fullName) == .orderedAscending
         case "archiveSoon":
+            if !settingsState.archiveEnabled {
+                return lhs.fullName.localizedCaseInsensitiveCompare(rhs.fullName) == .orderedAscending
+            }
             let lhsActive: Bool = workState.isActive(lhs.fullName)
             let rhsActive: Bool = workState.isActive(rhs.fullName)
             if lhsActive != rhsActive {
@@ -127,7 +117,7 @@ struct AlembicRepositoryListView: View {
 
     private func attentionRank(_ item: RepositoryItem) -> Int {
         if workState.isSyncing(item.fullName) { return 0 }
-        if workState.isActive(item.fullName) && daysUntilArchive(for: item) <= 3 { return 1 }
+        if settingsState.archiveEnabled && workState.isActive(item.fullName) && daysUntilArchive(for: item) <= 3 { return 1 }
         if workState.isActive(item.fullName) { return 2 }
         if workState.isArchived(item.fullName) { return 3 }
         return 4
@@ -141,6 +131,9 @@ struct AlembicRepositoryListView: View {
     }
 
     private func daysUntilArchive(for item: RepositoryItem) -> Int {
+        if !settingsState.archiveEnabled {
+            return Int.max
+        }
         if let local: RepositoryLocalState = workState.localState(for: item.fullName) {
             return local.daysUntilArchive
         }
@@ -149,7 +142,10 @@ struct AlembicRepositoryListView: View {
 
     var body: some View {
         ZStack {
-            content
+            VStack(spacing: AlembicGlassTokens.panelSpacing) {
+                commandBar
+                content
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .sheet(isPresented: $isSignInSheetVisible) {
@@ -198,6 +194,161 @@ struct AlembicRepositoryListView: View {
         default:
             initialState
         }
+    }
+
+    private var commandBrand: some View {
+        HStack(spacing: 9) {
+            Image(systemName: "drop.degreesign")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(.linearGradient(
+                    colors: [Color.accentColor, Color.accentColor.opacity(0.55)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                ))
+            VStack(alignment: .leading, spacing: 0) {
+                Text("Alembic")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.primary)
+                Text(commandSubtitle)
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+    }
+
+    private var commandBar: some View {
+        commandBarWide
+        .frame(minHeight: AlembicGlassTokens.commandHeight)
+        .alembicGlassSurface(.toolbar)
+    }
+
+    private var commandBarWide: some View {
+        HStack(spacing: 10) {
+            commandBrand
+                .frame(width: 126, alignment: .leading)
+
+            searchControl
+                .frame(minWidth: 160, idealWidth: 220, maxWidth: 260)
+
+            stateMenu
+                .frame(width: 102)
+
+            sortMenu
+                .frame(width: 108)
+
+            if availableOwners.count > 1 {
+                ownerMenu
+                    .frame(width: 104)
+            }
+
+            Spacer(minLength: 8)
+
+            toolbarActions
+        }
+    }
+
+    private var toolbarActions: some View {
+        HStack(spacing: 8) {
+            AlembicGlassIconButton(systemImage: "arrow.clockwise", help: "Refresh") {
+                AlembicRepositoryWorkBridge.shared.rescan()
+                onRefresh()
+            }
+            AlembicGlassIconButton(systemImage: "square.and.arrow.down.on.square", help: "Import repositories", action: onImport)
+            AlembicGlassIconButton(systemImage: "gearshape", help: "Settings", action: onSettings)
+            AlembicGlassIconButton(systemImage: "info.circle", help: "Runtime info", action: onRuntimeInfo)
+            AlembicGlassIconButton(
+                systemImage: diagnosticsVisible ? "stethoscope.circle.fill" : "stethoscope",
+                help: diagnosticsVisible ? "Hide diagnostics" : "Show diagnostics",
+                isActive: diagnosticsVisible,
+                action: onDiagnostics
+            )
+        }
+    }
+
+    private var stateMenu: some View {
+        Menu {
+            Button("All") { stateFilter = "all" }
+            Divider()
+            Button("Active (\(workState.activeRepositories.count))") { stateFilter = "active" }
+            Button("Archived (\(workState.archivedRepositories.count))") { stateFilter = "archived" }
+            Button("Cloud only") { stateFilter = "cloud" }
+            Button("Syncing (\(workState.syncingRepositories.count))") { stateFilter = "syncing" }
+        } label: {
+            Label(stateFilterLabel, systemImage: stateFilterIcon)
+                .font(.system(size: 11, weight: .medium))
+                .lineLimit(1)
+        }
+        .menuStyle(.borderlessButton)
+    }
+
+    private var sortMenu: some View {
+        Menu {
+            Button("Needs attention") { sortMode = "attention" }
+            Divider()
+            if settingsState.archiveEnabled {
+                Button("Archive soon") { sortMode = "archiveSoon" }
+            }
+            Button("Recently updated") { sortMode = "updated" }
+            Button("State") { sortMode = "state" }
+            Button("Name") { sortMode = "name" }
+            Button("Owner") { sortMode = "owner" }
+        } label: {
+            Label(sortModeLabel, systemImage: "arrow.up.arrow.down")
+                .font(.system(size: 11, weight: .medium))
+                .lineLimit(1)
+        }
+        .menuStyle(.borderlessButton)
+    }
+
+    private var searchControl: some View {
+        HStack(spacing: 7) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.secondary)
+            TextField("Search repositories", text: $searchQuery)
+                .textFieldStyle(.plain)
+                .font(.system(size: 12))
+            if !searchQuery.isEmpty {
+                Button {
+                    searchQuery = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.borderless)
+            }
+        }
+        .alembicGlassSurface(.control)
+    }
+
+    private var ownerMenu: some View {
+        Menu {
+            Button("All organizations") { ownerFilter = "" }
+            Divider()
+            ForEach(availableOwners, id: \.self) { owner in
+                Button(owner) { ownerFilter = owner }
+            }
+        } label: {
+            Label(ownerFilter.isEmpty ? "All orgs" : ownerFilter, systemImage: "building.2")
+                .font(.system(size: 11, weight: .medium))
+                .lineLimit(1)
+        }
+        .menuStyle(.borderlessButton)
+    }
+
+    private var commandSubtitle: String {
+        if let primary: AccountItem = accountsState.primaryAccount {
+            if let login: String = primary.login, !login.isEmpty {
+                return "@\(login)"
+            }
+            return primary.name
+        }
+        if !state.accountLogin.isEmpty {
+            return "@\(state.accountLogin)"
+        }
+        return "GitHub workspace command center"
     }
 
     private var welcomeState: some View {
@@ -263,8 +414,7 @@ struct AlembicRepositoryListView: View {
             }
             .padding(40)
             .frame(maxWidth: 520)
-            .background(AlembicSpikeGlassPanel())
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .alembicGlassSurface(.sheet)
             .padding(40)
             Spacer(minLength: 0)
         }
@@ -293,8 +443,7 @@ struct AlembicRepositoryListView: View {
             }
             .padding(36)
             .frame(maxWidth: 420)
-            .background(AlembicSpikeGlassPanel())
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .alembicGlassSurface(.card)
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -368,8 +517,7 @@ struct AlembicRepositoryListView: View {
             }
             .padding(32)
             .frame(maxWidth: 480)
-            .background(AlembicSpikeGlassPanel())
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .alembicGlassSurface(.card)
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -395,8 +543,7 @@ struct AlembicRepositoryListView: View {
             }
             .padding(32)
             .frame(maxWidth: 360)
-            .background(AlembicSpikeGlassPanel())
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .alembicGlassSurface(.card)
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -413,120 +560,280 @@ struct AlembicRepositoryListView: View {
     }
 
     private var readyState: some View {
-        VStack(spacing: 0) {
-            toolbar
-            Divider().opacity(0.25)
+        GeometryReader { proxy in
+            readyLayout(width: proxy.size.width)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    @ViewBuilder
+    private func readyLayout(width: CGFloat) -> some View {
+        if width < 980 {
+            VStack(spacing: AlembicGlassTokens.panelSpacing) {
+                activityPanel
+                    .frame(minHeight: 150)
+                repositoryPanel
+                    .layoutPriority(1)
+            }
+        } else {
+            VStack(spacing: 0) {
+                HStack(alignment: .top, spacing: AlembicGlassTokens.panelSpacing) {
+                    repositoryPanel
+                        .layoutPriority(1)
+                    activityPanel
+                        .frame(width: min(320, max(280, width * 0.24)))
+                }
+            }
+        }
+    }
+
+    private var repositoryPanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Repositories")
+                        .font(.system(size: 15, weight: .semibold))
+                    Text(repositoryPanelSubtitle)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                if state.isLoading {
+                    ProgressView()
+                        .scaleEffect(0.55)
+                        .frame(width: 14, height: 14)
+                }
+            }
+
+            repositoryStatsStrip
+
             if filteredRepositories.isEmpty {
                 noResultsRow
             } else {
                 repositoryList
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .alembicGlassSurface(
+            .panel,
+            padding: EdgeInsets(top: 14, leading: 14, bottom: 14, trailing: 14)
+        )
     }
 
-    private var toolbar: some View {
-        HStack(spacing: 10) {
-            HStack(spacing: 6) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 11))
+    private var activityPanel: some View {
+        VStack(alignment: .leading, spacing: 13) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Activity")
+                    .font(.system(size: 15, weight: .semibold))
+                Text(activitySubtitle)
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.secondary)
-                TextField("Search repositories", text: $searchQuery)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 12))
-                if !searchQuery.isEmpty {
-                    Button {
-                        searchQuery = ""
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.borderless)
-                }
             }
-            .padding(.horizontal, 9)
-            .padding(.vertical, 5)
-            .background(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(Color.primary.opacity(0.06))
-            )
-            .frame(maxWidth: 320)
 
-            Menu {
-                Button("All") { stateFilter = "all" }
-                Divider()
-                Button("Active (\(workState.activeRepositories.count))") { stateFilter = "active" }
-                Button("Archived (\(workState.archivedRepositories.count))") { stateFilter = "archived" }
-                Button("Cloud only") { stateFilter = "cloud" }
-                Button("Syncing (\(workState.syncingRepositories.count))") { stateFilter = "syncing" }
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: stateFilterIcon)
-                        .font(.system(size: 11))
-                    Text(stateFilterLabel)
-                        .font(.system(size: 11, weight: .medium))
+            if workState.workEntries.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    activitySummaryRow(
+                        title: "Archive",
+                        value: settingsState.archiveEnabled ? "\(archiveSoonCount)" : "Off",
+                        detail: settingsState.archiveEnabled ? "due soon" : "disabled",
+                        systemImage: "hourglass",
+                        tint: archiveSoonCount > 0 ? .orange : .secondary
+                    )
+                    activitySummaryRow(
+                        title: "Local",
+                        value: "\(workState.activeRepositories.count)",
+                        detail: "ready to open",
+                        systemImage: "checkmark.circle",
+                        tint: .green
+                    )
+                    activitySummaryRow(
+                        title: "Cloud",
+                        value: "\(cloudOnlyCount)",
+                        detail: "not cloned",
+                        systemImage: "cloud",
+                        tint: .secondary
+                    )
                 }
-            }
-            .menuStyle(.borderlessButton)
-            .frame(width: 130)
-
-            Menu {
-                Button("Needs attention") { sortMode = "attention" }
-                Divider()
-                Button("Archive soon") { sortMode = "archiveSoon" }
-                Button("Recently updated") { sortMode = "updated" }
-                Button("State") { sortMode = "state" }
-                Button("Name") { sortMode = "name" }
-                Button("Owner") { sortMode = "owner" }
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "arrow.up.arrow.down")
-                        .font(.system(size: 11))
-                    Text(sortModeLabel)
-                        .font(.system(size: 11, weight: .medium))
-                }
-            }
-            .menuStyle(.borderlessButton)
-            .frame(width: 150)
-
-            if availableOwners.count > 1 {
-                Menu {
-                    Button("All organizations") { ownerFilter = "" }
-                    Divider()
-                    ForEach(availableOwners, id: \.self) { owner in
-                        Button(owner) { ownerFilter = owner }
-                    }
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "building.2")
-                            .font(.system(size: 11))
-                        Text(ownerFilter.isEmpty ? "All orgs" : ownerFilter)
-                            .font(.system(size: 11, weight: .medium))
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(workState.workEntries.prefix(5)) { entry in
+                        HStack(alignment: .center, spacing: 8) {
+                            ProgressView()
+                                .scaleEffect(0.5)
+                                .frame(width: 12, height: 12)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(entry.fullName)
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                Text(entry.message.isEmpty ? entry.kind : entry.message)
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                        }
+                        .padding(9)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .alembicGlassSurface(
+                            .row,
+                            padding: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
+                        )
                     }
                 }
-                .menuStyle(.borderlessButton)
-                .frame(width: 130)
             }
-
-            Spacer()
-
-            Text(repositoryCountLabel)
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-
-            Button {
-                AlembicRepositoryWorkBridge.shared.rescan()
-                onRefresh()
-            } label: {
-                Image(systemName: "arrow.clockwise")
-                    .font(.system(size: 12, weight: .semibold))
-            }
-            .buttonStyle(.borderless)
-            .help("Refresh")
-            .disabled(state.isLoading)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 9)
+        .frame(maxHeight: .infinity, alignment: .topLeading)
+        .alembicGlassSurface(
+            .panel,
+            padding: EdgeInsets(top: 14, leading: 14, bottom: 14, trailing: 14)
+        )
+    }
+
+    private var repositoryStatsStrip: some View {
+        HStack(spacing: 14) {
+            ForEach(dashboardMetrics) { metric in
+                repositoryStat(metric)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 2)
+        .padding(.bottom, 2)
+    }
+
+    private func repositoryStat(_ metric: AlembicDashboardMetric) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 5) {
+            Text(metric.value)
+                .font(.system(size: 15, weight: .semibold, design: .rounded))
+                .foregroundStyle(metric.tint)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+            Text(metric.title)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .help(metric.detail)
+    }
+
+    private func activitySummaryRow(
+        title: String,
+        value: String,
+        detail: String,
+        systemImage: String,
+        tint: Color
+    ) -> some View {
+        HStack(spacing: 9) {
+            Image(systemName: systemImage)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(tint)
+                .frame(width: 18)
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(value)
+                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                    Text(title)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                }
+            Text(detail)
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary.opacity(0.82))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .layoutPriority(1)
+        Spacer(minLength: 0)
+        }
+        .padding(10)
+        .alembicGlassSurface(
+            .row,
+            padding: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
+        )
+    }
+
+    private var dashboardMetrics: [AlembicDashboardMetric] {
+        let total: Int = state.repositories.count
+        let active: Int = workState.activeRepositories.count
+        let archived: Int = workState.archivedRepositories.count
+        let syncing: Int = workState.syncingRepositories.count
+        let privateCount: Int = state.repositories.filter { $0.isPrivate }.count
+        let forkCount: Int = state.repositories.filter { $0.isFork }.count
+
+        return [
+            AlembicDashboardMetric(
+                id: "total",
+                title: "Total",
+                value: "\(total)",
+                detail: state.isLoading ? "\(state.fetchedCount) fetched" : "repositories",
+                systemImage: "square.stack.3d.up",
+                tint: .accentColor
+            ),
+            AlembicDashboardMetric(
+                id: "active",
+                title: "Active",
+                value: "\(active)",
+                detail: "local",
+                systemImage: "checkmark.circle.fill",
+                tint: .green
+            ),
+            AlembicDashboardMetric(
+                id: "archived",
+                title: "Archived",
+                value: "\(archived)",
+                detail: "stored",
+                systemImage: "archivebox.fill",
+                tint: .blue
+            ),
+            AlembicDashboardMetric(
+                id: "cloud",
+                title: "Cloud",
+                value: "\(cloudOnlyCount)",
+                detail: "not cloned",
+                systemImage: "cloud.fill",
+                tint: .secondary
+            ),
+            AlembicDashboardMetric(
+                id: "syncing",
+                title: "Syncing",
+                value: "\(syncing)",
+                detail: syncing == 0 ? "no active jobs" : "jobs in flight",
+                systemImage: "arrow.triangle.2.circlepath",
+                tint: syncing == 0 ? .secondary : .orange
+            ),
+            AlembicDashboardMetric(
+                id: "private",
+                title: "Private",
+                value: "\(privateCount)",
+                detail: "\(forkCount) forks",
+                systemImage: "lock.shield.fill",
+                tint: .purple
+            ),
+        ]
+    }
+
+    private var cloudOnlyCount: Int {
+        let total: Int = state.repositories.count
+        return max(0, total - workState.activeRepositories.count - workState.archivedRepositories.count)
+    }
+
+    private var archiveSoonCount: Int {
+        return state.repositories.filter { item in
+            settingsState.archiveEnabled && workState.isActive(item.fullName) && daysUntilArchive(for: item) <= 3
+        }.count
+    }
+
+    private var repositoryPanelSubtitle: String {
+        if filteredRepositories.count == state.repositories.count {
+            return "Sorted by \(sortModeLabel.lowercased())"
+        }
+        return "\(filteredRepositories.count) matching \(state.repositories.count) total"
+    }
+
+    private var activitySubtitle: String {
+        if workState.workEntries.isEmpty {
+            return "Idle"
+        }
+        return "\(workState.workEntries.count) active repository task\(workState.workEntries.count == 1 ? "" : "s")"
     }
 
     private var stateFilterIcon: String {
@@ -551,7 +858,7 @@ struct AlembicRepositoryListView: View {
 
     private var sortModeLabel: String {
         switch sortMode {
-        case "archiveSoon": return "Archive soon"
+        case "archiveSoon": return settingsState.archiveEnabled ? "Archive soon" : "Name"
         case "updated": return "Updated"
         case "state": return "State"
         case "name": return "Name"
@@ -682,13 +989,19 @@ struct AlembicRepositoryRow: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
-        .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(isHovering ? Color.primary.opacity(0.05) : Color.clear)
-        )
+        .background {
+            if isHovering {
+                AlembicGlassSurface(
+                    style: .row,
+                    padding: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
+                ) {
+                    Color.clear
+                }
+            }
+        }
         .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.05), lineWidth: 0.5)
+            RoundedRectangle(cornerRadius: AlembicGlassSurfaceStyle.row.cornerRadius, style: .continuous)
+                .strokeBorder(Color.white.opacity(isHovering ? 0.16 : 0.07), lineWidth: 0.5)
         )
         .contentShape(Rectangle())
         .onHover { hovering in
@@ -731,7 +1044,7 @@ struct AlembicRepositoryRow: View {
     private var rowBadges: some View {
         HStack(spacing: 6) {
             statusBadge
-            if isActive {
+            if settingsState.archiveEnabled && isActive && archiveDays <= 30 {
                 badge(archiveTimingLabel, tint: archiveTimingColor)
             }
             if item.isArchived {
@@ -754,7 +1067,7 @@ struct AlembicRepositoryRow: View {
     }
 
     private var archiveTimingLabel: String {
-        let days: Int = localState?.daysUntilArchive ?? settingsState.daysToArchive
+        let days: Int = archiveDays
         if days <= 0 {
             return "Archive due"
         }
@@ -765,11 +1078,15 @@ struct AlembicRepositoryRow: View {
     }
 
     private var archiveTimingColor: Color {
-        let days: Int = localState?.daysUntilArchive ?? settingsState.daysToArchive
+        let days: Int = archiveDays
         if days <= 3 {
             return .orange
         }
         return .secondary
+    }
+
+    private var archiveDays: Int {
+        return localState?.daysUntilArchive ?? settingsState.daysToArchive
     }
 
     private func actionStatus(_ action: String) -> some View {
@@ -808,24 +1125,32 @@ struct AlembicRepositoryRow: View {
             Button("Open") { runAction("open") { AlembicRepositoryActionsBridge.shared.open(fullName: item.fullName, completion: $0) } }
             Button("Reveal in Finder") { runAction("openInFinder") { AlembicRepositoryActionsBridge.shared.openInFinder(fullName: item.fullName, completion: $0) } }
             Button("Pull") { runAction("pull") { AlembicRepositoryActionsBridge.shared.pull(fullName: item.fullName, completion: $0) } }
-            Divider()
-            Button("Archive") { runAction("archive") { AlembicRepositoryActionsBridge.shared.archive(fullName: item.fullName, completion: $0) } }
+            if settingsState.archiveEnabled {
+                Divider()
+                Button("Archive") { runAction("archive") { AlembicRepositoryActionsBridge.shared.archive(fullName: item.fullName, completion: $0) } }
+            }
         } else if isArchived {
             Button("Unarchive") { runAction("unarchive") { AlembicRepositoryActionsBridge.shared.unarchive(fullName: item.fullName, completion: $0) } }
-            Button("Update Archive") { runAction("updateArchive") { AlembicRepositoryActionsBridge.shared.updateArchive(fullName: item.fullName, completion: $0) } }
+            if settingsState.archiveEnabled {
+                Button("Update Archive") { runAction("updateArchive") { AlembicRepositoryActionsBridge.shared.updateArchive(fullName: item.fullName, completion: $0) } }
+            }
             Button("Reveal in Finder") { runAction("openInFinder") { AlembicRepositoryActionsBridge.shared.openInFinder(fullName: item.fullName, completion: $0) } }
         } else {
             Button("Clone") { runAction("clone") { AlembicRepositoryActionsBridge.shared.clone(fullName: item.fullName, completion: $0) } }
-            Button("Archive from cloud") { runAction("archiveFromCloud") { AlembicRepositoryActionsBridge.shared.archiveFromCloud(fullName: item.fullName, completion: $0) } }
+            if settingsState.archiveEnabled {
+                Button("Archive from cloud") { runAction("archiveFromCloud") { AlembicRepositoryActionsBridge.shared.archiveFromCloud(fullName: item.fullName, completion: $0) } }
+            }
         }
         Divider()
         Button("Fork & clone") { runAction("fork") { AlembicRepositoryActionsBridge.shared.fork(fullName: item.fullName, completion: $0) } }
-        Menu("Archive Master") {
-            Button("Enroll") { runAction("enrollArchiveMaster") { AlembicRepositoryActionsBridge.shared.enrollArchiveMaster(fullName: item.fullName, completion: $0) } }
-            Button("Refresh") { runAction("refreshArchiveMaster") { AlembicRepositoryActionsBridge.shared.refreshArchiveMaster(fullName: item.fullName, completion: $0) } }
-            Button("Promote") { runAction("promoteArchiveMaster") { AlembicRepositoryActionsBridge.shared.promoteArchiveMaster(fullName: item.fullName, completion: $0) } }
-            Divider()
-            Button("Unenroll") { runAction("unenrollArchiveMaster") { AlembicRepositoryActionsBridge.shared.unenrollArchiveMaster(fullName: item.fullName, completion: $0) } }
+        if settingsState.archiveEnabled {
+            Menu("Archive Master") {
+                Button("Enroll") { runAction("enrollArchiveMaster") { AlembicRepositoryActionsBridge.shared.enrollArchiveMaster(fullName: item.fullName, completion: $0) } }
+                Button("Refresh") { runAction("refreshArchiveMaster") { AlembicRepositoryActionsBridge.shared.refreshArchiveMaster(fullName: item.fullName, completion: $0) } }
+                Button("Promote") { runAction("promoteArchiveMaster") { AlembicRepositoryActionsBridge.shared.promoteArchiveMaster(fullName: item.fullName, completion: $0) } }
+                Divider()
+                Button("Unenroll") { runAction("unenrollArchiveMaster") { AlembicRepositoryActionsBridge.shared.unenrollArchiveMaster(fullName: item.fullName, completion: $0) } }
+            }
         }
     }
 

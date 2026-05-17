@@ -18,24 +18,30 @@ struct AlembicSpikeRootView: View {
     @State private var showSettings: Bool = false
 
     var body: some View {
-        ZStack {
-            AlembicSpikeBackground()
+        ZStack(alignment: .topTrailing) {
+            Color.clear
                 .ignoresSafeArea()
             VStack(spacing: 0) {
-                topBar
-                Divider().opacity(0.25)
                 contentArea
                 if showDiagnostics {
-                    Divider().opacity(0.25)
                     AlembicDiagnosticsConsole(state: diagnosticsState)
-                        .frame(height: 280)
+                        .frame(height: 260)
+                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        .padding(.top, 14)
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
                 }
+            }
+            .padding(AlembicGlassTokens.appPadding)
+            if showSettings {
+                settingsOverlay
+                    .zIndex(2)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
         .frame(
-            minWidth: 760,
-            idealWidth: 960,
-            minHeight: 560,
+            minWidth: 920,
+            idealWidth: 1080,
+            minHeight: 600,
             idealHeight: 720
         )
         .onReceive(NotificationCenter.default.publisher(for: AlembicTrayController.openSettingsNotification)) { _ in
@@ -49,33 +55,6 @@ struct AlembicSpikeRootView: View {
                 state: state,
                 onClose: { showBootDetail = false }
             )
-        }
-        .sheet(isPresented: $showSettings) {
-            VStack(spacing: 0) {
-                HStack {
-                    Text("Alembic Settings")
-                        .font(.system(size: 14, weight: .semibold))
-                    Spacer()
-                    Button {
-                        showSettings = false
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 16))
-                            .foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.borderless)
-                    .keyboardShortcut(.escape)
-                }
-                .padding(.horizontal, 18)
-                .padding(.vertical, 12)
-                Divider().opacity(0.25)
-                AlembicSettingsWindow(
-                    settingsState: settingsState,
-                    accountsState: accountsState
-                )
-            }
-            .frame(minWidth: 720, idealWidth: 820, minHeight: 540, idealHeight: 640)
-            .background(AlembicSpikeBackground().ignoresSafeArea())
         }
         .sheet(isPresented: $showImportSheet) {
             AlembicImportSheet(
@@ -103,106 +82,6 @@ struct AlembicSpikeRootView: View {
         }
     }
 
-    private var topBar: some View {
-        HStack(alignment: .center, spacing: 12) {
-            HStack(spacing: 10) {
-                Image(systemName: "drop.degreesign")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(.linearGradient(
-                        colors: [.accentColor, .accentColor.opacity(0.65)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    ))
-                Text("Alembic")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(.primary)
-            }
-            Spacer()
-            statusChip
-            Button {
-                showImportSheet = true
-            } label: {
-                Label("Import", systemImage: "square.and.arrow.down.on.square")
-                    .font(.system(size: 12, weight: .medium))
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .help("Import existing local repositories from a folder")
-            Button {
-                showSettings = true
-            } label: {
-                Image(systemName: "gearshape")
-                    .font(.system(size: 13, weight: .regular))
-            }
-            .buttonStyle(.borderless)
-            .help("Settings")
-            .keyboardShortcut(",", modifiers: [.command])
-            Button {
-                showBootDetail = true
-            } label: {
-                Image(systemName: "info.circle")
-                    .font(.system(size: 13, weight: .regular))
-            }
-            .buttonStyle(.borderless)
-            .help("Diagnostics info")
-            Button {
-                showDiagnostics.toggle()
-            } label: {
-                Image(systemName: showDiagnostics ? "stethoscope.circle.fill" : "stethoscope")
-                    .font(.system(size: 13, weight: .regular))
-                    .foregroundStyle(showDiagnostics ? Color.accentColor : .secondary)
-            }
-            .buttonStyle(.borderless)
-            .help(showDiagnostics ? "Hide diagnostics console" : "Show diagnostics console")
-        }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 11)
-    }
-
-    private var statusChip: some View {
-        HStack(spacing: 5) {
-            Circle()
-                .fill(statusTint)
-                .frame(width: 6, height: 6)
-            Text(statusLabel)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.secondary)
-        }
-        .padding(.horizontal, 9)
-        .padding(.vertical, 4)
-        .background(
-            Capsule()
-                .fill(Color.primary.opacity(0.05))
-        )
-        .overlay(
-            Capsule()
-                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
-        )
-    }
-
-    private var statusTint: Color {
-        if state.accountCount > 0 {
-            return .green
-        }
-        if state.ready {
-            return .orange
-        }
-        return .secondary
-    }
-
-    private var statusLabel: String {
-        if state.accountCount > 0 {
-            if let login: String = state.primaryAccountLogin, !login.isEmpty {
-                return "@\(login)"
-            }
-            return "Connected"
-        }
-        if state.ready {
-            return "Not connected"
-        }
-        return "Starting..."
-    }
-
     private var contentArea: some View {
         AlembicRepositoryListView(
             state: repositoryState,
@@ -211,9 +90,50 @@ struct AlembicSpikeRootView: View {
             accountsState: accountsState,
             onRefresh: onRepositoryRefresh,
             onRetry: onRepositoryRetry,
-            onOpen: onRepositoryOpen
+            onOpen: onRepositoryOpen,
+            onImport: { showImportSheet = true },
+            onSettings: { showSettings = true },
+            onRuntimeInfo: { showBootDetail = true },
+            onDiagnostics: { showDiagnostics.toggle() },
+            diagnosticsVisible: showDiagnostics
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private var settingsOverlay: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("Alembic Settings")
+                    .font(.system(size: 14, weight: .semibold))
+                Spacer()
+                Button {
+                    showSettings = false
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 17))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .keyboardShortcut(.escape)
+            }
+            .padding(.horizontal, 6)
+            .padding(.bottom, 12)
+            AlembicSettingsWindow(
+                settingsState: settingsState,
+                accountsState: accountsState
+            )
+        }
+        .padding(16)
+        .frame(width: 760, height: 560)
+        .alembicGlassSurface(
+            .sheet,
+            padding: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
+        )
+        .padding(.top, AlembicGlassTokens.appPadding)
+        .padding(.trailing, AlembicGlassTokens.appPadding)
+        .onExitCommand {
+            showSettings = false
+        }
     }
 }
 
@@ -271,8 +191,7 @@ struct AlembicBootDetailSheet: View {
         }
         .padding(22)
         .frame(width: 520)
-        .background(AlembicSpikeGlassPanel())
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .alembicGlassSurface(.sheet)
     }
 
     private var migrationDetails: some View {
@@ -345,26 +264,15 @@ struct AlembicBootDetailSheet: View {
     }
 }
 
-struct AlembicSpikeGlassPanel: View {
-    var body: some View {
-        RoundedRectangle(cornerRadius: 14, style: .continuous)
-            .fill(.thickMaterial)
-            .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.10), lineWidth: 1)
-            )
-            .shadow(color: Color.black.opacity(0.08), radius: 12, x: 0, y: 4)
-    }
-}
-
 struct AlembicSpikeBackground: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView {
-        return AlembicGlassBackdrop()
+        let view: NSView = NSView()
+        view.wantsLayer = true
+        view.layer?.backgroundColor = NSColor.clear.cgColor
+        return view
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {
-        if let backdrop: AlembicGlassBackdrop = nsView as? AlembicGlassBackdrop {
-            backdrop.refresh()
-        }
+        nsView.layer?.backgroundColor = NSColor.clear.cgColor
     }
 }

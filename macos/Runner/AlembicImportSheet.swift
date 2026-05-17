@@ -26,7 +26,9 @@ struct AlembicImportSheet: View {
             footerView
         }
         .frame(minWidth: 720, idealWidth: 820, minHeight: 560, idealHeight: 680)
-        .background(.regularMaterial)
+        .padding(18)
+        .alembicGlassSurface(.sheet)
+        .background(AlembicSpikeBackground().ignoresSafeArea())
         .onAppear {
             pickedPath = state.workspacePath
         }

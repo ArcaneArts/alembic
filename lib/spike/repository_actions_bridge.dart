@@ -173,6 +173,9 @@ class RepositoryActionsBridge {
   }
 
   Future<Map<String, Object?>> _archive(_ActionContext ctx) async {
+    if (!config.archiveEnabled) {
+      return _archiveDisabledResult();
+    }
     await ctx.arcane.archive();
     return await _stateResult(ctx);
   }
@@ -183,11 +186,17 @@ class RepositoryActionsBridge {
   }
 
   Future<Map<String, Object?>> _updateArchive(_ActionContext ctx) async {
+    if (!config.archiveEnabled) {
+      return _archiveDisabledResult();
+    }
     await ctx.arcane.updateArchive(ctx.github);
     return await _stateResult(ctx);
   }
 
   Future<Map<String, Object?>> _archiveFromCloud(_ActionContext ctx) async {
+    if (!config.archiveEnabled) {
+      return _archiveDisabledResult();
+    }
     await ctx.arcane.archiveFromCloud(ctx.github);
     return await _stateResult(ctx);
   }
@@ -208,6 +217,9 @@ class RepositoryActionsBridge {
   }
 
   Future<Map<String, Object?>> _enrollArchiveMaster(_ActionContext ctx) async {
+    if (!config.archiveEnabled) {
+      return _archiveDisabledResult();
+    }
     final String owner = ctx.repository.owner?.login ?? '';
     if (owner.isEmpty) {
       return <String, Object?>{
@@ -226,6 +238,9 @@ class RepositoryActionsBridge {
 
   Future<Map<String, Object?>> _unenrollArchiveMaster(
       _ActionContext ctx) async {
+    if (!config.archiveEnabled) {
+      return _archiveDisabledResult();
+    }
     final String owner = ctx.repository.owner?.login ?? '';
     if (owner.isEmpty) {
       return <String, Object?>{
@@ -239,11 +254,17 @@ class RepositoryActionsBridge {
   }
 
   Future<Map<String, Object?>> _refreshArchiveMaster(_ActionContext ctx) async {
+    if (!config.archiveEnabled) {
+      return _archiveDisabledResult();
+    }
     await ctx.arcane.ensureArchiveMaster(ctx.github);
     return await _stateResult(ctx);
   }
 
   Future<Map<String, Object?>> _promoteArchiveMaster(_ActionContext ctx) async {
+    if (!config.archiveEnabled) {
+      return _archiveDisabledResult();
+    }
     await ctx.arcane.promoteArchiveMaster(ctx.github);
     return await _stateResult(ctx);
   }
@@ -297,6 +318,11 @@ class RepositoryActionsBridge {
       'state': _stateName(state),
     };
   }
+
+  Map<String, Object?> _archiveDisabledResult() => <String, Object?>{
+        'ok': false,
+        'error': 'Archive is disabled in Settings.',
+      };
 
   String _stateName(RepoState state) {
     switch (state) {

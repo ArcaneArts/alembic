@@ -35,6 +35,7 @@ class AlembicConfig {
   String workspaceDirectory;
   String archiveDirectory;
   String archiveMasterDirectory;
+  bool archiveEnabled;
   int daysToArchive;
   int archiveMasterIntervalMinutes;
 
@@ -54,6 +55,7 @@ class AlembicConfig {
     String? workspaceDirectory,
     String? archiveDirectory,
     String? archiveMasterDirectory,
+    this.archiveEnabled = true,
     this.daysToArchive = 30,
     this.archiveMasterIntervalMinutes = 1440,
   })  : workspaceDirectory = workspaceDirectory ??
@@ -71,6 +73,7 @@ class AlembicConfig {
             DesktopPlatformAdapter.instance.defaultArchiveDirectory,
         archiveMasterDirectory =
             DesktopPlatformAdapter.instance.defaultArchiveMasterDirectory,
+        archiveEnabled = true,
         daysToArchive = 30,
         archiveMasterIntervalMinutes = 1440 {
     try {
@@ -106,6 +109,7 @@ class AlembicConfig {
           data["archiveDirectory"] as String? ?? archiveDirectory;
       archiveMasterDirectory =
           data["archiveMasterDirectory"] as String? ?? archiveMasterDirectory;
+      archiveEnabled = data["archiveEnabled"] as bool? ?? archiveEnabled;
       daysToArchive = data["daysToArchive"] as int? ?? daysToArchive;
       archiveMasterIntervalMinutes =
           data["archiveMasterIntervalMinutes"] as int? ??
@@ -127,6 +131,7 @@ class AlembicConfig {
         "workspaceDirectory": workspaceDirectory,
         "archiveDirectory": archiveDirectory,
         "archiveMasterDirectory": archiveMasterDirectory,
+        "archiveEnabled": archiveEnabled,
         "daysToArchive": daysToArchive,
         "archiveMasterIntervalMinutes": archiveMasterIntervalMinutes,
       });

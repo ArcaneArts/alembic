@@ -40,20 +40,18 @@ struct AlembicSettingsWindow: View {
     @State private var selection: SettingsPane = .general
 
     var body: some View {
-        HStack(spacing: 0) {
+        HStack(spacing: 14) {
             sidebar
                 .frame(width: 200)
-            Divider().opacity(0.25)
             detail
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(
             minWidth: 720,
             idealWidth: 820,
-            minHeight: 520,
-            idealHeight: 620
+            minHeight: 460,
+            idealHeight: 520
         )
-        .background(AlembicSpikeBackground().ignoresSafeArea())
     }
 
     private var sidebar: some View {
@@ -74,10 +72,16 @@ struct AlembicSettingsWindow: View {
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
-                    .background(
-                        RoundedRectangle(cornerRadius: 6)
-                            .fill(selection == pane ? Color.accentColor.opacity(0.12) : Color.clear)
-                    )
+                    .background {
+                        if selection == pane {
+                            AlembicGlassSurface(
+                                style: .control,
+                                padding: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
+                            ) {
+                                Color.clear
+                            }
+                        }
+                    }
                 }
                 .buttonStyle(.plain)
                 .padding(.horizontal, 8)
@@ -87,6 +91,10 @@ struct AlembicSettingsWindow: View {
         }
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .alembicGlassSurface(
+            .sidebar,
+            padding: EdgeInsets(top: 10, leading: 0, bottom: 10, trailing: 0)
+        )
     }
 
     @ViewBuilder
@@ -176,6 +184,7 @@ private struct AlembicSettingsWorkspacePane: View {
     @State private var workspaceDirectory: String = ""
     @State private var archiveDirectory: String = ""
     @State private var archiveMasterDirectory: String = ""
+    @State private var archiveEnabled: Bool = true
     @State private var daysToArchive: String = ""
     @State private var initialized: Bool = false
 
@@ -193,40 +202,57 @@ private struct AlembicSettingsWorkspacePane: View {
                         onChoose: { chooseDirectory(into: $workspaceDirectory) },
                         onCommit: { commit() }
                     )
-                    Divider().opacity(0.2)
-                    pathRow(
-                        title: "Archive directory",
-                        description: "Repositories that have been archived (no working tree).",
-                        path: $archiveDirectory,
-                        defaultPath: state.defaultArchiveDirectory,
-                        onChoose: { chooseDirectory(into: $archiveDirectory) },
-                        onCommit: { commit() }
-                    )
-                    Divider().opacity(0.2)
-                    pathRow(
-                        title: "Archive Master directory",
-                        description: "Mirror clones used by Archive Master.",
-                        path: $archiveMasterDirectory,
-                        defaultPath: state.defaultArchiveMasterDirectory,
-                        onChoose: { chooseDirectory(into: $archiveMasterDirectory) },
-                        onCommit: { commit() }
-                    )
                 }
 
                 AlembicSettingsCard {
                     settingRow(
-                        title: "Days until archive",
-                        description: "Idle repositories are auto-archived after this many days."
+                        title: "Archive repositories",
+                        description: archiveEnabled
+                            ? "Idle repositories can be archived automatically."
+                            : "Archive actions and automatic cleanup are disabled."
                     ) {
-                        HStack(spacing: 6) {
-                            TextField("days", text: $daysToArchive)
-                                .textFieldStyle(.roundedBorder)
-                                .frame(width: 70)
-                                .onSubmit { commit() }
-                            Text("days")
-                                .font(.system(size: 11))
-                                .foregroundStyle(.secondary)
+                        Toggle("", isOn: $archiveEnabled)
+                            .labelsHidden()
+                            .onChange(of: archiveEnabled) { _ in commit() }
+                    }
+                    if archiveEnabled {
+                        Divider().opacity(0.2)
+                        pathRow(
+                            title: "Archive directory",
+                            description: "Repositories that have been archived are stored here.",
+                            path: $archiveDirectory,
+                            defaultPath: state.defaultArchiveDirectory,
+                            onChoose: { chooseDirectory(into: $archiveDirectory) },
+                            onCommit: { commit() }
+                        )
+                        Divider().opacity(0.2)
+                        settingRow(
+                            title: "Archive after",
+                            description: "Idle repositories are auto-archived after this many days."
+                        ) {
+                            HStack(spacing: 6) {
+                                TextField("days", text: $daysToArchive)
+                                    .textFieldStyle(.roundedBorder)
+                                    .frame(width: 70)
+                                    .onSubmit { commit() }
+                                Text("days")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.secondary)
+                            }
                         }
+                    }
+                }
+
+                if archiveEnabled {
+                    AlembicSettingsCard {
+                        pathRow(
+                            title: "Archive Master directory",
+                            description: "Mirror clones used by Archive Master.",
+                            path: $archiveMasterDirectory,
+                            defaultPath: state.defaultArchiveMasterDirectory,
+                            onChoose: { chooseDirectory(into: $archiveMasterDirectory) },
+                            onCommit: { commit() }
+                        )
                     }
                 }
 
@@ -250,12 +276,14 @@ private struct AlembicSettingsWorkspacePane: View {
             workspaceDirectory = state.workspaceDirectory
             archiveDirectory = state.archiveDirectory
             archiveMasterDirectory = state.archiveMasterDirectory
+            archiveEnabled = state.archiveEnabled
             daysToArchive = "\(state.daysToArchive)"
             return
         }
         if workspaceDirectory != state.workspaceDirectory { workspaceDirectory = state.workspaceDirectory }
         if archiveDirectory != state.archiveDirectory { archiveDirectory = state.archiveDirectory }
         if archiveMasterDirectory != state.archiveMasterDirectory { archiveMasterDirectory = state.archiveMasterDirectory }
+        if archiveEnabled != state.archiveEnabled { archiveEnabled = state.archiveEnabled }
         let stateDays: String = "\(state.daysToArchive)"
         if daysToArchive != stateDays { daysToArchive = stateDays }
     }
@@ -266,6 +294,7 @@ private struct AlembicSettingsWorkspacePane: View {
             workspaceDirectory: workspaceDirectory,
             archiveDirectory: archiveDirectory,
             archiveMasterDirectory: archiveMasterDirectory,
+            archiveEnabled: archiveEnabled,
             daysToArchive: days
         ) { _ in }
     }
@@ -380,27 +409,39 @@ private struct AlembicSettingsArchiveMasterPane: View {
                     description: "Mirror clones that keep a read-only fetch of remote refs for archived repositories."
                 )
 
-                AlembicSettingsCard {
-                    settingRow(
-                        title: "Refresh interval",
-                        description: "How often archive master mirrors are refreshed against GitHub."
-                    ) {
-                        HStack(spacing: 6) {
-                            TextField("minutes", text: $minutes)
-                                .textFieldStyle(.roundedBorder)
-                                .frame(width: 70)
-                                .onSubmit { commit() }
-                            Text("minutes")
+                if state.archiveEnabled {
+                    AlembicSettingsCard {
+                        settingRow(
+                            title: "Refresh interval",
+                            description: "How often archive master mirrors are refreshed against GitHub."
+                        ) {
+                            HStack(spacing: 6) {
+                                TextField("minutes", text: $minutes)
+                                    .textFieldStyle(.roundedBorder)
+                                    .frame(width: 70)
+                                    .onSubmit { commit() }
+                                Text("minutes")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+
+                    HStack {
+                        Spacer()
+                        Button("Save Archive Master") { commit() }
+                            .buttonStyle(.borderedProminent)
+                    }
+                } else {
+                    AlembicSettingsCard {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Archive is off")
+                                .font(.system(size: 12, weight: .semibold))
+                            Text("Archive Master mirrors are paused while repository archiving is disabled.")
                                 .font(.system(size: 11))
                                 .foregroundStyle(.secondary)
                         }
                     }
-                }
-
-                HStack {
-                    Spacer()
-                    Button("Save Archive Master") { commit() }
-                        .buttonStyle(.borderedProminent)
                 }
 
                 Spacer(minLength: 0)
@@ -684,13 +725,20 @@ private struct AlembicSettingsAdvancedPane: View {
 
 struct AlembicSettingsCard<Content: View>: View {
     @ViewBuilder var content: () -> Content
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12, content: content)
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(AlembicSpikeGlassPanel())
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .background(
+                RoundedRectangle(cornerRadius: AlembicGlassSurfaceStyle.card.cornerRadius, style: .continuous)
+                    .fill(Color.white.opacity(colorScheme == .dark ? 0.055 : 0.19))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: AlembicGlassSurfaceStyle.card.cornerRadius, style: .continuous)
+                    .strokeBorder(Color.white.opacity(colorScheme == .dark ? 0.16 : 0.34), lineWidth: AlembicGlassTokens.hairline)
+            )
     }
 }
 

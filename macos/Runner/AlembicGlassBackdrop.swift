@@ -14,7 +14,7 @@ enum AlembicMaterial: String {
     case solid
 
     static func detect() -> AlembicMaterial {
-        if NSClassFromString("NSGlassEffectView") != nil {
+        if #available(macOS 26.0, *) {
             return .liquidGlass
         }
         return .vibrancy
@@ -24,6 +24,7 @@ enum AlembicMaterial: String {
 final class AlembicGlassBackdrop: NSView {
     private(set) var material: AlembicMaterial
     private(set) var cornerRadius: CGFloat
+    private weak var glassContainerView: NSView?
     private weak var glassEffectView: NSView?
     private weak var vibrancyView: NSVisualEffectView?
     private weak var solidLayer: CALayer?
@@ -69,10 +70,11 @@ final class AlembicGlassBackdrop: NSView {
         }
         cornerRadius = radius
         layer?.cornerRadius = radius
+        glassContainerView?.layer?.cornerRadius = radius
         glassEffectView?.layer?.cornerRadius = radius
-        if let glass: NSView = glassEffectView,
-           glass.responds(to: NSSelectorFromString("setCornerRadius:")) {
-            glass.setValue(radius, forKey: "cornerRadius")
+        if #available(macOS 26.0, *),
+           let glass: NSGlassEffectView = glassEffectView as? NSGlassEffectView {
+            glass.cornerRadius = radius
         }
         vibrancyView?.layer?.cornerRadius = radius
         solidLayer?.cornerRadius = radius
@@ -83,8 +85,10 @@ final class AlembicGlassBackdrop: NSView {
             return
         }
         material = next
+        glassContainerView?.removeFromSuperview()
         glassEffectView?.removeFromSuperview()
         vibrancyView?.removeFromSuperview()
+        glassContainerView = nil
         glassEffectView = nil
         vibrancyView = nil
         solidLayer?.removeFromSuperlayer()
@@ -113,18 +117,27 @@ final class AlembicGlassBackdrop: NSView {
     }
 
     private func installLiquidGlass() -> Bool {
-        guard let glassClass: NSView.Type = NSClassFromString("NSGlassEffectView") as? NSView.Type else {
+        guard #available(macOS 26.0, *) else {
             return false
         }
-        let glass: NSView = glassClass.init(frame: bounds)
+        let container: NSGlassEffectContainerView = NSGlassEffectContainerView(frame: bounds)
+        container.autoresizingMask = [.width, .height]
+        container.spacing = 10
+        container.wantsLayer = true
+        container.layer?.cornerRadius = cornerRadius
+        container.layer?.masksToBounds = true
+
+        let glass: NSGlassEffectView = NSGlassEffectView(frame: bounds)
         glass.autoresizingMask = [.width, .height]
+        glass.style = .regular
+        glass.cornerRadius = cornerRadius
+        glass.tintColor = NSColor.controlAccentColor.withAlphaComponent(0.07)
         glass.wantsLayer = true
         glass.layer?.cornerRadius = cornerRadius
         glass.layer?.masksToBounds = true
-        if glass.responds(to: NSSelectorFromString("setCornerRadius:")) {
-            glass.setValue(cornerRadius, forKey: "cornerRadius")
-        }
-        addSubview(glass, positioned: .below, relativeTo: nil)
+        container.contentView = glass
+        addSubview(container, positioned: .below, relativeTo: nil)
+        glassContainerView = container
         glassEffectView = glass
         return true
     }

@@ -188,7 +188,7 @@ final class AlembicTrayController: NSObject {
         }
         suppressHideUntil = Date().addingTimeInterval(0.35)
         ensureUsableWindowSize(window)
-        positionWindowNearStatusItem(window)
+        positionWindowAtTopRight(window)
         window.alphaValue = 1.0
         window.level = .floating
         window.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary, .transient]
@@ -269,23 +269,31 @@ final class AlembicTrayController: NSObject {
     }
 
     private func ensureUsableWindowSize(_ window: NSWindow) {
-        if window.frame.width >= 760.0 && window.frame.height >= 560.0 {
+        guard let screen: NSScreen = statusItem?.button?.window?.screen ?? window.screen ?? NSScreen.main ?? NSScreen.screens.first else {
             return
         }
+        let visibleFrame: NSRect = screen.visibleFrame
+        let maximumWidth: CGFloat = max(920.0, visibleFrame.width - 24.0)
+        let maximumHeight: CGFloat = max(600.0, visibleFrame.height - 24.0)
+        let minimumWidth: CGFloat = min(1080.0, maximumWidth)
+        let minimumHeight: CGFloat = min(680.0, maximumHeight)
         var frame: NSRect = window.frame
-        frame.size = NSSize(width: 960.0, height: 720.0)
+        let width: CGFloat = min(max(frame.width, minimumWidth), maximumWidth)
+        let height: CGFloat = min(max(frame.height, minimumHeight), maximumHeight)
+        if abs(frame.width - width) < 1.0 && abs(frame.height - height) < 1.0 {
+            return
+        }
+        frame.size = NSSize(width: width, height: height)
         window.setFrame(frame, display: false)
     }
 
-    private func positionWindowNearStatusItem(_ window: NSWindow) {
+    private func positionWindowAtTopRight(_ window: NSWindow) {
         guard let screen: NSScreen = statusItem?.button?.window?.screen ?? NSScreen.main ?? NSScreen.screens.first else {
             return
         }
-        let anchor: NSRect = statusItem?.button?.window?.frame ?? screen.visibleFrame
         let visibleFrame: NSRect = screen.visibleFrame
         let windowSize: NSSize = window.frame.size
-        var originX: CGFloat = anchor.midX - (windowSize.width / 2.0)
-        originX = max(visibleFrame.minX + 8.0, min(originX, visibleFrame.maxX - windowSize.width - 8.0))
+        let originX: CGFloat = visibleFrame.maxX - windowSize.width - 8.0
         let originY: CGFloat = visibleFrame.maxY - windowSize.height - 8.0
         window.setFrameOrigin(NSPoint(x: originX, y: originY))
     }

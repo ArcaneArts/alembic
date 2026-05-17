@@ -332,6 +332,9 @@ class RepositoryWorkBridge {
   }
 
   int _daysUntilArchive(Repository repository, int? lastOpenMs) {
+    if (!config.archiveEnabled) {
+      return 0;
+    }
     int thresholdDays = config.daysToArchive;
     if (thresholdDays <= 0) {
       return 0;

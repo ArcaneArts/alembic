@@ -36,7 +36,9 @@ struct AlembicRepositoryDetailSheet: View {
                         if !workEntries.isEmpty {
                             workCard
                         }
-                        archiveMasterCard
+                        if settingsState.archiveEnabled {
+                            archiveMasterCard
+                        }
                         overridesCard
                         pathsCard
                     }
@@ -50,6 +52,8 @@ struct AlembicRepositoryDetailSheet: View {
             minHeight: 540,
             idealHeight: 700
         )
+        .padding(18)
+        .alembicGlassSurface(.sheet)
         .background(AlembicSpikeBackground().ignoresSafeArea())
         .onAppear { loadDetail() }
         .onChange(of: workState.lastUpdateMs) { _ in loadDetailQuiet() }
@@ -167,7 +171,7 @@ struct AlembicRepositoryDetailSheet: View {
                     actionButton("Fork & Clone", systemImage: "tuningfork") {
                         runAction("fork") { AlembicRepositoryActionsBridge.shared.fork(fullName: repository.fullName, completion: $0) }
                     }
-                    if currentState == "active" || currentState == "cloud" {
+                    if settingsState.archiveEnabled && (currentState == "active" || currentState == "cloud") {
                         actionButton("Archive", systemImage: "archivebox") {
                             runAction("archive") { AlembicRepositoryActionsBridge.shared.archive(fullName: repository.fullName, completion: $0) }
                         }
@@ -176,16 +180,20 @@ struct AlembicRepositoryDetailSheet: View {
                         actionButton("Unarchive", systemImage: "archivebox.fill") {
                             runAction("unarchive") { AlembicRepositoryActionsBridge.shared.unarchive(fullName: repository.fullName, completion: $0) }
                         }
-                        actionButton("Update Archive", systemImage: "arrow.clockwise") {
-                            runAction("updateArchive") { AlembicRepositoryActionsBridge.shared.updateArchive(fullName: repository.fullName, completion: $0) }
+                        if settingsState.archiveEnabled {
+                            actionButton("Update Archive", systemImage: "arrow.clockwise") {
+                                runAction("updateArchive") { AlembicRepositoryActionsBridge.shared.updateArchive(fullName: repository.fullName, completion: $0) }
+                            }
                         }
                     }
                     if currentState == "cloud" {
                         actionButton("Clone", systemImage: "arrow.down.circle.fill") {
                             runAction("clone") { AlembicRepositoryActionsBridge.shared.clone(fullName: repository.fullName, completion: $0) }
                         }
-                        actionButton("Archive from cloud", systemImage: "icloud.and.arrow.down") {
-                            runAction("archiveFromCloud") { AlembicRepositoryActionsBridge.shared.archiveFromCloud(fullName: repository.fullName, completion: $0) }
+                        if settingsState.archiveEnabled {
+                            actionButton("Archive from cloud", systemImage: "icloud.and.arrow.down") {
+                                runAction("archiveFromCloud") { AlembicRepositoryActionsBridge.shared.archiveFromCloud(fullName: repository.fullName, completion: $0) }
+                            }
                         }
                     }
                 }
@@ -208,7 +216,7 @@ struct AlembicRepositoryDetailSheet: View {
                     .tint(.red)
                     .disabled(actionInFlight != nil || currentState == "cloud")
 
-                    if currentState == "archived" {
+                    if settingsState.archiveEnabled && currentState == "archived" {
                         Button {
                             confirmDestructive(
                                 title: "Delete archive?",
@@ -447,8 +455,10 @@ struct AlembicRepositoryDetailSheet: View {
                     .font(.system(size: 12, weight: .semibold))
                 if let detail: AlembicRepositoryActionsBridge.RepositoryDetail = detail {
                     pathEntry(label: "Working", path: detail.repoPath)
-                    pathEntry(label: "Archive", path: detail.archivePath)
-                    pathEntry(label: "Archive master", path: detail.archiveMasterPath)
+                    if settingsState.archiveEnabled {
+                        pathEntry(label: "Archive", path: detail.archivePath)
+                        pathEntry(label: "Archive master", path: detail.archiveMasterPath)
+                    }
                 }
             }
         }
@@ -765,4 +775,3 @@ struct AlembicRepositoryDetailSheet: View {
         return formatter.localizedString(for: date, relativeTo: Date())
     }
 }
-

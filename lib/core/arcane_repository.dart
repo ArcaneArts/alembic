@@ -119,6 +119,7 @@ class ArcaneRepository {
       });
 
   Future<bool> get isStaleActive async {
+    if (!config.archiveEnabled) return false;
     if (!await isActive) {
       return false;
     }
@@ -136,6 +137,7 @@ class ArcaneRepository {
   }
 
   Future<int> get daysUntilArchival async {
+    if (!config.archiveEnabled) return 0;
     if (!await isActive) {
       return 0;
     }
@@ -460,7 +462,7 @@ class ArcaneRepository {
 
   Future<void> archive() {
     return doWork<void>("Archiving", () async {
-      if (await isArchived || !await isActive) {
+      if (!config.archiveEnabled || await isArchived || !await isActive) {
         return;
       }
 

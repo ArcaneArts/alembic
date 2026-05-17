@@ -4,7 +4,7 @@ import LaunchAtLogin
 import SwiftUI
 
 class MainFlutterWindow: NSWindow {
-  private let hostCornerRadius: CGFloat = 14
+  private let hostCornerRadius: CGFloat = 22
   private var backdropView: AlembicGlassBackdrop?
   private var flutterEngine: FlutterEngine?
 
@@ -25,17 +25,22 @@ class MainFlutterWindow: NSWindow {
     self.collectionBehavior.insert(.moveToActiveSpace)
     self.collectionBehavior.insert(.fullScreenAuxiliary)
     self.collectionBehavior.insert(.transient)
-    self.appearance = NSAppearance(named: .aqua)
     self.isOpaque = false
     self.backgroundColor = NSColor.clear
     self.titlebarAppearsTransparent = true
     self.titleVisibility = .hidden
     self.styleMask.insert(.fullSizeContentView)
+    self.styleMask.remove(.titled)
+    self.styleMask.remove(.closable)
+    self.styleMask.remove(.miniaturizable)
     if #available(macOS 11.0, *) {
       self.titlebarSeparatorStyle = .none
     }
-    self.hasShadow = false
+    self.hasShadow = true
+    self.isMovable = false
     self.isMovableByWindowBackground = false
+    self.contentMinSize = NSSize(width: 960, height: 620)
+    _hideTrafficLights()
 
     self.contentView?.wantsLayer = true
     self.contentView?.layer?.backgroundColor = NSColor.clear.cgColor
@@ -53,6 +58,7 @@ class MainFlutterWindow: NSWindow {
     super.awakeFromNib()
     self.orderOut(nil)
     DispatchQueue.main.async {
+      self._hideTrafficLights()
       self.orderOut(nil)
     }
   }
@@ -79,7 +85,6 @@ class MainFlutterWindow: NSWindow {
     flutterEngine = engine
 
     let messenger: FlutterBinaryMessenger = engine.binaryMessenger
-    _attachBridges(messenger: messenger)
 
     let rootView: AlembicSpikeRootView = AlembicSpikeRootView(
       state: AlembicSpikeBridge.shared.state,
@@ -114,6 +119,8 @@ class MainFlutterWindow: NSWindow {
       rootContent.addSubview(backdrop, positioned: .below, relativeTo: nil)
       backdropView = backdrop
     }
+
+    _attachBridges(messenger: messenger)
   }
 
   private func _attachBridges(messenger: FlutterBinaryMessenger) {
@@ -215,6 +222,21 @@ class MainFlutterWindow: NSWindow {
       backdrop.setCornerRadius(hostCornerRadius)
       backdrop.layer?.masksToBounds = true
       backdrop.layer?.borderWidth = 0
+    }
+  }
+
+  private func _hideTrafficLights() {
+    let buttonTypes: [NSWindow.ButtonType] = [
+      .closeButton,
+      .miniaturizeButton,
+      .zoomButton,
+    ]
+    for buttonType: NSWindow.ButtonType in buttonTypes {
+      if let button: NSButton = self.standardWindowButton(buttonType) {
+        button.isHidden = true
+        button.isEnabled = false
+        button.alphaValue = 0
+      }
     }
   }
 }

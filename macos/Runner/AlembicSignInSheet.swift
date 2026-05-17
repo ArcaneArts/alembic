@@ -27,12 +27,7 @@ struct AlembicSignInSheet: View {
         }
         .padding(24)
         .frame(width: 500)
-        .background(AlembicSpikeGlassPanel())
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.10), lineWidth: 1)
-        )
+        .alembicGlassSurface(.sheet)
     }
 
     private var header: some View {
