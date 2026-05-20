@@ -22,7 +22,6 @@ final class AlembicGlassLegibilityController: ObservableObject {
     static let themeChangedNotification: Notification.Name = Notification.Name("alembic.theme.changed")
 
     @Published private(set) var colorScheme: ColorScheme
-    @Published private(set) var backdropLuminance: Double
     @Published private(set) var preference: AlembicThemePreference
     @Published private(set) var glassEnabled: Bool
     private var appearanceObservation: NSKeyValueObservation?
@@ -36,9 +35,7 @@ final class AlembicGlassLegibilityController: ObservableObject {
         } else {
             self.glassEnabled = UserDefaults.standard.bool(forKey: AlembicGlassLegibilityController.glassEnabledDefaultsKey)
         }
-        let initialScheme: ColorScheme = AlembicGlassLegibilityController.resolveColorScheme(for: pref)
-        self.colorScheme = initialScheme
-        self.backdropLuminance = initialScheme == .dark ? 0.20 : 0.80
+        self.colorScheme = AlembicGlassLegibilityController.resolveColorScheme(for: pref)
         startObservingAppearance()
     }
 
@@ -90,12 +87,8 @@ final class AlembicGlassLegibilityController: ObservableObject {
 
     private func applyPreference() {
         let nextColorScheme: ColorScheme = AlembicGlassLegibilityController.resolveColorScheme(for: preference)
-        let nextLuminance: Double = nextColorScheme == .dark ? 0.20 : 0.80
         if colorScheme != nextColorScheme {
             colorScheme = nextColorScheme
-        }
-        if abs(backdropLuminance - nextLuminance) > 0.01 {
-            backdropLuminance = nextLuminance
         }
     }
 
@@ -184,24 +177,6 @@ enum AlembicGlassSurfaceStyle {
         }
     }
 
-    var fillOpacity: Double {
-        switch self {
-        case .toolbar: return 0.020
-        case .panel: return 0.020
-        case .card: return 0.020
-        case .metric: return 0.018
-        case .control: return 0.018
-        case .row: return 0.012
-        case .sidebar: return 0.020
-        case .sheet: return 0.020
-        case .window: return 0.0
-        }
-    }
-
-    var backgroundMaterial: Material? {
-        return nil
-    }
-
     var edgeHighlightStrength: Double {
         switch self {
         case .window: return 0.0
@@ -233,21 +208,15 @@ enum AlembicGlassSurfaceStyle {
         return Glass.clear.tint(tintColor)
     }
 
-    func glassTintOpacity(colorScheme: ColorScheme, luminance: Double) -> Double {
-        if colorScheme == .light {
-            return 0.45
-        }
-        return 0.40
+    func glassTintOpacity(colorScheme: ColorScheme) -> Double {
+        return colorScheme == .light ? 0.45 : 0.72
     }
 
-    func legibilityFillOpacity(colorScheme: ColorScheme, luminance: Double) -> Double {
-        let clampedLuminance: Double = min(1.0, max(0.0, luminance))
+    func legibilityFillOpacity(colorScheme: ColorScheme) -> Double {
         if colorScheme == .light {
-            let brightBoost: Double = max(0.0, clampedLuminance - 0.48) * 0.54
-            return min(lightLegibilityMaxOpacity, lightLegibilityBaseOpacity + brightBoost)
+            return min(lightLegibilityMaxOpacity, lightLegibilityBaseOpacity + 0.1728)
         }
-        let darkBoost: Double = max(0.0, 0.52 - clampedLuminance) * 0.34
-        return min(darkLegibilityMaxOpacity, darkLegibilityBaseOpacity + darkBoost)
+        return min(darkLegibilityMaxOpacity, darkLegibilityBaseOpacity + 0.1088)
     }
 
     private var lightLegibilityBaseOpacity: Double {
@@ -257,8 +226,8 @@ enum AlembicGlassSurfaceStyle {
         case .panel: return 0.62
         case .card: return 0.58
         case .metric: return 0.52
-        case .control: return 0.40
-        case .row: return 0.30
+        case .control: return 0.20
+        case .row: return 0.20
         case .sidebar: return 0.58
         case .sheet: return 0.72
         }
@@ -271,8 +240,8 @@ enum AlembicGlassSurfaceStyle {
         case .panel: return 0.80
         case .card: return 0.76
         case .metric: return 0.70
-        case .control: return 0.50
-        case .row: return 0.42
+        case .control: return 0.20
+        case .row: return 0.20
         case .sidebar: return 0.76
         case .sheet: return 0.88
         }
@@ -285,8 +254,8 @@ enum AlembicGlassSurfaceStyle {
         case .panel: return 0.58
         case .card: return 0.52
         case .metric: return 0.48
-        case .control: return 0.55
-        case .row: return 0.42
+        case .control: return 0.20
+        case .row: return 0.20
         case .sidebar: return 0.54
         case .sheet: return 0.66
         }
@@ -299,8 +268,8 @@ enum AlembicGlassSurfaceStyle {
         case .panel: return 0.74
         case .card: return 0.68
         case .metric: return 0.64
-        case .control: return 0.65
-        case .row: return 0.55
+        case .control: return 0.20
+        case .row: return 0.20
         case .sidebar: return 0.70
         case .sheet: return 0.82
         }
@@ -396,30 +365,20 @@ struct AlembicGlassSurface<Content: View>: View {
     }
 
     private var glassTintOpacity: Double {
-        return style.glassTintOpacity(colorScheme: colorScheme, luminance: legibility.backdropLuminance)
+        return style.glassTintOpacity(colorScheme: colorScheme)
     }
 
-    @ViewBuilder
     private var backgroundLayer: some View {
         let shape: RoundedRectangle = RoundedRectangle(
             cornerRadius: style.cornerRadius,
             style: .continuous
         )
-        if reduceTransparency {
-            shape
-                .fill(legibilityFillColor.opacity(max(0.86, legibilityFillOpacity)))
-                .allowsHitTesting(false)
-        } else if let material: Material = style.backgroundMaterial {
-            ZStack {
-                shape.fill(material)
-                shape.fill(tintFillColor.opacity(tintFillOpacity))
-            }
+        let opacity: Double = reduceTransparency
+            ? max(0.86, legibilityFillOpacity)
+            : legibilityFillOpacity
+        return shape
+            .fill(legibilityFillColor.opacity(opacity))
             .allowsHitTesting(false)
-        } else {
-            shape
-                .fill(legibilityFillColor.opacity(legibilityFillOpacity))
-                .allowsHitTesting(false)
-        }
     }
 
     private var borderStroke: some View {
@@ -465,15 +424,6 @@ struct AlembicGlassSurface<Content: View>: View {
         return colorScheme == .dark ? base * 0.18 : base * 0.10
     }
 
-    private var tintFillColor: Color {
-        return colorScheme == .dark ? Color.white : Color.white
-    }
-
-    private var tintFillOpacity: Double {
-        let base: Double = style.fillOpacity
-        return colorScheme == .dark ? base * 1.4 : base * 1.8
-    }
-
     private var borderColor: Color {
         return Color.primary.opacity(colorScheme == .dark ? style.strokeOpacity * 0.5 : style.strokeOpacity * 0.4)
     }
@@ -483,7 +433,7 @@ struct AlembicGlassSurface<Content: View>: View {
     }
 
     private var legibilityFillOpacity: Double {
-        return style.legibilityFillOpacity(colorScheme: colorScheme, luminance: legibility.backdropLuminance)
+        return style.legibilityFillOpacity(colorScheme: colorScheme)
     }
 }
 

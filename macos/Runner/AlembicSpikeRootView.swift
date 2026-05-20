@@ -1,6 +1,14 @@
 import AppKit
 import SwiftUI
 
+enum AlembicScreen: Equatable {
+    case main
+    case settings
+    case runtime
+    case importPage
+    case diagnostics
+}
+
 struct AlembicSpikeRootView: View {
     let state: SpikeAppState
     let repositoryState: RepositoryListBridgeState
@@ -12,10 +20,7 @@ struct AlembicSpikeRootView: View {
     let onRepositoryRefresh: () -> Void
     let onRepositoryRetry: () -> Void
     let onRepositoryOpen: (String) -> Void
-    @State private var showDiagnostics: Bool = false
-    @State private var showBootDetail: Bool = false
-    @State private var showImportSheet: Bool = false
-    @State private var showSettings: Bool = false
+    @State private var currentScreen: AlembicScreen = .main
     @ObservedObject private var legibility: AlembicGlassLegibilityController = AlembicGlassLegibilityController.shared
 
     var body: some View {
@@ -39,21 +44,114 @@ struct AlembicSpikeRootView: View {
             idealHeight: 720
         )
         .onReceive(NotificationCenter.default.publisher(for: AlembicTrayController.openSettingsNotification)) { _ in
-            showSettings = true
+            currentScreen = .settings
         }
         .onReceive(NotificationCenter.default.publisher(for: AlembicTrayController.openImportNotification)) { _ in
-            showImportSheet = true
+            currentScreen = .importPage
         }
-        .sheet(isPresented: $showBootDetail) {
-            AlembicBootDetailSheet(
-                state: state,
-                onClose: { showBootDetail = false }
+    }
+
+    private var rootStack: some View {
+        ZStack {
+            Color.clear
+                .ignoresSafeArea()
+            Group {
+                switch currentScreen {
+                case .main:
+                    mainScreen
+                case .settings:
+                    settingsScreen
+                case .runtime:
+                    runtimeScreen
+                case .importPage:
+                    importScreen
+                case .diagnostics:
+                    diagnosticsScreen
+                }
+            }
+            .transition(.opacity)
+        }
+    }
+
+    private var mainScreen: some View {
+        AlembicRepositoryListView(
+            state: repositoryState,
+            workState: workState,
+            settingsState: settingsState,
+            accountsState: accountsState,
+            onRefresh: onRepositoryRefresh,
+            onRetry: onRepositoryRetry,
+            onOpen: onRepositoryOpen,
+            onImport: { currentScreen = .importPage },
+            onSettings: { currentScreen = .settings },
+            onRuntimeInfo: { currentScreen = .runtime },
+            onDiagnostics: { currentScreen = .diagnostics },
+            diagnosticsVisible: currentScreen == .diagnostics
+        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .padding(AlembicGlassTokens.appPadding)
+    }
+
+    @ViewBuilder
+    private func pageWrapper<Content: View>(
+        title: String,
+        systemImage: String,
+        @ViewBuilder content: @escaping () -> Content
+    ) -> some View {
+        VStack(spacing: AlembicGlassTokens.panelSpacing) {
+            pageHeader(title: title, systemImage: systemImage)
+            content()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .padding(AlembicGlassTokens.appPadding)
+        .onExitCommand {
+            currentScreen = .main
+        }
+    }
+
+    private func pageHeader(title: String, systemImage: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: systemImage)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Color.accentColor)
+            Text(title)
+                .font(.system(size: 14, weight: .semibold))
+            Spacer()
+            Button {
+                currentScreen = .main
+            } label: {
+                Text("Done")
+                    .font(.system(size: 13, weight: .semibold))
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.regular)
+            .keyboardShortcut(.return, modifiers: [])
+            .keyboardShortcut(.escape, modifiers: [])
+        }
+        .frame(minHeight: AlembicGlassTokens.commandHeight)
+        .alembicGlassSurface(.toolbar)
+    }
+
+    private var settingsScreen: some View {
+        pageWrapper(title: "Settings", systemImage: "gearshape") {
+            AlembicSettingsWindow(
+                settingsState: settingsState,
+                accountsState: accountsState
             )
         }
-        .sheet(isPresented: $showImportSheet) {
+    }
+
+    private var runtimeScreen: some View {
+        pageWrapper(title: "Runtime", systemImage: "info.circle.fill") {
+            AlembicRuntimePage(state: state)
+        }
+    }
+
+    private var importScreen: some View {
+        pageWrapper(title: "Import Repositories", systemImage: "folder.fill.badge.plus") {
             AlembicImportSheet(
                 state: workspaceState,
-                onClose: { showImportSheet = false },
+                onClose: { currentScreen = .main },
                 onChooseFolder: {
                     AlembicWorkspaceBridge.shared.presentFolderPicker { path in
                         if let chosen: String = path {
@@ -67,7 +165,7 @@ struct AlembicSpikeRootView: View {
                 onImport: { rootPath, slugs in
                     AlembicWorkspaceBridge.shared.importDiscovered(rootPath: rootPath, selectedSlugs: slugs) { ok, _ in
                         if ok {
-                            showImportSheet = false
+                            currentScreen = .main
                             onRepositoryRefresh()
                         }
                     }
@@ -76,137 +174,45 @@ struct AlembicSpikeRootView: View {
         }
     }
 
-    private var rootStack: some View {
-        ZStack {
-            Color.clear
-                .ignoresSafeArea()
-            if showSettings {
-                settingsScreen
-                    .transition(.opacity)
-            } else {
-                VStack(spacing: 0) {
-                    contentArea
-                    if showDiagnostics {
-                        AlembicDiagnosticsConsole(state: diagnosticsState)
-                            .frame(height: 260)
-                            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                            .padding(.top, 14)
-                            .transition(.opacity.combined(with: .move(edge: .bottom)))
-                    }
-                }
-                .padding(AlembicGlassTokens.appPadding)
-                .transition(.opacity)
-            }
-        }
-    }
-
-    private var contentArea: some View {
-        AlembicRepositoryListView(
-            state: repositoryState,
-            workState: workState,
-            settingsState: settingsState,
-            accountsState: accountsState,
-            onRefresh: onRepositoryRefresh,
-            onRetry: onRepositoryRetry,
-            onOpen: onRepositoryOpen,
-            onImport: { showImportSheet = true },
-            onSettings: { showSettings = true },
-            onRuntimeInfo: { showBootDetail = true },
-            onDiagnostics: { showDiagnostics.toggle() },
-            diagnosticsVisible: showDiagnostics
-        )
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-    }
-
-    private var settingsScreen: some View {
-        VStack(spacing: 0) {
-            HStack(alignment: .center) {
-                Text("Settings")
-                    .font(.system(size: 16, weight: .semibold))
-                Spacer()
-                Button {
-                    showSettings = false
-                } label: {
-                    Text("Done")
-                        .font(.system(size: 13, weight: .semibold))
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.regular)
-                .keyboardShortcut(.return, modifiers: [])
-                .keyboardShortcut(.escape, modifiers: [])
-            }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 12)
-            Divider()
-                .opacity(0.4)
-            AlembicSettingsWindow(
-                settingsState: settingsState,
-                accountsState: accountsState
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-        .padding(AlembicGlassTokens.appPadding)
-        .onExitCommand {
-            showSettings = false
+    private var diagnosticsScreen: some View {
+        pageWrapper(title: "Diagnostics", systemImage: "stethoscope") {
+            AlembicDiagnosticsConsole(state: diagnosticsState)
         }
     }
 }
 
-struct AlembicBootDetailSheet: View {
+struct AlembicRuntimePage: View {
     @ObservedObject var state: SpikeAppState
-    let onClose: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 8) {
-                Image(systemName: "info.circle.fill")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(Color.accentColor)
-                Text("Runtime")
-                    .font(.system(size: 15, weight: .semibold))
-                Spacer()
-                Button {
-                    onClose()
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 16))
-                        .foregroundStyle(.secondary)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 10) {
+                    infoRow(label: "Heartbeat", value: "tick \(state.heartbeat)")
+                    infoRow(label: "Status", value: state.status)
+                    infoRow(label: "Process", value: state.pid.isEmpty ? "-" : "pid \(state.pid)")
+                    infoRow(label: "Accounts", value: "\(state.accountCount)")
+                    infoRow(label: "Hive entries", value: "\(state.hiveEntries)")
+                    if let login: String = state.primaryAccountLogin {
+                        infoRow(label: "Primary", value: "@\(login)")
+                    }
+                    if !state.configPath.isEmpty {
+                        infoRow(label: "Data path", value: state.configPath, monospace: true)
+                    }
                 }
-                .buttonStyle(.borderless)
-                .keyboardShortcut(.escape)
-            }
+                .padding(20)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .alembicGlassSurface(.panel)
 
-            Divider()
-
-            VStack(alignment: .leading, spacing: 10) {
-                infoRow(label: "Heartbeat", value: "tick \(state.heartbeat)")
-                infoRow(label: "Status", value: state.status)
-                infoRow(label: "Process", value: state.pid.isEmpty ? "-" : "pid \(state.pid)")
-                infoRow(label: "Accounts", value: "\(state.accountCount)")
-                infoRow(label: "Hive entries", value: "\(state.hiveEntries)")
-                if let login: String = state.primaryAccountLogin {
-                    infoRow(label: "Primary", value: "@\(login)")
-                }
-                if !state.configPath.isEmpty {
-                    infoRow(label: "Data path", value: state.configPath, monospace: true)
+                if state.migrationAttempted || !state.migrationSearchedPaths.isEmpty {
+                    migrationDetails
+                        .padding(20)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .alembicGlassSurface(.panel)
                 }
             }
-
-            if state.migrationAttempted || !state.migrationSearchedPaths.isEmpty {
-                Divider()
-                migrationDetails
-            }
-
-            HStack {
-                Spacer()
-                Button("Close") { onClose() }
-                    .buttonStyle(.borderedProminent)
-                    .keyboardShortcut(.defaultAction)
-            }
+            .padding(2)
         }
-        .padding(22)
-        .frame(width: 520)
-        .alembicGlassSurface(.sheet)
     }
 
     private var migrationDetails: some View {

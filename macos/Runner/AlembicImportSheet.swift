@@ -15,49 +15,19 @@ struct AlembicImportSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            headerView
-            Divider()
             if let outcome: WorkspaceBridgeState.ScanOutcome = state.lastScanResult {
                 resultsView(outcome)
             } else {
                 emptyView
             }
             Divider()
+                .opacity(0.4)
             footerView
         }
-        .frame(minWidth: 720, idealWidth: 820, minHeight: 560, idealHeight: 680)
-        .padding(18)
-        .alembicGlassSurface(.sheet)
-        .background(AlembicSpikeBackground().ignoresSafeArea())
+        .alembicGlassSurface(.panel, padding: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
         .onAppear {
             pickedPath = state.workspacePath
         }
-    }
-
-    private var headerView: some View {
-        HStack(spacing: 14) {
-            ZStack {
-                Circle()
-                    .fill(LinearGradient(
-                        colors: [Color.accentColor.opacity(0.25), Color.accentColor.opacity(0.10)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    ))
-                    .frame(width: 44, height: 44)
-                Image(systemName: "folder.fill.badge.plus")
-                    .font(.system(size: 20, weight: .medium))
-                    .foregroundStyle(Color.accentColor)
-            }
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Import Existing Repositories")
-                    .font(.system(size: 17, weight: .semibold))
-                Text("Point Alembic at a folder containing your local git clones.")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-        }
-        .padding(20)
     }
 
     private var emptyView: some View {
@@ -353,12 +323,6 @@ struct AlembicImportSheet: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            Button("Cancel") {
-                onClose()
-            }
-            .controlSize(.regular)
-            .keyboardShortcut(.cancelAction)
-
             if let outcome: WorkspaceBridgeState.ScanOutcome = state.lastScanResult {
                 Button {
                     let selected: [String] = Array(selectedSlugs)
@@ -370,7 +334,6 @@ struct AlembicImportSheet: View {
                 .controlSize(.large)
                 .buttonStyle(.borderedProminent)
                 .disabled(selectedSlugs.isEmpty)
-                .keyboardShortcut(.defaultAction)
             }
         }
         .padding(16)

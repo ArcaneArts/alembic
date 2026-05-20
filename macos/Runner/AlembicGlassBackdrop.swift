@@ -21,10 +21,6 @@ enum AlembicMaterial: String {
 final class AlembicGlassBackdrop: NSView {
     private(set) var material: AlembicMaterial
     private(set) var cornerRadius: CGFloat
-    private weak var glassContainerView: NSView?
-    private weak var glassEffectView: NSView?
-    private weak var vibrancyView: NSVisualEffectView?
-    private weak var solidLayer: CALayer?
     private weak var gradientLayer: CAGradientLayer?
     private var appearanceObservation: NSObjectProtocol?
 
@@ -35,13 +31,12 @@ final class AlembicGlassBackdrop: NSView {
         self.wantsLayer = true
         self.autoresizingMask = [.width, .height]
         self.layer?.backgroundColor = NSColor.clear.cgColor
-        installMaterialView()
+        installBackdrop()
         startObservingAppearance()
         os_log(
-            "AlembicGlassBackdrop init: material=%{public}@ cornerRadius=%.1f",
+            "AlembicGlassBackdrop init: cornerRadius=%.1f",
             log: .alembicBackdrop,
             type: .info,
-            material.rawValue,
             cornerRadius
         )
     }
@@ -68,81 +63,17 @@ final class AlembicGlassBackdrop: NSView {
         if let gradient: CAGradientLayer = gradientLayer {
             applyGradientColors(gradient)
         }
-        layer?.setNeedsDisplay()
     }
 
     func setCornerRadius(_ radius: CGFloat) {
-        guard radius != cornerRadius else {
-            return
-        }
         cornerRadius = radius
-        if #available(macOS 26.0, *),
-           let glass: NSGlassEffectView = glassEffectView as? NSGlassEffectView {
-            glass.cornerRadius = radius
-        }
     }
 
     func setMaterial(_ next: AlembicMaterial) {
-        guard next != material else {
-            return
-        }
         material = next
-        glassContainerView?.removeFromSuperview()
-        glassEffectView?.removeFromSuperview()
-        vibrancyView?.removeFromSuperview()
-        glassContainerView = nil
-        glassEffectView = nil
-        vibrancyView = nil
-        solidLayer?.removeFromSuperlayer()
-        solidLayer = nil
-        gradientLayer?.removeFromSuperlayer()
-        gradientLayer = nil
-        installMaterialView()
-        os_log(
-            "AlembicGlassBackdrop setMaterial: -> %{public}@",
-            log: .alembicBackdrop,
-            type: .info,
-            next.rawValue
-        )
     }
 
-    private func installMaterialView() {
-        switch material {
-        case .liquidGlass:
-            if !installLiquidGlass() {
-                material = .vibrancy
-                installFauxGlass()
-            }
-        case .vibrancy:
-            installFauxGlass()
-        case .solid:
-            installSolid()
-        }
-    }
-
-    private func installLiquidGlass() -> Bool {
-        guard #available(macOS 26.0, *) else {
-            return false
-        }
-        let container: NSGlassEffectContainerView = NSGlassEffectContainerView(frame: bounds)
-        container.autoresizingMask = [.width, .height]
-        container.spacing = 10
-        container.wantsLayer = true
-
-        let glass: NSGlassEffectView = NSGlassEffectView(frame: bounds)
-        glass.autoresizingMask = [.width, .height]
-        glass.style = .regular
-        glass.cornerRadius = cornerRadius
-        glass.tintColor = NSColor.controlAccentColor.withAlphaComponent(0.05)
-        glass.wantsLayer = true
-        container.contentView = glass
-        addSubview(container, positioned: .below, relativeTo: nil)
-        glassContainerView = container
-        glassEffectView = glass
-        return true
-    }
-
-    private func installFauxGlass() {
+    private func installBackdrop() {
         let gradient: CAGradientLayer = CAGradientLayer()
         gradient.frame = bounds
         gradient.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
@@ -157,9 +88,9 @@ final class AlembicGlassBackdrop: NSView {
         let isDark: Bool = AlembicGlassLegibilityController.shared.colorScheme == .dark
         if isDark {
             gradient.colors = [
-                NSColor(white: 0.04, alpha: 0.88).cgColor,
-                NSColor(white: 0.02, alpha: 0.90).cgColor,
-                NSColor(white: 0.01, alpha: 0.86).cgColor,
+                NSColor(white: 0.03, alpha: 1.0).cgColor,
+                NSColor(white: 0.015, alpha: 1.0).cgColor,
+                NSColor(white: 0.00, alpha: 1.0).cgColor,
             ]
         } else {
             gradient.colors = [
@@ -183,16 +114,5 @@ final class AlembicGlassBackdrop: NSView {
             }
             self.applyGradientColors(gradient)
         }
-    }
-
-    private func installSolid() {
-        let solid: CALayer = CALayer()
-        solid.frame = bounds
-        solid.cornerRadius = cornerRadius
-        solid.masksToBounds = true
-        solid.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.92).cgColor
-        solid.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
-        layer?.insertSublayer(solid, at: 0)
-        solidLayer = solid
     }
 }
