@@ -18,21 +18,36 @@ enum AlembicThemePreference: String, CaseIterable {
 final class AlembicGlassLegibilityController: ObservableObject {
     static let shared: AlembicGlassLegibilityController = AlembicGlassLegibilityController()
     static let preferenceDefaultsKey: String = "alembic.theme.preference"
+    static let glassEnabledDefaultsKey: String = "alembic.glass.enabled"
     static let themeChangedNotification: Notification.Name = Notification.Name("alembic.theme.changed")
 
     @Published private(set) var colorScheme: ColorScheme
     @Published private(set) var backdropLuminance: Double
     @Published private(set) var preference: AlembicThemePreference
+    @Published private(set) var glassEnabled: Bool
     private var appearanceObservation: NSKeyValueObservation?
 
     private init() {
         let stored: String = UserDefaults.standard.string(forKey: AlembicGlassLegibilityController.preferenceDefaultsKey) ?? AlembicThemePreference.light.rawValue
         let pref: AlembicThemePreference = AlembicThemePreference(rawValue: stored) ?? .light
         self.preference = pref
+        if UserDefaults.standard.object(forKey: AlembicGlassLegibilityController.glassEnabledDefaultsKey) == nil {
+            self.glassEnabled = true
+        } else {
+            self.glassEnabled = UserDefaults.standard.bool(forKey: AlembicGlassLegibilityController.glassEnabledDefaultsKey)
+        }
         let initialScheme: ColorScheme = AlembicGlassLegibilityController.resolveColorScheme(for: pref)
         self.colorScheme = initialScheme
         self.backdropLuminance = initialScheme == .dark ? 0.20 : 0.80
         startObservingAppearance()
+    }
+
+    func setGlassEnabled(_ enabled: Bool) {
+        guard enabled != glassEnabled else {
+            return
+        }
+        glassEnabled = enabled
+        UserDefaults.standard.set(enabled, forKey: AlembicGlassLegibilityController.glassEnabledDefaultsKey)
     }
 
     deinit {
@@ -238,56 +253,56 @@ enum AlembicGlassSurfaceStyle {
     private var lightLegibilityBaseOpacity: Double {
         switch self {
         case .window: return 0.0
-        case .toolbar: return 0.0
-        case .panel: return 0.0
-        case .card: return 0.0
-        case .metric: return 0.0
+        case .toolbar: return 0.55
+        case .panel: return 0.62
+        case .card: return 0.58
+        case .metric: return 0.52
         case .control: return 0.40
         case .row: return 0.30
-        case .sidebar: return 0.0
-        case .sheet: return 0.0
+        case .sidebar: return 0.58
+        case .sheet: return 0.72
         }
     }
 
     private var lightLegibilityMaxOpacity: Double {
         switch self {
         case .window: return 0.0
-        case .toolbar: return 0.0
-        case .panel: return 0.0
-        case .card: return 0.0
-        case .metric: return 0.0
+        case .toolbar: return 0.72
+        case .panel: return 0.80
+        case .card: return 0.76
+        case .metric: return 0.70
         case .control: return 0.50
         case .row: return 0.42
-        case .sidebar: return 0.0
-        case .sheet: return 0.0
+        case .sidebar: return 0.76
+        case .sheet: return 0.88
         }
     }
 
     private var darkLegibilityBaseOpacity: Double {
         switch self {
         case .window: return 0.0
-        case .toolbar: return 0.0
-        case .panel: return 0.0
-        case .card: return 0.0
-        case .metric: return 0.0
+        case .toolbar: return 0.50
+        case .panel: return 0.58
+        case .card: return 0.52
+        case .metric: return 0.48
         case .control: return 0.55
         case .row: return 0.42
-        case .sidebar: return 0.0
-        case .sheet: return 0.0
+        case .sidebar: return 0.54
+        case .sheet: return 0.66
         }
     }
 
     private var darkLegibilityMaxOpacity: Double {
         switch self {
         case .window: return 0.0
-        case .toolbar: return 0.0
-        case .panel: return 0.0
-        case .card: return 0.0
-        case .metric: return 0.0
+        case .toolbar: return 0.66
+        case .panel: return 0.74
+        case .card: return 0.68
+        case .metric: return 0.64
         case .control: return 0.65
         case .row: return 0.55
-        case .sidebar: return 0.0
-        case .sheet: return 0.0
+        case .sidebar: return 0.70
+        case .sheet: return 0.82
         }
     }
 }
@@ -353,7 +368,7 @@ struct AlembicGlassSurface<Content: View>: View {
     }
 
     var body: some View {
-        if #available(macOS 26.0, *), !reduceTransparency, style.usesGlassEffect {
+        if #available(macOS 26.0, *), !reduceTransparency, style.usesGlassEffect, legibility.glassEnabled {
             liquidGlassBody
         } else {
             fallbackBody

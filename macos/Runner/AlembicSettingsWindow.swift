@@ -132,24 +132,40 @@ private struct AlembicSettingsGeneralPane: View {
                 paneHeader(title: "General", description: "App-wide preferences and startup behavior.")
 
                 AlembicSettingsCard {
-                    settingRow(
-                        title: "Appearance",
-                        description: "Choose how Alembic looks. System follows your macOS theme."
-                    ) {
-                        Picker(
-                            "",
-                            selection: Binding<AlembicThemePreference>(
-                                get: { legibility.preference },
-                                set: { next in legibility.setPreference(next) }
-                            )
+                    VStack(alignment: .leading, spacing: 14) {
+                        settingRow(
+                            title: "Appearance",
+                            description: "Choose how Alembic looks. System follows your macOS theme."
                         ) {
-                            ForEach(AlembicThemePreference.allCases, id: \.self) { pref in
-                                Text(pref.displayName).tag(pref)
+                            Picker(
+                                "",
+                                selection: Binding<AlembicThemePreference>(
+                                    get: { legibility.preference },
+                                    set: { next in legibility.setPreference(next) }
+                                )
+                            ) {
+                                ForEach(AlembicThemePreference.allCases, id: \.self) { pref in
+                                    Text(pref.displayName).tag(pref)
+                                }
                             }
+                            .pickerStyle(.segmented)
+                            .labelsHidden()
+                            .frame(width: 220)
                         }
-                        .pickerStyle(.segmented)
-                        .labelsHidden()
-                        .frame(width: 220)
+                        Divider().opacity(0.3)
+                        settingRow(
+                            title: "Liquid Glass effect",
+                            description: "Turn off if you prefer flat surfaces or want to reduce GPU usage."
+                        ) {
+                            Toggle(
+                                "",
+                                isOn: Binding<Bool>(
+                                    get: { legibility.glassEnabled },
+                                    set: { next in legibility.setGlassEnabled(next) }
+                                )
+                            )
+                            .labelsHidden()
+                        }
                     }
                 }
 

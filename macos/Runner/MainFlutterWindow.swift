@@ -36,7 +36,7 @@ class MainFlutterWindow: NSWindow {
     if #available(macOS 11.0, *) {
       self.titlebarSeparatorStyle = .none
     }
-    self.hasShadow = true
+    self.hasShadow = false
     self.isMovable = false
     self.isMovableByWindowBackground = false
     self.contentMinSize = NSSize(width: 960, height: 620)
