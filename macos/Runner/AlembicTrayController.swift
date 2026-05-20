@@ -97,7 +97,7 @@ final class AlembicTrayController: NSObject {
         button.toolTip = "Alembic"
         button.target = self
         button.action = #selector(handleStatusItemClick(_:))
-        button.sendAction(on: [.leftMouseUp])
+        button.sendAction(on: [.leftMouseUp, .rightMouseUp])
 
         if isVerbose {
             logStatusItem("install")
@@ -186,12 +186,28 @@ final class AlembicTrayController: NSObject {
             log("showWindow: tray clicked before window attached")
             return
         }
-        suppressHideUntil = Date().addingTimeInterval(0.35)
+        let prepareBeforeOpen: Bool = !window.isVisible
         ensureUsableWindowSize(window)
         positionWindowAtTopRight(window)
         window.alphaValue = 1.0
         window.level = .floating
         window.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary, .transient]
+        if prepareBeforeOpen {
+            AlembicGlassLegibilityController.shared.prepareForWindowOpen(window) { [weak self, weak window] in
+                guard let self: AlembicTrayController = self,
+                      let window: NSWindow = window else {
+                    return
+                }
+                self.finishShowWindow(window)
+            }
+            return
+        }
+        AlembicGlassLegibilityController.shared.refresh()
+        finishShowWindow(window)
+    }
+
+    private func finishShowWindow(_ window: NSWindow) {
+        suppressHideUntil = Date().addingTimeInterval(0.35)
         NSApp.activate(ignoringOtherApps: true)
         window.orderFrontRegardless()
         window.makeKeyAndOrderFront(nil)
@@ -211,6 +227,13 @@ final class AlembicTrayController: NSObject {
         window.orderOut(nil)
         window.alphaValue = 1.0
         verbose("hideWindow: hidden")
+    }
+
+    private func showWindowThen(_ block: @escaping () -> Void) {
+        showWindow()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+            block()
+        }
     }
 
     private func hideAfterOutsideClick() {
@@ -236,8 +259,140 @@ final class AlembicTrayController: NSObject {
     }
 
     @objc private func handleStatusItemClick(_ sender: NSStatusBarButton) {
+        if shouldShowStatusMenu {
+            showStatusMenu(from: sender)
+            return
+        }
         eventChannel?.invokeMethod("onLeftClick", arguments: nil)
         showWindow()
+    }
+
+    private var shouldShowStatusMenu: Bool {
+        guard let event: NSEvent = NSApp.currentEvent else {
+            return false
+        }
+        return event.type == .rightMouseUp || event.modifierFlags.contains(.control)
+    }
+
+    private func showStatusMenu(from button: NSStatusBarButton) {
+        let menu: NSMenu = NSMenu(title: "Alembic")
+        menu.addItem(statusMenuItem(
+            title: "Show Alembic",
+            symbol: "rectangle.on.rectangle",
+            action: #selector(handleShowWindowMenuItem(_:))
+        ))
+        menu.addItem(statusMenuItem(
+            title: "Hide Window",
+            symbol: "rectangle.compress.vertical",
+            action: #selector(handleHideWindowMenuItem(_:)),
+            enabled: window?.isVisible == true
+        ))
+        menu.addItem(NSMenuItem.separator())
+        menu.addItem(statusMenuItem(
+            title: "Refresh Repositories",
+            symbol: "arrow.clockwise",
+            action: #selector(handleRefreshMenuItem(_:))
+        ))
+        menu.addItem(statusMenuItem(
+            title: "Import Repositories...",
+            symbol: "square.and.arrow.down",
+            action: #selector(handleImportMenuItem(_:))
+        ))
+        menu.addItem(statusMenuItem(
+            title: "Settings...",
+            symbol: "gearshape",
+            action: #selector(handleSettingsMenuItem(_:))
+        ))
+        menu.addItem(NSMenuItem.separator())
+        menu.addItem(statusMenuItem(
+            title: "Restart Alembic",
+            symbol: "restart",
+            action: #selector(handleRestartMenuItem(_:))
+        ))
+        menu.addItem(statusMenuItem(
+            title: "Quit Alembic",
+            symbol: "power",
+            action: #selector(handleQuitMenuItem(_:))
+        ))
+        menu.popUp(
+            positioning: nil,
+            at: NSPoint(x: 0.0, y: button.bounds.minY - 4.0),
+            in: button
+        )
+    }
+
+    private func statusMenuItem(
+        title: String,
+        symbol: String,
+        action: Selector,
+        enabled: Bool = true
+    ) -> NSMenuItem {
+        let item: NSMenuItem = NSMenuItem(
+            title: title,
+            action: action,
+            keyEquivalent: ""
+        )
+        item.target = self
+        item.isEnabled = enabled
+        if #available(macOS 11.0, *),
+           let image: NSImage = NSImage(systemSymbolName: symbol, accessibilityDescription: title) {
+            item.image = image
+        }
+        return item
+    }
+
+    @objc private func handleShowWindowMenuItem(_ sender: NSMenuItem) {
+        eventChannel?.invokeMethod("onMenuAction", arguments: ["action": "show"])
+        showWindow()
+    }
+
+    @objc private func handleHideWindowMenuItem(_ sender: NSMenuItem) {
+        eventChannel?.invokeMethod("onMenuAction", arguments: ["action": "hide"])
+        hideWindow()
+    }
+
+    @objc private func handleRefreshMenuItem(_ sender: NSMenuItem) {
+        eventChannel?.invokeMethod("onMenuAction", arguments: ["action": "refresh"])
+        AlembicRepositoryListBridge.shared.refresh()
+    }
+
+    @objc private func handleImportMenuItem(_ sender: NSMenuItem) {
+        eventChannel?.invokeMethod("onMenuAction", arguments: ["action": "import"])
+        showWindowThen {
+            NotificationCenter.default.post(name: AlembicTrayController.openImportNotification, object: nil)
+        }
+    }
+
+    @objc private func handleSettingsMenuItem(_ sender: NSMenuItem) {
+        eventChannel?.invokeMethod("onMenuAction", arguments: ["action": "settings"])
+        showWindowThen {
+            NotificationCenter.default.post(name: AlembicTrayController.openSettingsNotification, object: nil)
+        }
+    }
+
+    @objc private func handleRestartMenuItem(_ sender: NSMenuItem) {
+        eventChannel?.invokeMethod("onMenuAction", arguments: ["action": "restart"])
+        restartApplication()
+    }
+
+    @objc private func handleQuitMenuItem(_ sender: NSMenuItem) {
+        eventChannel?.invokeMethod("onMenuAction", arguments: ["action": "quit"])
+        NSApp.terminate(nil)
+    }
+
+    private func restartApplication() {
+        let bundlePath: String = Bundle.main.bundlePath
+        let process: Process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        process.arguments = ["-n", bundlePath]
+        do {
+            try process.run()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                NSApp.terminate(nil)
+            }
+        } catch {
+            log("restart: failed to relaunch \(bundlePath): \(error.localizedDescription)")
+        }
     }
 
     private func makeIcon() -> NSImage {

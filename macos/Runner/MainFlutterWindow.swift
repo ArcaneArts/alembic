@@ -202,26 +202,11 @@ class MainFlutterWindow: NSWindow {
   }
 
   private func _applyHostMask() {
-    guard let rootView: NSView = self.contentView else {
-      return
-    }
-
     if let frameView: NSView = self.contentView?.superview {
       frameView.wantsLayer = true
       frameView.layer?.cornerRadius = hostCornerRadius
       frameView.layer?.masksToBounds = true
       frameView.layer?.borderWidth = 0
-    }
-
-    rootView.wantsLayer = true
-    rootView.layer?.cornerRadius = hostCornerRadius
-    rootView.layer?.masksToBounds = true
-    rootView.layer?.borderWidth = 0
-
-    if let backdrop: AlembicGlassBackdrop = backdropView {
-      backdrop.setCornerRadius(hostCornerRadius)
-      backdrop.layer?.masksToBounds = true
-      backdrop.layer?.borderWidth = 0
     }
   }
 

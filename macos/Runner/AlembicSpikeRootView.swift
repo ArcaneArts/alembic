@@ -2,13 +2,13 @@ import AppKit
 import SwiftUI
 
 struct AlembicSpikeRootView: View {
-    @ObservedObject var state: SpikeAppState
-    @ObservedObject var repositoryState: RepositoryListBridgeState
-    @ObservedObject var diagnosticsState: AlembicDiagnosticsState
-    @ObservedObject var workspaceState: WorkspaceBridgeState
-    @ObservedObject var workState: RepositoryWorkBridgeState
-    @ObservedObject var settingsState: SettingsBridgeState
-    @ObservedObject var accountsState: AccountsBridgeState
+    let state: SpikeAppState
+    let repositoryState: RepositoryListBridgeState
+    let diagnosticsState: AlembicDiagnosticsState
+    let workspaceState: WorkspaceBridgeState
+    let workState: RepositoryWorkBridgeState
+    let settingsState: SettingsBridgeState
+    let accountsState: AccountsBridgeState
     let onRepositoryRefresh: () -> Void
     let onRepositoryRetry: () -> Void
     let onRepositoryOpen: (String) -> Void
@@ -16,27 +16,21 @@ struct AlembicSpikeRootView: View {
     @State private var showBootDetail: Bool = false
     @State private var showImportSheet: Bool = false
     @State private var showSettings: Bool = false
+    @ObservedObject private var legibility: AlembicGlassLegibilityController = AlembicGlassLegibilityController.shared
 
     var body: some View {
-        ZStack(alignment: .topTrailing) {
-            Color.clear
-                .ignoresSafeArea()
-            VStack(spacing: 0) {
-                contentArea
-                if showDiagnostics {
-                    AlembicDiagnosticsConsole(state: diagnosticsState)
-                        .frame(height: 260)
-                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                        .padding(.top, 14)
-                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+        Group {
+            if #available(macOS 26.0, *) {
+                GlassEffectContainer(spacing: 10) {
+                    rootStack
                 }
+            } else {
+                rootStack
             }
-            .padding(AlembicGlassTokens.appPadding)
-            if showSettings {
-                settingsOverlay
-                    .zIndex(2)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-            }
+        }
+        .environment(\.colorScheme, legibility.colorScheme)
+        .onAppear {
+            legibility.refresh()
         }
         .frame(
             minWidth: 920,
@@ -82,6 +76,30 @@ struct AlembicSpikeRootView: View {
         }
     }
 
+    private var rootStack: some View {
+        ZStack {
+            Color.clear
+                .ignoresSafeArea()
+            if showSettings {
+                settingsScreen
+                    .transition(.opacity)
+            } else {
+                VStack(spacing: 0) {
+                    contentArea
+                    if showDiagnostics {
+                        AlembicDiagnosticsConsole(state: diagnosticsState)
+                            .frame(height: 260)
+                            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                            .padding(.top, 14)
+                            .transition(.opacity.combined(with: .move(edge: .bottom)))
+                    }
+                }
+                .padding(AlembicGlassTokens.appPadding)
+                .transition(.opacity)
+            }
+        }
+    }
+
     private var contentArea: some View {
         AlembicRepositoryListView(
             state: repositoryState,
@@ -100,37 +118,34 @@ struct AlembicSpikeRootView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
-    private var settingsOverlay: some View {
+    private var settingsScreen: some View {
         VStack(spacing: 0) {
-            HStack {
-                Text("Alembic Settings")
-                    .font(.system(size: 14, weight: .semibold))
+            HStack(alignment: .center) {
+                Text("Settings")
+                    .font(.system(size: 16, weight: .semibold))
                 Spacer()
                 Button {
                     showSettings = false
                 } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 17))
-                        .foregroundStyle(.secondary)
+                    Text("Done")
+                        .font(.system(size: 13, weight: .semibold))
                 }
-                .buttonStyle(.plain)
-                .keyboardShortcut(.escape)
+                .buttonStyle(.borderedProminent)
+                .controlSize(.regular)
+                .keyboardShortcut(.return, modifiers: [])
+                .keyboardShortcut(.escape, modifiers: [])
             }
-            .padding(.horizontal, 6)
-            .padding(.bottom, 12)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 12)
+            Divider()
+                .opacity(0.4)
             AlembicSettingsWindow(
                 settingsState: settingsState,
                 accountsState: accountsState
             )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .padding(16)
-        .frame(width: 760, height: 560)
-        .alembicGlassSurface(
-            .sheet,
-            padding: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
-        )
-        .padding(.top, AlembicGlassTokens.appPadding)
-        .padding(.trailing, AlembicGlassTokens.appPadding)
+        .padding(AlembicGlassTokens.appPadding)
         .onExitCommand {
             showSettings = false
         }

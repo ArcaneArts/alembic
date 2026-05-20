@@ -885,8 +885,13 @@ struct AlembicRepositoryListView: View {
                 ForEach(filteredRepositories) { item in
                     AlembicRepositoryRow(
                         item: item,
-                        workState: workState,
-                        settingsState: settingsState,
+                        isActive: workState.isActive(item.fullName),
+                        isArchived: workState.isArchived(item.fullName),
+                        isSyncing: workState.isSyncing(item.fullName),
+                        workEntries: workState.workForRepo(item.fullName),
+                        localState: workState.localState(for: item.fullName),
+                        archiveEnabled: settingsState.archiveEnabled,
+                        daysToArchive: settingsState.daysToArchive,
                         onOpenBrowser: { onOpen(item.htmlUrl) },
                         onShowDetail: { detailRepository = item }
                     )
@@ -941,18 +946,17 @@ struct AlembicRepositoryListView: View {
 
 struct AlembicRepositoryRow: View {
     let item: RepositoryItem
-    @ObservedObject var workState: RepositoryWorkBridgeState
-    @ObservedObject var settingsState: SettingsBridgeState
+    let isActive: Bool
+    let isArchived: Bool
+    let isSyncing: Bool
+    let workEntries: [RepositoryWorkEntry]
+    let localState: RepositoryLocalState?
+    let archiveEnabled: Bool
+    let daysToArchive: Int
     let onOpenBrowser: () -> Void
     let onShowDetail: () -> Void
     @State private var isHovering: Bool = false
     @State private var actionInFlight: String? = nil
-
-    private var isActive: Bool { workState.isActive(item.fullName) }
-    private var isArchived: Bool { workState.isArchived(item.fullName) }
-    private var isSyncing: Bool { workState.isSyncing(item.fullName) }
-    private var workEntries: [RepositoryWorkEntry] { workState.workForRepo(item.fullName) }
-    private var localState: RepositoryLocalState? { workState.localState(for: item.fullName) }
 
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
@@ -989,16 +993,10 @@ struct AlembicRepositoryRow: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
-        .background {
-            if isHovering {
-                AlembicGlassSurface(
-                    style: .row,
-                    padding: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
-                ) {
-                    Color.clear
-                }
-            }
-        }
+        .background(
+            RoundedRectangle(cornerRadius: AlembicGlassSurfaceStyle.row.cornerRadius, style: .continuous)
+                .fill(Color.primary.opacity(isHovering ? 0.06 : 0.0))
+        )
         .overlay(
             RoundedRectangle(cornerRadius: AlembicGlassSurfaceStyle.row.cornerRadius, style: .continuous)
                 .strokeBorder(Color.white.opacity(isHovering ? 0.16 : 0.07), lineWidth: 0.5)
@@ -1044,7 +1042,7 @@ struct AlembicRepositoryRow: View {
     private var rowBadges: some View {
         HStack(spacing: 6) {
             statusBadge
-            if settingsState.archiveEnabled && isActive && archiveDays <= 30 {
+            if archiveEnabled && isActive && archiveDays <= 30 {
                 badge(archiveTimingLabel, tint: archiveTimingColor)
             }
             if item.isArchived {
@@ -1086,7 +1084,7 @@ struct AlembicRepositoryRow: View {
     }
 
     private var archiveDays: Int {
-        return localState?.daysUntilArchive ?? settingsState.daysToArchive
+        return localState?.daysUntilArchive ?? daysToArchive
     }
 
     private func actionStatus(_ action: String) -> some View {
@@ -1125,25 +1123,25 @@ struct AlembicRepositoryRow: View {
             Button("Open") { runAction("open") { AlembicRepositoryActionsBridge.shared.open(fullName: item.fullName, completion: $0) } }
             Button("Reveal in Finder") { runAction("openInFinder") { AlembicRepositoryActionsBridge.shared.openInFinder(fullName: item.fullName, completion: $0) } }
             Button("Pull") { runAction("pull") { AlembicRepositoryActionsBridge.shared.pull(fullName: item.fullName, completion: $0) } }
-            if settingsState.archiveEnabled {
+            if archiveEnabled {
                 Divider()
                 Button("Archive") { runAction("archive") { AlembicRepositoryActionsBridge.shared.archive(fullName: item.fullName, completion: $0) } }
             }
         } else if isArchived {
             Button("Unarchive") { runAction("unarchive") { AlembicRepositoryActionsBridge.shared.unarchive(fullName: item.fullName, completion: $0) } }
-            if settingsState.archiveEnabled {
+            if archiveEnabled {
                 Button("Update Archive") { runAction("updateArchive") { AlembicRepositoryActionsBridge.shared.updateArchive(fullName: item.fullName, completion: $0) } }
             }
             Button("Reveal in Finder") { runAction("openInFinder") { AlembicRepositoryActionsBridge.shared.openInFinder(fullName: item.fullName, completion: $0) } }
         } else {
             Button("Clone") { runAction("clone") { AlembicRepositoryActionsBridge.shared.clone(fullName: item.fullName, completion: $0) } }
-            if settingsState.archiveEnabled {
+            if archiveEnabled {
                 Button("Archive from cloud") { runAction("archiveFromCloud") { AlembicRepositoryActionsBridge.shared.archiveFromCloud(fullName: item.fullName, completion: $0) } }
             }
         }
         Divider()
         Button("Fork & clone") { runAction("fork") { AlembicRepositoryActionsBridge.shared.fork(fullName: item.fullName, completion: $0) } }
-        if settingsState.archiveEnabled {
+        if archiveEnabled {
             Menu("Archive Master") {
                 Button("Enroll") { runAction("enrollArchiveMaster") { AlembicRepositoryActionsBridge.shared.enrollArchiveMaster(fullName: item.fullName, completion: $0) } }
                 Button("Refresh") { runAction("refreshArchiveMaster") { AlembicRepositoryActionsBridge.shared.refreshArchiveMaster(fullName: item.fullName, completion: $0) } }

@@ -44,7 +44,11 @@ struct AlembicSettingsWindow: View {
             sidebar
                 .frame(width: 200)
             detail
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .alembicGlassSurface(
+                    .panel,
+                    padding: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
+                )
         }
         .frame(
             minWidth: 720,
@@ -118,6 +122,7 @@ struct AlembicSettingsWindow: View {
 
 private struct AlembicSettingsGeneralPane: View {
     @ObservedObject var state: SettingsBridgeState
+    @ObservedObject private var legibility: AlembicGlassLegibilityController = AlembicGlassLegibilityController.shared
     @State private var autolaunch: Bool = true
     @State private var initialized: Bool = false
 
@@ -125,6 +130,28 @@ private struct AlembicSettingsGeneralPane: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 paneHeader(title: "General", description: "App-wide preferences and startup behavior.")
+
+                AlembicSettingsCard {
+                    settingRow(
+                        title: "Appearance",
+                        description: "Choose how Alembic looks. System follows your macOS theme."
+                    ) {
+                        Picker(
+                            "",
+                            selection: Binding<AlembicThemePreference>(
+                                get: { legibility.preference },
+                                set: { next in legibility.setPreference(next) }
+                            )
+                        ) {
+                            ForEach(AlembicThemePreference.allCases, id: \.self) { pref in
+                                Text(pref.displayName).tag(pref)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                        .frame(width: 220)
+                    }
+                }
 
                 AlembicSettingsCard {
                     settingRow(

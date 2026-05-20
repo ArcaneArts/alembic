@@ -1,6 +1,107 @@
 import SwiftUI
 import AppKit
 
+enum AlembicThemePreference: String, CaseIterable {
+    case light
+    case dark
+    case system
+
+    var displayName: String {
+        switch self {
+        case .light: return "Light"
+        case .dark: return "Dark"
+        case .system: return "System"
+        }
+    }
+}
+
+final class AlembicGlassLegibilityController: ObservableObject {
+    static let shared: AlembicGlassLegibilityController = AlembicGlassLegibilityController()
+    static let preferenceDefaultsKey: String = "alembic.theme.preference"
+    static let themeChangedNotification: Notification.Name = Notification.Name("alembic.theme.changed")
+
+    @Published private(set) var colorScheme: ColorScheme
+    @Published private(set) var backdropLuminance: Double
+    @Published private(set) var preference: AlembicThemePreference
+    private var appearanceObservation: NSKeyValueObservation?
+
+    private init() {
+        let stored: String = UserDefaults.standard.string(forKey: AlembicGlassLegibilityController.preferenceDefaultsKey) ?? AlembicThemePreference.light.rawValue
+        let pref: AlembicThemePreference = AlembicThemePreference(rawValue: stored) ?? .light
+        self.preference = pref
+        let initialScheme: ColorScheme = AlembicGlassLegibilityController.resolveColorScheme(for: pref)
+        self.colorScheme = initialScheme
+        self.backdropLuminance = initialScheme == .dark ? 0.20 : 0.80
+        startObservingAppearance()
+    }
+
+    deinit {
+        appearanceObservation?.invalidate()
+    }
+
+    func setPreference(_ next: AlembicThemePreference) {
+        guard next != preference else {
+            return
+        }
+        preference = next
+        UserDefaults.standard.set(next.rawValue, forKey: AlembicGlassLegibilityController.preferenceDefaultsKey)
+        applyPreference()
+        NotificationCenter.default.post(name: AlembicGlassLegibilityController.themeChangedNotification, object: nil)
+    }
+
+    func refresh() {
+        applyPreference()
+    }
+
+    func prepareForWindowOpen(_ window: NSWindow, completion: @escaping () -> Void) {
+        applyPreference()
+        completion()
+    }
+
+    private func startObservingAppearance() {
+        appearanceObservation = NSApp.observe(
+            \.effectiveAppearance,
+            options: [.new]
+        ) { [weak self] _, _ in
+            DispatchQueue.main.async {
+                guard let self: AlembicGlassLegibilityController = self,
+                      self.preference == .system else {
+                    return
+                }
+                self.applyPreference()
+            }
+        }
+    }
+
+    private func applyPreference() {
+        let nextColorScheme: ColorScheme = AlembicGlassLegibilityController.resolveColorScheme(for: preference)
+        let nextLuminance: Double = nextColorScheme == .dark ? 0.20 : 0.80
+        if colorScheme != nextColorScheme {
+            colorScheme = nextColorScheme
+        }
+        if abs(backdropLuminance - nextLuminance) > 0.01 {
+            backdropLuminance = nextLuminance
+        }
+    }
+
+    private static func resolveColorScheme(for preference: AlembicThemePreference) -> ColorScheme {
+        switch preference {
+        case .light:
+            return .light
+        case .dark:
+            return .dark
+        case .system:
+            return systemColorScheme
+        }
+    }
+
+    private static var systemColorScheme: ColorScheme {
+        let appearance: NSAppearance = NSApplication.shared.effectiveAppearance
+        let match: NSAppearance.Name? = appearance.bestMatch(from: [.aqua, .darkAqua])
+        return match == .darkAqua ? .dark : .light
+    }
+}
+
 enum AlembicGlassSurfaceStyle {
     case window
     case toolbar
@@ -42,39 +143,29 @@ enum AlembicGlassSurfaceStyle {
 
     var shadowOpacity: Double {
         switch self {
-        case .window: return 0.22
-        case .toolbar: return 0.10
-        case .panel: return 0.10
-        case .card: return 0.08
-        case .metric: return 0.08
-        case .control: return 0.06
-        case .row: return 0.03
-        case .sidebar: return 0.08
-        case .sheet: return 0.18
+        case .window: return 0.18
+        case .toolbar: return 0.0
+        case .panel: return 0.0
+        case .card: return 0.0
+        case .metric: return 0.0
+        case .control: return 0.0
+        case .row: return 0.0
+        case .sidebar: return 0.0
+        case .sheet: return 0.16
         }
     }
 
     var shadowRadius: CGFloat {
         switch self {
-        case .window: return 32
-        case .toolbar: return 14
-        case .panel: return 24
-        case .card: return 18
-        case .metric: return 18
-        case .control: return 10
-        case .row: return 6
-        case .sidebar: return 16
-        case .sheet: return 30
-        }
-    }
-
-    @available(macOS 26.0, *)
-    var glass: Glass {
-        switch self {
-        case .control, .row:
-            return Glass.clear.interactive().tint(Color.white.opacity(0.045))
-        default:
-            return Glass.clear.tint(Color.white.opacity(0.045))
+        case .window: return 14
+        case .toolbar: return 0
+        case .panel: return 0
+        case .card: return 0
+        case .metric: return 0
+        case .control: return 0
+        case .row: return 0
+        case .sidebar: return 0
+        case .sheet: return 14
         }
     }
 
@@ -89,6 +180,114 @@ enum AlembicGlassSurfaceStyle {
         case .sidebar: return 0.020
         case .sheet: return 0.020
         case .window: return 0.0
+        }
+    }
+
+    var backgroundMaterial: Material? {
+        return nil
+    }
+
+    var edgeHighlightStrength: Double {
+        switch self {
+        case .window: return 0.0
+        case .toolbar: return 0.95
+        case .panel: return 0.85
+        case .card: return 0.82
+        case .metric: return 0.80
+        case .control: return 0.75
+        case .row: return 0.55
+        case .sidebar: return 0.85
+        case .sheet: return 1.00
+        }
+    }
+
+    var usesGlassEffect: Bool {
+        switch self {
+        case .row, .control:
+            return false
+        default:
+            return true
+        }
+    }
+
+    @available(macOS 26.0, *)
+    func glass(tintOpacity: Double, colorScheme: ColorScheme) -> Glass {
+        let tintColor: Color = colorScheme == .dark
+            ? Color.black.opacity(tintOpacity)
+            : Color.white.opacity(tintOpacity)
+        return Glass.clear.tint(tintColor)
+    }
+
+    func glassTintOpacity(colorScheme: ColorScheme, luminance: Double) -> Double {
+        if colorScheme == .light {
+            return 0.45
+        }
+        return 0.40
+    }
+
+    func legibilityFillOpacity(colorScheme: ColorScheme, luminance: Double) -> Double {
+        let clampedLuminance: Double = min(1.0, max(0.0, luminance))
+        if colorScheme == .light {
+            let brightBoost: Double = max(0.0, clampedLuminance - 0.48) * 0.54
+            return min(lightLegibilityMaxOpacity, lightLegibilityBaseOpacity + brightBoost)
+        }
+        let darkBoost: Double = max(0.0, 0.52 - clampedLuminance) * 0.34
+        return min(darkLegibilityMaxOpacity, darkLegibilityBaseOpacity + darkBoost)
+    }
+
+    private var lightLegibilityBaseOpacity: Double {
+        switch self {
+        case .window: return 0.0
+        case .toolbar: return 0.0
+        case .panel: return 0.0
+        case .card: return 0.0
+        case .metric: return 0.0
+        case .control: return 0.40
+        case .row: return 0.30
+        case .sidebar: return 0.0
+        case .sheet: return 0.0
+        }
+    }
+
+    private var lightLegibilityMaxOpacity: Double {
+        switch self {
+        case .window: return 0.0
+        case .toolbar: return 0.0
+        case .panel: return 0.0
+        case .card: return 0.0
+        case .metric: return 0.0
+        case .control: return 0.50
+        case .row: return 0.42
+        case .sidebar: return 0.0
+        case .sheet: return 0.0
+        }
+    }
+
+    private var darkLegibilityBaseOpacity: Double {
+        switch self {
+        case .window: return 0.0
+        case .toolbar: return 0.0
+        case .panel: return 0.0
+        case .card: return 0.0
+        case .metric: return 0.0
+        case .control: return 0.55
+        case .row: return 0.42
+        case .sidebar: return 0.0
+        case .sheet: return 0.0
+        }
+    }
+
+    private var darkLegibilityMaxOpacity: Double {
+        switch self {
+        case .window: return 0.0
+        case .toolbar: return 0.0
+        case .panel: return 0.0
+        case .card: return 0.0
+        case .metric: return 0.0
+        case .control: return 0.65
+        case .row: return 0.55
+        case .sidebar: return 0.0
+        case .sheet: return 0.0
         }
     }
 }
@@ -141,6 +340,7 @@ struct AlembicGlassSurface<Content: View>: View {
 
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorScheme) private var colorScheme
+    @ObservedObject private var legibility: AlembicGlassLegibilityController = AlembicGlassLegibilityController.shared
 
     init(
         style: AlembicGlassSurfaceStyle = .panel,
@@ -153,111 +353,139 @@ struct AlembicGlassSurface<Content: View>: View {
     }
 
     var body: some View {
-        if #available(macOS 26.0, *), !reduceTransparency {
-            AlembicLiquidGlassSurface(style: style, padding: padding, content: content)
+        if #available(macOS 26.0, *), !reduceTransparency, style.usesGlassEffect {
+            liquidGlassBody
         } else {
-            fallbackSurface
+            fallbackBody
         }
     }
 
-    private var fallbackSurface: some View {
+    @available(macOS 26.0, *)
+    private var liquidGlassBody: some View {
         content()
             .padding(padding)
-            .background(
-                RoundedRectangle(cornerRadius: style.cornerRadius, style: .continuous)
-                    .fill(fallbackStyle)
+            .glassEffect(
+                style.glass(tintOpacity: glassTintOpacity, colorScheme: colorScheme),
+                in: RoundedRectangle(cornerRadius: style.cornerRadius, style: .continuous)
             )
-            .overlay(
-                RoundedRectangle(cornerRadius: style.cornerRadius, style: .continuous)
-                    .strokeBorder(borderColor, lineWidth: AlembicGlassTokens.hairline)
-            )
-            .shadow(
+            .overlay(borderStroke)
+            .modifier(AlembicGlassShadow(style: style))
+    }
+
+    private var fallbackBody: some View {
+        content()
+            .padding(padding)
+            .background(backgroundLayer)
+            .overlay(borderStroke)
+            .modifier(AlembicGlassShadow(style: style))
+    }
+
+    private var glassTintOpacity: Double {
+        return style.glassTintOpacity(colorScheme: colorScheme, luminance: legibility.backdropLuminance)
+    }
+
+    @ViewBuilder
+    private var backgroundLayer: some View {
+        let shape: RoundedRectangle = RoundedRectangle(
+            cornerRadius: style.cornerRadius,
+            style: .continuous
+        )
+        if reduceTransparency {
+            shape
+                .fill(legibilityFillColor.opacity(max(0.86, legibilityFillOpacity)))
+                .allowsHitTesting(false)
+        } else if let material: Material = style.backgroundMaterial {
+            ZStack {
+                shape.fill(material)
+                shape.fill(tintFillColor.opacity(tintFillOpacity))
+            }
+            .allowsHitTesting(false)
+        } else {
+            shape
+                .fill(legibilityFillColor.opacity(legibilityFillOpacity))
+                .allowsHitTesting(false)
+        }
+    }
+
+    private var borderStroke: some View {
+        RoundedRectangle(cornerRadius: style.cornerRadius, style: .continuous)
+            .strokeBorder(borderColor, lineWidth: AlembicGlassTokens.hairline)
+            .allowsHitTesting(false)
+    }
+
+    @ViewBuilder
+    private var edgeHighlight: some View {
+        if !reduceTransparency, style.edgeHighlightStrength > 0 {
+            RoundedRectangle(cornerRadius: style.cornerRadius, style: .continuous)
+                .stroke(
+                    LinearGradient(
+                        stops: [
+                            Gradient.Stop(color: Color.white.opacity(highlightTopOpacity), location: 0.0),
+                            Gradient.Stop(color: Color.white.opacity(highlightMidOpacity), location: 0.45),
+                            Gradient.Stop(color: Color.white.opacity(0.0), location: 0.85),
+                            Gradient.Stop(color: Color.white.opacity(highlightTrailingOpacity), location: 1.0),
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1.4
+                )
+                .blendMode(colorScheme == .dark ? .plusLighter : .normal)
+                .allowsHitTesting(false)
+        }
+    }
+
+    private var highlightTopOpacity: Double {
+        let base: Double = style.edgeHighlightStrength
+        return colorScheme == .dark ? base * 0.85 : base * 0.95
+    }
+
+    private var highlightMidOpacity: Double {
+        let base: Double = style.edgeHighlightStrength
+        return colorScheme == .dark ? base * 0.20 : base * 0.30
+    }
+
+    private var highlightTrailingOpacity: Double {
+        let base: Double = style.edgeHighlightStrength
+        return colorScheme == .dark ? base * 0.18 : base * 0.10
+    }
+
+    private var tintFillColor: Color {
+        return colorScheme == .dark ? Color.white : Color.white
+    }
+
+    private var tintFillOpacity: Double {
+        let base: Double = style.fillOpacity
+        return colorScheme == .dark ? base * 1.4 : base * 1.8
+    }
+
+    private var borderColor: Color {
+        return Color.primary.opacity(colorScheme == .dark ? style.strokeOpacity * 0.5 : style.strokeOpacity * 0.4)
+    }
+
+    private var legibilityFillColor: Color {
+        return colorScheme == .dark ? Color.black : Color.white
+    }
+
+    private var legibilityFillOpacity: Double {
+        return style.legibilityFillOpacity(colorScheme: colorScheme, luminance: legibility.backdropLuminance)
+    }
+}
+
+private struct AlembicGlassShadow: ViewModifier {
+    let style: AlembicGlassSurfaceStyle
+
+    func body(content: Content) -> some View {
+        if style.shadowRadius > 0 && style.shadowOpacity > 0 {
+            content.shadow(
                 color: Color.black.opacity(style.shadowOpacity),
                 radius: style.shadowRadius,
                 x: 0,
                 y: style.shadowRadius / 3
             )
-    }
-
-    private var fallbackStyle: AnyShapeStyle {
-        if reduceTransparency {
-            return AnyShapeStyle(Color(nsColor: .windowBackgroundColor).opacity(colorScheme == .dark ? 0.92 : 0.86))
+        } else {
+            content
         }
-        return AnyShapeStyle(.ultraThinMaterial)
-    }
-
-    private var borderColor: Color {
-        return Color.white.opacity(colorScheme == .dark ? style.strokeOpacity : style.strokeOpacity + 0.10)
-    }
-}
-
-@available(macOS 26.0, *)
-private struct AlembicLiquidGlassSurface<Content: View>: View {
-    let style: AlembicGlassSurfaceStyle
-    let padding: EdgeInsets
-    @ViewBuilder var content: () -> Content
-
-    @Environment(\.colorScheme) private var colorScheme
-
-    var body: some View {
-        GlassEffectContainer(spacing: 10) {
-            content()
-                .padding(padding)
-                .background(
-                    RoundedRectangle(cornerRadius: style.cornerRadius, style: .continuous)
-                        .fill(Color.white.opacity(colorScheme == .dark ? style.fillOpacity : style.fillOpacity + 0.018))
-                )
-                .glassEffect(
-                    style.glass,
-                    in: RoundedRectangle(cornerRadius: style.cornerRadius, style: .continuous)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: style.cornerRadius, style: .continuous)
-                        .strokeBorder(borderColor, lineWidth: AlembicGlassTokens.hairline)
-                )
-                .overlay(alignment: .topLeading) {
-                    RoundedRectangle(cornerRadius: style.cornerRadius, style: .continuous)
-                        .stroke(
-                            LinearGradient(
-                                colors: [
-                                    Color.white.opacity(colorScheme == .dark ? 0.46 : 0.64),
-                                    Color.white.opacity(colorScheme == .dark ? 0.10 : 0.18),
-                                    Color.accentColor.opacity(0.10),
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            lineWidth: 0.9
-                        )
-                        .allowsHitTesting(false)
-                }
-                .overlay(alignment: .bottomTrailing) {
-                    RoundedRectangle(cornerRadius: style.cornerRadius, style: .continuous)
-                        .stroke(
-                            LinearGradient(
-                                colors: [
-                                    Color.clear,
-                                    Color.black.opacity(colorScheme == .dark ? 0.20 : 0.08),
-                                    Color.accentColor.opacity(0.12),
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            lineWidth: 0.7
-                        )
-                        .allowsHitTesting(false)
-                }
-                .shadow(
-                    color: Color.black.opacity(style.shadowOpacity),
-                    radius: style.shadowRadius,
-                    x: 0,
-                    y: style.shadowRadius / 3
-                )
-        }
-    }
-
-    private var borderColor: Color {
-        return Color.white.opacity(colorScheme == .dark ? style.strokeOpacity : style.strokeOpacity + 0.12)
     }
 }
 

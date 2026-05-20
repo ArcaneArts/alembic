@@ -25,19 +25,18 @@ struct AlembicLogEntry: Identifiable, Hashable {
 final class AlembicDiagnosticsState: ObservableObject {
     static let bufferLimit: Int = 500
 
-    @Published private(set) var entries: [AlembicLogEntry] = []
-    @Published var errorCount: Int = 0
-    @Published var warnCount: Int = 0
-    @Published var totalCount: Int = 0
-    @Published var lastUpdatedMillis: Int64 = 0
+    private(set) var entries: [AlembicLogEntry] = []
+    private(set) var errorCount: Int = 0
+    private(set) var warnCount: Int = 0
+    private(set) var totalCount: Int = 0
+    private(set) var lastUpdatedMillis: Int64 = 0
 
     func append(entry: AlembicLogEntry) {
-        var next: [AlembicLogEntry] = entries
-        next.append(entry)
-        if next.count > AlembicDiagnosticsState.bufferLimit {
-            next.removeFirst(next.count - AlembicDiagnosticsState.bufferLimit)
+        objectWillChange.send()
+        entries.append(entry)
+        if entries.count > AlembicDiagnosticsState.bufferLimit {
+            entries.removeFirst(entries.count - AlembicDiagnosticsState.bufferLimit)
         }
-        entries = next
         totalCount += 1
         if entry.level == "error" {
             errorCount += 1
@@ -48,7 +47,8 @@ final class AlembicDiagnosticsState: ObservableObject {
     }
 
     func reset() {
-        entries = []
+        objectWillChange.send()
+        entries.removeAll(keepingCapacity: true)
         errorCount = 0
         warnCount = 0
         totalCount = 0
