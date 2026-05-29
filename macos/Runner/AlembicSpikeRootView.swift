@@ -70,7 +70,20 @@ struct AlembicSpikeRootView: View {
                 }
             }
             .transition(.opacity)
+            keyboardShortcuts
         }
+    }
+
+    private var keyboardShortcuts: some View {
+        ZStack {
+            Button("Open Settings") {
+                currentScreen = .settings
+            }
+            .keyboardShortcut(",", modifiers: .command)
+        }
+        .frame(width: 0, height: 0)
+        .opacity(0)
+        .allowsHitTesting(false)
     }
 
     private var mainScreen: some View {

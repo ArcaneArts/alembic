@@ -222,6 +222,41 @@ final class AlembicWorkspaceBridge {
         }
     }
 
+    func cloneFromUrl(url: String, completion: @escaping (Bool, String?) -> Void) {
+        AlembicDiagnosticsBridge.shared.recordNative(
+            level: "info",
+            tag: "swift.workspace",
+            message: "Cloning from URL: \(url)"
+        )
+        channel?.invokeMethod(
+            "cloneFromUrl",
+            arguments: ["url": url]
+        ) { (response: Any?) in
+            DispatchQueue.main.async {
+                guard let map: [String: Any] = response as? [String: Any] else {
+                    completion(false, "Invalid response")
+                    return
+                }
+                let ok: Bool = (map["ok"] as? Bool) ?? false
+                let errorMessage: String? = map["error"] as? String
+                if ok {
+                    AlembicDiagnosticsBridge.shared.recordNative(
+                        level: "success",
+                        tag: "swift.workspace",
+                        message: "Clone succeeded"
+                    )
+                } else {
+                    AlembicDiagnosticsBridge.shared.recordNative(
+                        level: "error",
+                        tag: "swift.workspace",
+                        message: "Clone failed: \(errorMessage ?? "unknown")"
+                    )
+                }
+                completion(ok, errorMessage)
+            }
+        }
+    }
+
     func importDiscovered(rootPath: String, selectedSlugs: [String], completion: @escaping (Bool, String?) -> Void) {
         AlembicDiagnosticsBridge.shared.recordNative(
             level: "info",

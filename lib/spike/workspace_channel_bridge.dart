@@ -64,6 +64,8 @@ class WorkspaceChannelBridge {
         return _handleScanDirectory(call.arguments);
       case SpikeWorkspaceChannelMethods.importDiscovered:
         return _handleImportDiscovered(call.arguments);
+      case SpikeWorkspaceChannelMethods.cloneFromUrl:
+        return _handleCloneFromUrl(call.arguments);
       default:
         _diag.warn(_tag, 'unknown method ${call.method}');
         throw MissingPluginException('Unknown method ${call.method}');
@@ -196,5 +198,103 @@ class WorkspaceChannelBridge {
         'error': 'Import failed: $e',
       };
     }
+  }
+
+  Future<Map<String, dynamic>> _handleCloneFromUrl(dynamic args) async {
+    final Map<dynamic, dynamic>? map = args is Map ? args : null;
+    final String? url = map?['url'] as String?;
+
+    if (url == null || url.trim().isEmpty) {
+      _diag.warn(_tag, 'cloneFromUrl: empty url');
+      return <String, dynamic>{
+        'ok': false,
+        'error': 'Git URL cannot be empty',
+      };
+    }
+
+    final String trimmedUrl = url.trim();
+    final String workspacePath = _currentWorkspacePath();
+    if (workspacePath.isEmpty) {
+      _diag.warn(_tag, 'cloneFromUrl: no workspace configured');
+      return <String, dynamic>{
+        'ok': false,
+        'error': 'No workspace directory configured. Set it in Settings first.',
+      };
+    }
+
+    final Directory workspaceDir = Directory(workspacePath);
+    if (!await workspaceDir.exists()) {
+      _diag.warn(_tag, 'cloneFromUrl: workspace missing: $workspacePath');
+      return <String, dynamic>{
+        'ok': false,
+        'error': 'Workspace directory does not exist: $workspacePath',
+      };
+    }
+
+    final String? derivedFolder = _deriveTargetFolder(trimmedUrl);
+    if (derivedFolder == null) {
+      _diag.warn(_tag, 'cloneFromUrl: could not derive folder from $trimmedUrl');
+      return <String, dynamic>{
+        'ok': false,
+        'error': 'Could not derive a folder name from URL',
+      };
+    }
+
+    final String targetPath = '${workspaceDir.path}${Platform.pathSeparator}$derivedFolder';
+    final Directory targetDir = Directory(targetPath);
+    if (await targetDir.exists()) {
+      _diag.warn(_tag, 'cloneFromUrl: target already exists: $targetPath');
+      return <String, dynamic>{
+        'ok': false,
+        'error': 'Destination already exists: $targetPath',
+      };
+    }
+
+    _diag.log(_tag, 'cloneFromUrl: $trimmedUrl -> $targetPath');
+    try {
+      final ProcessResult result = await Process.run(
+        'git',
+        <String>['clone', trimmedUrl, targetPath],
+        runInShell: false,
+      );
+      if (result.exitCode != 0) {
+        final String stderr = (result.stderr ?? '').toString().trim();
+        _diag.error(_tag, 'cloneFromUrl: git exited ${result.exitCode}: $stderr');
+        return <String, dynamic>{
+          'ok': false,
+          'error': stderr.isEmpty ? 'git clone failed (exit ${result.exitCode})' : stderr,
+        };
+      }
+      _diag.success(_tag, 'cloneFromUrl: cloned to $targetPath');
+      unawaited(_store.refresh());
+      return <String, dynamic>{
+        'ok': true,
+        'targetPath': targetPath,
+      };
+    } catch (e) {
+      _diag.error(_tag, 'cloneFromUrl exception: $e');
+      return <String, dynamic>{
+        'ok': false,
+        'error': 'Clone failed: $e',
+      };
+    }
+  }
+
+  String? _deriveTargetFolder(String url) {
+    String stripped = url.trim();
+    if (stripped.endsWith('/')) {
+      stripped = stripped.substring(0, stripped.length - 1);
+    }
+    if (stripped.toLowerCase().endsWith('.git')) {
+      stripped = stripped.substring(0, stripped.length - 4);
+    }
+    final int slashIndex = stripped.lastIndexOf('/');
+    final int colonIndex = stripped.lastIndexOf(':');
+    final int separatorIndex = slashIndex > colonIndex ? slashIndex : colonIndex;
+    if (separatorIndex < 0 || separatorIndex >= stripped.length - 1) {
+      return null;
+    }
+    final String name = stripped.substring(separatorIndex + 1).trim();
+    return name.isEmpty ? null : name;
   }
 }

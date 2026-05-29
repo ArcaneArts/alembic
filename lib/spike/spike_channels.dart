@@ -109,4 +109,5 @@ class SpikeWorkspaceChannelMethods {
   static const String scanDirectory = 'scanDirectory';
   static const String importDiscovered = 'importDiscovered';
   static const String scanProgress = 'scanProgress';
+  static const String cloneFromUrl = 'cloneFromUrl';
 }

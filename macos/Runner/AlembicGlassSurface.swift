@@ -368,17 +368,48 @@ struct AlembicGlassSurface<Content: View>: View {
         return style.glassTintOpacity(colorScheme: colorScheme)
     }
 
+    @ViewBuilder
     private var backgroundLayer: some View {
         let shape: RoundedRectangle = RoundedRectangle(
             cornerRadius: style.cornerRadius,
             style: .continuous
         )
-        let opacity: Double = reduceTransparency
-            ? max(0.86, legibilityFillOpacity)
-            : legibilityFillOpacity
-        return shape
-            .fill(legibilityFillColor.opacity(opacity))
-            .allowsHitTesting(false)
+        if reduceTransparency {
+            shape
+                .fill(legibilityFillColor.opacity(max(0.86, legibilityFillOpacity)))
+                .allowsHitTesting(false)
+        } else if style.usesGlassEffect {
+            shape
+                .fill(frostedFallbackGradient)
+                .allowsHitTesting(false)
+        } else {
+            shape
+                .fill(legibilityFillColor.opacity(legibilityFillOpacity))
+                .allowsHitTesting(false)
+        }
+    }
+
+    private var frostedFallbackGradient: LinearGradient {
+        if colorScheme == .dark {
+            return LinearGradient(
+                colors: [
+                    Color(white: 0.18).opacity(0.78),
+                    Color(white: 0.12).opacity(0.82),
+                    Color(white: 0.08).opacity(0.86),
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        }
+        return LinearGradient(
+            colors: [
+                Color.white.opacity(0.74),
+                Color(white: 0.96).opacity(0.78),
+                Color(white: 0.92).opacity(0.82),
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
     }
 
     private var borderStroke: some View {

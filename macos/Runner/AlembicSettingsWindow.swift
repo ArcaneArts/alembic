@@ -123,6 +123,7 @@ struct AlembicSettingsWindow: View {
 private struct AlembicSettingsGeneralPane: View {
     @ObservedObject var state: SettingsBridgeState
     @ObservedObject private var legibility: AlembicGlassLegibilityController = AlembicGlassLegibilityController.shared
+    @ObservedObject private var windowPrefs: AlembicWindowPreferences = AlembicWindowPreferences.shared
     @State private var autolaunch: Bool = true
     @State private var initialized: Bool = false
 
@@ -179,6 +180,50 @@ private struct AlembicSettingsGeneralPane: View {
                             .onChange(of: autolaunch) { newValue in
                                 AlembicSettingsBridge.shared.setGeneral(autolaunch: newValue) { _ in }
                             }
+                    }
+                }
+
+                AlembicSettingsCard {
+                    VStack(alignment: .leading, spacing: 14) {
+                        settingRow(
+                            title: "Pin window",
+                            description: "Keep the window open when you click outside. Tray icon toggles visibility."
+                        ) {
+                            Toggle(
+                                "",
+                                isOn: Binding<Bool>(
+                                    get: { windowPrefs.pinWindow },
+                                    set: { next in windowPrefs.setPinWindow(next) }
+                                )
+                            )
+                            .labelsHidden()
+                        }
+                        Divider().opacity(0.3)
+                        settingRow(
+                            title: "Movable window",
+                            description: "Grab the Alembic header to drag the window. Hold and pull to reposition."
+                        ) {
+                            Toggle(
+                                "",
+                                isOn: Binding<Bool>(
+                                    get: { windowPrefs.movableWindow },
+                                    set: { next in windowPrefs.setMovableWindow(next) }
+                                )
+                            )
+                            .labelsHidden()
+                        }
+                        Divider().opacity(0.3)
+                        settingRow(
+                            title: "Window position",
+                            description: "Snap the window back to its default location next to the menu bar tray."
+                        ) {
+                            Button {
+                                windowPrefs.requestResetPosition()
+                            } label: {
+                                Label("Reset", systemImage: "arrow.uturn.backward")
+                            }
+                            .controlSize(.regular)
+                        }
                     }
                 }
 

@@ -31,6 +31,7 @@
 		33BB20A12044C8A00003B001 /* AlembicGlassSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33BB20A02044C8A00003B001 /* AlembicGlassSurface.swift */; };
 		33BB30A12044C8A00003B001 /* AlembicGlassBackdrop.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33BB30A02044C8A00003B001 /* AlembicGlassBackdrop.swift */; };
 		33CD20A12044C8A00003B001 /* AlembicWindowBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33CD20A02044C8A00003B001 /* AlembicWindowBridge.swift */; };
+		33CD20A12044C8A00003B099 /* AlembicWindowPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33CD20A02044C8A00003B099 /* AlembicWindowPreferences.swift */; };
 		33CD30A12044C8A00003B001 /* AlembicModalsBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33CD30A02044C8A00003B001 /* AlembicModalsBridge.swift */; };
 		33CD40A12044C8A00003B001 /* AlembicMenusBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33CD40A02044C8A00003B001 /* AlembicMenusBridge.swift */; };
 		33CD50A12044C8A00003B001 /* AlembicSpikeBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33CD50A02044C8A00003B001 /* AlembicSpikeBridge.swift */; };
@@ -99,6 +100,7 @@
 		33BB20A02044C8A00003B001 /* AlembicGlassSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlembicGlassSurface.swift; sourceTree = "<group>"; };
 		33BB30A02044C8A00003B001 /* AlembicGlassBackdrop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlembicGlassBackdrop.swift; sourceTree = "<group>"; };
 		33CD20A02044C8A00003B001 /* AlembicWindowBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlembicWindowBridge.swift; sourceTree = "<group>"; };
+		33CD20A02044C8A00003B099 /* AlembicWindowPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlembicWindowPreferences.swift; sourceTree = "<group>"; };
 		33CD30A02044C8A00003B001 /* AlembicModalsBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlembicModalsBridge.swift; sourceTree = "<group>"; };
 		33CD40A02044C8A00003B001 /* AlembicMenusBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlembicMenusBridge.swift; sourceTree = "<group>"; };
 		33CD50A02044C8A00003B001 /* AlembicSpikeBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlembicSpikeBridge.swift; sourceTree = "<group>"; };
@@ -225,6 +227,7 @@
 				33BB20A02044C8A00003B001 /* AlembicGlassSurface.swift */,
 				33BB30A02044C8A00003B001 /* AlembicGlassBackdrop.swift */,
 				33CD20A02044C8A00003B001 /* AlembicWindowBridge.swift */,
+				33CD20A02044C8A00003B099 /* AlembicWindowPreferences.swift */,
 				33CD30A02044C8A00003B001 /* AlembicModalsBridge.swift */,
 				33CD40A02044C8A00003B001 /* AlembicMenusBridge.swift */,
 				33CD50A02044C8A00003B001 /* AlembicSpikeBridge.swift */,
@@ -531,6 +534,7 @@
 				33BB20A12044C8A00003B001 /* AlembicGlassSurface.swift in Sources */,
 				33BB30A12044C8A00003B001 /* AlembicGlassBackdrop.swift in Sources */,
 				33CD20A12044C8A00003B001 /* AlembicWindowBridge.swift in Sources */,
+				33CD20A12044C8A00003B099 /* AlembicWindowPreferences.swift in Sources */,
 				33CD30A12044C8A00003B001 /* AlembicModalsBridge.swift in Sources */,
 				33CD40A12044C8A00003B001 /* AlembicMenusBridge.swift in Sources */,
 				33CD50A12044C8A00003B001 /* AlembicSpikeBridge.swift in Sources */,

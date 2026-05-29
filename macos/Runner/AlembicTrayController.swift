@@ -249,6 +249,9 @@ final class AlembicTrayController: NSObject {
         if Date() < suppressHideUntil {
             return
         }
+        if AlembicWindowPreferences.shared.pinWindow {
+            return
+        }
         if AlembicWindowBridge.shared.isHideOnBlurSuspended || window.attachedSheet != nil || NSApp.modalWindow != nil {
             return
         }
@@ -258,12 +261,25 @@ final class AlembicTrayController: NSObject {
         hideWindow()
     }
 
+    func repositionAtDefault() {
+        guard let window: NSWindow = window else {
+            return
+        }
+        positionWindowAtTopRight(window)
+    }
+
     @objc private func handleStatusItemClick(_ sender: NSStatusBarButton) {
         if shouldShowStatusMenu {
             showStatusMenu(from: sender)
             return
         }
         eventChannel?.invokeMethod("onLeftClick", arguments: nil)
+        if AlembicWindowPreferences.shared.pinWindow,
+           let window: NSWindow = window,
+           window.isVisible {
+            hideWindow()
+            return
+        }
         showWindow()
     }
 

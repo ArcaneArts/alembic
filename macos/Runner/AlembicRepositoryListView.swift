@@ -21,6 +21,12 @@ struct AlembicRepositoryListView: View {
     @State private var stateFilter: String = "all"
     @State private var sortMode: String = "attention"
     @State private var detailRepository: RepositoryItem? = nil
+    @State private var cloneUrl: String = ""
+    @State private var isCloning: Bool = false
+    @State private var cloneError: String = ""
+    @State private var cloneStatus: String = ""
+    @State private var dragStartOrigin: CGPoint? = nil
+    @ObservedObject private var windowPrefs: AlembicWindowPreferences = AlembicWindowPreferences.shared
 
     private var filteredRepositories: [RepositoryItem] {
         let q: String = searchQuery.lowercased()
@@ -177,22 +183,10 @@ struct AlembicRepositoryListView: View {
     @ViewBuilder
     private var content: some View {
         switch state.status {
-        case "loading":
-            if state.repositories.isEmpty {
-                loadingState
-            } else {
-                readyState
-            }
         case "noAccount":
             welcomeState
-        case "error", "timeout":
-            errorState
-        case "empty":
-            emptyState
-        case "ready":
-            readyState
         default:
-            initialState
+            readyState
         }
     }
 
@@ -215,6 +209,26 @@ struct AlembicRepositoryListView: View {
                     .lineLimit(1)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+        .gesture(windowDragGesture)
+        .help(windowPrefs.movableWindow ? "Drag to move the window" : "")
+    }
+
+    private var windowDragGesture: some Gesture {
+        DragGesture(minimumDistance: 4, coordinateSpace: .global)
+            .onChanged { value in
+                guard windowPrefs.movableWindow else { return }
+                if dragStartOrigin == nil {
+                    dragStartOrigin = AlembicWindowPreferences.currentMainWindowOrigin()
+                }
+                if let start: CGPoint = dragStartOrigin {
+                    AlembicWindowPreferences.dragMainWindow(by: value.translation, fromStart: start)
+                }
+            }
+            .onEnded { _ in
+                dragStartOrigin = nil
+            }
     }
 
     private var commandBar: some View {
@@ -620,8 +634,78 @@ struct AlembicRepositoryListView: View {
         )
     }
 
+    private var cloneFromUrlSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: "link")
+                    .foregroundStyle(Color.accentColor)
+                    .font(.system(size: 11, weight: .semibold))
+                Text("Clone from URL")
+                    .font(.system(size: 12, weight: .semibold))
+                Spacer()
+            }
+            TextField("https://github.com/owner/repo.git", text: $cloneUrl)
+                .textFieldStyle(.roundedBorder)
+                .font(.system(size: 11, design: .monospaced))
+                .disabled(isCloning)
+                .onSubmit { submitClone() }
+            Button {
+                submitClone()
+            } label: {
+                HStack(spacing: 6) {
+                    if isCloning {
+                        ProgressView().controlSize(.small)
+                        Text("Cloning...")
+                    } else {
+                        Image(systemName: "arrow.down.circle")
+                        Text("Clone to workspace")
+                    }
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .controlSize(.small)
+            .buttonStyle(.borderedProminent)
+            .disabled(cloneUrl.trimmingCharacters(in: .whitespaces).isEmpty || isCloning)
+            if !cloneError.isEmpty {
+                Text(cloneError)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.red)
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if !cloneStatus.isEmpty {
+                Text(cloneStatus)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.green)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func submitClone() {
+        let url: String = cloneUrl.trimmingCharacters(in: .whitespaces)
+        guard !url.isEmpty, !isCloning else {
+            return
+        }
+        isCloning = true
+        cloneError = ""
+        cloneStatus = ""
+        AlembicWorkspaceBridge.shared.cloneFromUrl(url: url) { ok, error in
+            isCloning = false
+            if ok {
+                cloneStatus = "Cloned successfully"
+                cloneUrl = ""
+                onRefresh()
+            } else {
+                cloneError = error ?? "Clone failed"
+            }
+        }
+    }
+
     private var activityPanel: some View {
         VStack(alignment: .leading, spacing: 13) {
+            cloneFromUrlSection
+            Divider().opacity(0.3)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Activity")
                     .font(.system(size: 15, weight: .semibold))
@@ -905,14 +989,44 @@ struct AlembicRepositoryListView: View {
     private var noResultsRow: some View {
         VStack {
             Spacer()
-            VStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 24))
-                    .foregroundStyle(.secondary.opacity(0.6))
-                Text("No repositories match")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.secondary)
-                if !searchQuery.isEmpty || !ownerFilter.isEmpty || stateFilter != "all" {
+            VStack(spacing: 10) {
+                if state.isLoading && state.repositories.isEmpty && hasNoFilter {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text(loadingTitle)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                    if state.fetchedCount > 0 {
+                        Text("\(state.fetchedCount) fetched")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.secondary.opacity(0.8))
+                    }
+                } else if state.status == "error" || state.status == "timeout" {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.system(size: 22))
+                        .foregroundStyle(.orange)
+                    Text(state.errorMessage.isEmpty ? "Couldn't reach GitHub" : state.errorMessage)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: 320)
+                    Button("Retry") { onRetry() }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                } else if state.repositories.isEmpty && hasNoFilter {
+                    Image(systemName: "tray")
+                        .font(.system(size: 22))
+                        .foregroundStyle(.secondary.opacity(0.6))
+                    Text("No repositories yet")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                } else {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 22))
+                        .foregroundStyle(.secondary.opacity(0.6))
+                    Text("No repositories match")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
                     Button("Clear filters") {
                         searchQuery = ""
                         ownerFilter = ""
@@ -925,6 +1039,10 @@ struct AlembicRepositoryListView: View {
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var hasNoFilter: Bool {
+        return searchQuery.isEmpty && ownerFilter.isEmpty && stateFilter == "all"
     }
 
     private func scopeBadge(_ scope: String) -> some View {

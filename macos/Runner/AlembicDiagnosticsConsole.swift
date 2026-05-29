@@ -93,7 +93,7 @@ struct AlembicDiagnosticsConsole: View {
                 }
                 .padding(4)
             }
-            .frame(height: 320)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .fill(Color.black.opacity(0.18))

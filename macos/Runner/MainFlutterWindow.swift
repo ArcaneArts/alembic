@@ -3,6 +3,22 @@ import FlutterMacOS
 import LaunchAtLogin
 import SwiftUI
 
+final class AlembicHostingView<Content: View>: NSHostingView<Content> {
+  override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+    return true
+  }
+
+  override var mouseDownCanMoveWindow: Bool {
+    return false
+  }
+}
+
+final class AlembicHostingController<Content: View>: NSHostingController<Content> {
+  override func loadView() {
+    view = AlembicHostingView(rootView: rootView)
+  }
+}
+
 class MainFlutterWindow: NSWindow {
   private let hostCornerRadius: CGFloat = 22
   private var backdropView: AlembicGlassBackdrop?
@@ -52,6 +68,12 @@ class MainFlutterWindow: NSWindow {
       selector: #selector(_windowDidResize),
       name: NSWindow.didResizeNotification,
       object: self
+    )
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(_windowResetPositionRequested),
+      name: AlembicWindowPreferences.resetPositionNotification,
+      object: nil
     )
     _applyHostMask()
 
@@ -105,7 +127,7 @@ class MainFlutterWindow: NSWindow {
       }
     )
 
-    let hostingController: NSHostingController<AlembicSpikeRootView> = NSHostingController(rootView: rootView)
+    let hostingController: AlembicHostingController<AlembicSpikeRootView> = AlembicHostingController(rootView: rootView)
     hostingController.view.wantsLayer = true
     hostingController.view.layer?.backgroundColor = NSColor.clear.cgColor
 
@@ -199,6 +221,10 @@ class MainFlutterWindow: NSWindow {
 
   @objc private func _windowDidResize(_ notification: Notification) {
     _applyHostMask()
+  }
+
+  @objc private func _windowResetPositionRequested(_ notification: Notification) {
+    AlembicTrayController.shared.repositionAtDefault()
   }
 
   private func _applyHostMask() {
