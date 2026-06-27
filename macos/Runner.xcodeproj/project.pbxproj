@@ -47,6 +47,8 @@
 		33CE20A12044C8A00003B001 /* AlembicRepositoryWorkBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33CE20A02044C8A00003B001 /* AlembicRepositoryWorkBridge.swift */; };
 		33CE30A12044C8A00003B001 /* AlembicAccountsBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33CE30A02044C8A00003B001 /* AlembicAccountsBridge.swift */; };
 		33CE40A12044C8A00003B001 /* AlembicSettingsBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33CE40A02044C8A00003B001 /* AlembicSettingsBridge.swift */; };
+		FACE00000000000000000002 /* AlembicUpdatesBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = FACE00000000000000000001 /* AlembicUpdatesBridge.swift */; };
+		FACE00000000000000000004 /* AlembicSettingsUpdatesPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = FACE00000000000000000003 /* AlembicSettingsUpdatesPane.swift */; };
 		33CE50A12044C8A00003B001 /* AlembicSettingsWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33CE50A02044C8A00003B001 /* AlembicSettingsWindow.swift */; };
 		33CE60A12044C8A00003B001 /* AlembicRepositoryDetailSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33CE60A02044C8A00003B001 /* AlembicRepositoryDetailSheet.swift */; };
 		527BE70C1C2D8BE12B1A86B8 /* Pods_RunnerTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 79AED6E3E6B3055E4103DDB9 /* Pods_RunnerTests.framework */; };
@@ -116,6 +118,8 @@
 		33CE20A02044C8A00003B001 /* AlembicRepositoryWorkBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlembicRepositoryWorkBridge.swift; sourceTree = "<group>"; };
 		33CE30A02044C8A00003B001 /* AlembicAccountsBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlembicAccountsBridge.swift; sourceTree = "<group>"; };
 		33CE40A02044C8A00003B001 /* AlembicSettingsBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlembicSettingsBridge.swift; sourceTree = "<group>"; };
+		FACE00000000000000000001 /* AlembicUpdatesBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlembicUpdatesBridge.swift; sourceTree = "<group>"; };
+		FACE00000000000000000003 /* AlembicSettingsUpdatesPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlembicSettingsUpdatesPane.swift; sourceTree = "<group>"; };
 		33CE50A02044C8A00003B001 /* AlembicSettingsWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlembicSettingsWindow.swift; sourceTree = "<group>"; };
 		33CE60A02044C8A00003B001 /* AlembicRepositoryDetailSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlembicRepositoryDetailSheet.swift; sourceTree = "<group>"; };
 		33CEB47222A05771004F2AC0 /* Flutter-Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = "Flutter-Debug.xcconfig"; sourceTree = "<group>"; };
@@ -243,6 +247,8 @@
 				33CE20A02044C8A00003B001 /* AlembicRepositoryWorkBridge.swift */,
 				33CE30A02044C8A00003B001 /* AlembicAccountsBridge.swift */,
 				33CE40A02044C8A00003B001 /* AlembicSettingsBridge.swift */,
+				FACE00000000000000000001 /* AlembicUpdatesBridge.swift */,
+				FACE00000000000000000003 /* AlembicSettingsUpdatesPane.swift */,
 				33CE50A02044C8A00003B001 /* AlembicSettingsWindow.swift */,
 				33CE60A02044C8A00003B001 /* AlembicRepositoryDetailSheet.swift */,
 				33E51913231747F40026EE4D /* DebugProfile.entitlements */,
@@ -550,6 +556,8 @@
 				33CE20A12044C8A00003B001 /* AlembicRepositoryWorkBridge.swift in Sources */,
 				33CE30A12044C8A00003B001 /* AlembicAccountsBridge.swift in Sources */,
 				33CE40A12044C8A00003B001 /* AlembicSettingsBridge.swift in Sources */,
+				FACE00000000000000000002 /* AlembicUpdatesBridge.swift in Sources */,
+				FACE00000000000000000004 /* AlembicSettingsUpdatesPane.swift in Sources */,
 				33CE50A12044C8A00003B001 /* AlembicSettingsWindow.swift in Sources */,
 				33CE60A12044C8A00003B001 /* AlembicRepositoryDetailSheet.swift in Sources */,
 				335BBD1B22A9A15E00E9071D /* GeneratedPluginRegistrant.swift in Sources */,

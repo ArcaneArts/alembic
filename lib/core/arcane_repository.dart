@@ -444,10 +444,11 @@ class ArcaneRepository {
           "Opening ${repository.fullName} with Git Client ${gitTool.displayName}");
       await gitTool.launch(repoPath);
 
-      await Future.wait<void>(<Future<void>>[
-        ensureRepositoryUpdated(github),
-        runAutoMacros(),
-      ]);
+      await ensureRepositoryUpdated(github);
+      unawaited(runAutoMacros().catchError((Object e, StackTrace stackTrace) {
+        warn("Auto macros failed for ${repository.fullName}: $e");
+        verbose("$stackTrace");
+      }));
 
       setRepoConfig(
         repository,
@@ -906,13 +907,16 @@ class ArcaneRepository {
   }
 
   Stream<String> findDartPackages(String path) async* {
+    Directory directory = Directory(path);
+    if (!await directory.exists()) {
+      return;
+    }
     if (await File("$path/pubspec.yaml").exists()) {
       yield path;
     }
-    for (FileSystemEntity entity
-        in Directory(path).listSync(followLinks: false)) {
+    await for (FileSystemEntity entity in directory.list(followLinks: false)) {
       if (entity is Directory) {
-        if (entity.path.endsWith(".plugin_symlinks")) {
+        if (_shouldSkipDartPackageSearchDirectory(entity)) {
           continue;
         }
         yield* findDartPackages(entity.path);
@@ -920,16 +924,39 @@ class ArcaneRepository {
     }
   }
 
+  bool _shouldSkipDartPackageSearchDirectory(Directory directory) {
+    String name = directory.path.split(Platform.pathSeparator).last;
+    if (name.startsWith('.')) {
+      return true;
+    }
+    Set<String> skippedNames = <String>{
+      'build',
+      'DerivedData',
+      'node_modules',
+      'Pods',
+      'target',
+      'vendor',
+    };
+    return skippedNames.contains(name);
+  }
+
   Future<void> runAutoMacros() async {
-    final List<String> packagePaths = <String>[
-      ...await findDartPackages(
-        DesktopPlatformAdapter.instance.joinPath(
-          repoPath,
-          getRepoConfig(repository).openDirectory,
-        ),
-      ).toList(),
-      ...await findDartPackages(repoPath).toList(),
+    List<String> packagePaths = <String>[];
+    Set<String> seenPaths = <String>{};
+    List<String> searchRoots = <String>[
+      DesktopPlatformAdapter.instance.joinPath(
+        repoPath,
+        getRepoConfig(repository).openDirectory,
+      ),
+      repoPath,
     ];
+    for (String searchRoot in searchRoots) {
+      await for (String path in findDartPackages(searchRoot)) {
+        if (seenPaths.add(path)) {
+          packagePaths.add(path);
+        }
+      }
+    }
     for (String path in packagePaths) {
       warn("Running pub get in $path");
       await commandRunner(

@@ -170,7 +170,15 @@ final class AlembicWorkspaceBridge {
         state.scanProgress = "Starting scan..."
         state.lastError = nil
 
-        channel?.invokeMethod(
+        guard let channel: FlutterMethodChannel = channel else {
+            state.isScanning = false
+            state.scanProgress = ""
+            state.lastError = "Workspace channel is not attached"
+            completion(nil, state.lastError)
+            return
+        }
+
+        channel.invokeMethod(
             "scanDirectory",
             arguments: ["path": path, "maxDepth": 4]
         ) { [weak self] (response: Any?) in
@@ -228,7 +236,11 @@ final class AlembicWorkspaceBridge {
             tag: "swift.workspace",
             message: "Cloning from URL: \(url)"
         )
-        channel?.invokeMethod(
+        guard let channel: FlutterMethodChannel = channel else {
+            completion(false, "Workspace channel is not attached")
+            return
+        }
+        channel.invokeMethod(
             "cloneFromUrl",
             arguments: ["url": url]
         ) { (response: Any?) in
@@ -263,7 +275,11 @@ final class AlembicWorkspaceBridge {
             tag: "swift.workspace",
             message: "Importing \(selectedSlugs.count) repos from \(rootPath)"
         )
-        channel?.invokeMethod(
+        guard let channel: FlutterMethodChannel = channel else {
+            completion(false, "Workspace channel is not attached")
+            return
+        }
+        channel.invokeMethod(
             "importDiscovered",
             arguments: [
                 "rootPath": rootPath,

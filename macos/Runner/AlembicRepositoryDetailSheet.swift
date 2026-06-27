@@ -711,6 +711,9 @@ struct AlembicRepositoryDetailSheet: View {
         _ name: String,
         invoke: @escaping (@escaping (AlembicRepositoryActionsBridge.ActionResult) -> Void) -> Void
     ) {
+        if actionInFlight != nil {
+            return
+        }
         actionInFlight = name
         lastActionError = nil
         lastActionResult = nil

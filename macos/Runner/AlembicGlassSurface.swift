@@ -15,21 +15,72 @@ enum AlembicThemePreference: String, CaseIterable {
     }
 }
 
+enum AlembicGlassIntensity: String, CaseIterable {
+    case subtle
+    case balanced
+    case vivid
+
+    var displayName: String {
+        switch self {
+        case .subtle: return "Subtle"
+        case .balanced: return "Balanced"
+        case .vivid: return "Vivid"
+        }
+    }
+
+    var tintScale: Double {
+        switch self {
+        case .subtle: return 0.78
+        case .balanced: return 1.00
+        case .vivid: return 1.18
+        }
+    }
+
+    var fillDelta: Double {
+        switch self {
+        case .subtle: return -0.055
+        case .balanced: return 0.0
+        case .vivid: return 0.045
+        }
+    }
+
+    var highlightScale: Double {
+        switch self {
+        case .subtle: return 0.64
+        case .balanced: return 1.00
+        case .vivid: return 1.26
+        }
+    }
+
+    var backdropScale: CGFloat {
+        switch self {
+        case .subtle: return 0.78
+        case .balanced: return 1.00
+        case .vivid: return 1.16
+        }
+    }
+}
+
 final class AlembicGlassLegibilityController: ObservableObject {
     static let shared: AlembicGlassLegibilityController = AlembicGlassLegibilityController()
     static let preferenceDefaultsKey: String = "alembic.theme.preference"
     static let glassEnabledDefaultsKey: String = "alembic.glass.enabled"
+    static let glassIntensityDefaultsKey: String = "alembic.glass.intensity"
     static let themeChangedNotification: Notification.Name = Notification.Name("alembic.theme.changed")
 
     @Published private(set) var colorScheme: ColorScheme
     @Published private(set) var preference: AlembicThemePreference
     @Published private(set) var glassEnabled: Bool
+    @Published private(set) var glassIntensity: AlembicGlassIntensity
     private var appearanceObservation: NSKeyValueObservation?
 
     private init() {
         let stored: String = UserDefaults.standard.string(forKey: AlembicGlassLegibilityController.preferenceDefaultsKey) ?? AlembicThemePreference.light.rawValue
         let pref: AlembicThemePreference = AlembicThemePreference(rawValue: stored) ?? .light
+        let storedIntensity: String = UserDefaults.standard.string(forKey: AlembicGlassLegibilityController.glassIntensityDefaultsKey) ?? AlembicGlassIntensity.balanced.rawValue
+        let intensity: AlembicGlassIntensity = AlembicGlassIntensity(rawValue: storedIntensity) ?? .balanced
         self.preference = pref
+        self.glassIntensity = intensity
         if UserDefaults.standard.object(forKey: AlembicGlassLegibilityController.glassEnabledDefaultsKey) == nil {
             self.glassEnabled = true
         } else {
@@ -45,6 +96,16 @@ final class AlembicGlassLegibilityController: ObservableObject {
         }
         glassEnabled = enabled
         UserDefaults.standard.set(enabled, forKey: AlembicGlassLegibilityController.glassEnabledDefaultsKey)
+        NotificationCenter.default.post(name: AlembicGlassLegibilityController.themeChangedNotification, object: nil)
+    }
+
+    func setGlassIntensity(_ next: AlembicGlassIntensity) {
+        guard next != glassIntensity else {
+            return
+        }
+        glassIntensity = next
+        UserDefaults.standard.set(next.rawValue, forKey: AlembicGlassLegibilityController.glassIntensityDefaultsKey)
+        NotificationCenter.default.post(name: AlembicGlassLegibilityController.themeChangedNotification, object: nil)
     }
 
     deinit {
@@ -208,15 +269,75 @@ enum AlembicGlassSurfaceStyle {
         return Glass.clear.tint(tintColor)
     }
 
-    func glassTintOpacity(colorScheme: ColorScheme) -> Double {
-        return colorScheme == .light ? 0.45 : 0.72
+    func glassTintOpacity(colorScheme: ColorScheme, intensity: AlembicGlassIntensity) -> Double {
+        let base: Double
+        if colorScheme == .dark {
+            switch self {
+            case .window: base = 0.0
+            case .toolbar: base = 0.54
+            case .panel: base = 0.64
+            case .card: base = 0.58
+            case .metric: base = 0.54
+            case .control: base = 0.36
+            case .row: base = 0.28
+            case .sidebar: base = 0.62
+            case .sheet: base = 0.70
+            }
+        } else {
+            switch self {
+            case .window: base = 0.0
+            case .toolbar: base = 0.32
+            case .panel: base = 0.42
+            case .card: base = 0.36
+            case .metric: base = 0.34
+            case .control: base = 0.24
+            case .row: base = 0.18
+            case .sidebar: base = 0.42
+            case .sheet: base = 0.50
+            }
+        }
+        return min(0.88, max(0.10, base * intensity.tintScale))
     }
 
-    func legibilityFillOpacity(colorScheme: ColorScheme) -> Double {
+    func legibilityFillOpacity(colorScheme: ColorScheme, intensity: AlembicGlassIntensity) -> Double {
         if colorScheme == .light {
-            return min(lightLegibilityMaxOpacity, lightLegibilityBaseOpacity + 0.1728)
+            return min(lightLegibilityMaxOpacity, max(0.0, lightLegibilityBaseOpacity + 0.1728 + intensity.fillDelta))
         }
-        return min(darkLegibilityMaxOpacity, darkLegibilityBaseOpacity + 0.1088)
+        return min(darkLegibilityMaxOpacity, max(0.0, darkLegibilityBaseOpacity + 0.1088 + intensity.fillDelta))
+    }
+
+    func liquidFillOpacity(colorScheme: ColorScheme, intensity: AlembicGlassIntensity) -> Double {
+        let base: Double
+        if colorScheme == .dark {
+            switch self {
+            case .window: base = 0.0
+            case .toolbar: base = 0.12
+            case .panel: base = 0.18
+            case .card: base = 0.15
+            case .metric: base = 0.13
+            case .control: base = 0.08
+            case .row: base = 0.08
+            case .sidebar: base = 0.17
+            case .sheet: base = 0.23
+            }
+        } else {
+            switch self {
+            case .window: base = 0.0
+            case .toolbar: base = 0.10
+            case .panel: base = 0.16
+            case .card: base = 0.12
+            case .metric: base = 0.10
+            case .control: base = 0.06
+            case .row: base = 0.06
+            case .sidebar: base = 0.14
+            case .sheet: base = 0.20
+            }
+        }
+        return min(0.34, max(0.0, base + intensity.fillDelta * 0.55))
+    }
+
+    func effectiveEdgeHighlightStrength(intensity: AlembicGlassIntensity) -> Double {
+        return min(1.0, edgeHighlightStrength * intensity.highlightScale)
     }
 
     private var lightLegibilityBaseOpacity: Double {
@@ -348,24 +469,45 @@ struct AlembicGlassSurface<Content: View>: View {
     private var liquidGlassBody: some View {
         content()
             .padding(padding)
+            .background {
+                liquidLegibilityLayer
+                    .allowsHitTesting(false)
+            }
             .glassEffect(
                 style.glass(tintOpacity: glassTintOpacity, colorScheme: colorScheme),
                 in: RoundedRectangle(cornerRadius: style.cornerRadius, style: .continuous)
             )
-            .overlay(borderStroke)
+            .overlay {
+                edgeHighlight
+                    .allowsHitTesting(false)
+            }
+            .overlay {
+                borderStroke
+                    .allowsHitTesting(false)
+            }
             .modifier(AlembicGlassShadow(style: style))
     }
 
     private var fallbackBody: some View {
         content()
             .padding(padding)
-            .background(backgroundLayer)
-            .overlay(borderStroke)
+            .background {
+                backgroundLayer
+                    .allowsHitTesting(false)
+            }
+            .overlay {
+                edgeHighlight
+                    .allowsHitTesting(false)
+            }
+            .overlay {
+                borderStroke
+                    .allowsHitTesting(false)
+            }
             .modifier(AlembicGlassShadow(style: style))
     }
 
     private var glassTintOpacity: Double {
-        return style.glassTintOpacity(colorScheme: colorScheme)
+        return style.glassTintOpacity(colorScheme: colorScheme, intensity: legibility.glassIntensity)
     }
 
     @ViewBuilder
@@ -387,6 +529,12 @@ struct AlembicGlassSurface<Content: View>: View {
                 .fill(legibilityFillColor.opacity(legibilityFillOpacity))
                 .allowsHitTesting(false)
         }
+    }
+
+    private var liquidLegibilityLayer: some View {
+        RoundedRectangle(cornerRadius: style.cornerRadius, style: .continuous)
+            .fill(legibilityFillColor.opacity(liquidFillOpacity))
+            .allowsHitTesting(false)
     }
 
     private var frostedFallbackGradient: LinearGradient {
@@ -420,7 +568,7 @@ struct AlembicGlassSurface<Content: View>: View {
 
     @ViewBuilder
     private var edgeHighlight: some View {
-        if !reduceTransparency, style.edgeHighlightStrength > 0 {
+        if !reduceTransparency, effectiveEdgeHighlightStrength > 0 {
             RoundedRectangle(cornerRadius: style.cornerRadius, style: .continuous)
                 .stroke(
                     LinearGradient(
@@ -441,17 +589,17 @@ struct AlembicGlassSurface<Content: View>: View {
     }
 
     private var highlightTopOpacity: Double {
-        let base: Double = style.edgeHighlightStrength
+        let base: Double = effectiveEdgeHighlightStrength
         return colorScheme == .dark ? base * 0.85 : base * 0.95
     }
 
     private var highlightMidOpacity: Double {
-        let base: Double = style.edgeHighlightStrength
+        let base: Double = effectiveEdgeHighlightStrength
         return colorScheme == .dark ? base * 0.20 : base * 0.30
     }
 
     private var highlightTrailingOpacity: Double {
-        let base: Double = style.edgeHighlightStrength
+        let base: Double = effectiveEdgeHighlightStrength
         return colorScheme == .dark ? base * 0.18 : base * 0.10
     }
 
@@ -464,7 +612,15 @@ struct AlembicGlassSurface<Content: View>: View {
     }
 
     private var legibilityFillOpacity: Double {
-        return style.legibilityFillOpacity(colorScheme: colorScheme)
+        return style.legibilityFillOpacity(colorScheme: colorScheme, intensity: legibility.glassIntensity)
+    }
+
+    private var liquidFillOpacity: Double {
+        return style.liquidFillOpacity(colorScheme: colorScheme, intensity: legibility.glassIntensity)
+    }
+
+    private var effectiveEdgeHighlightStrength: Double {
+        return style.effectiveEdgeHighlightStrength(intensity: legibility.glassIntensity)
     }
 }
 
@@ -501,6 +657,9 @@ struct AlembicGlassIconButton: View {
     let help: String
     let isActive: Bool
     let action: () -> Void
+    @State private var isHovering: Bool = false
+    @Environment(\.colorScheme) private var colorScheme
+    @ObservedObject private var legibility: AlembicGlassLegibilityController = AlembicGlassLegibilityController.shared
 
     init(
         systemImage: String,
@@ -522,10 +681,70 @@ struct AlembicGlassIconButton: View {
                 .frame(width: 28, height: 28)
         }
         .buttonStyle(.plain)
-        .alembicGlassSurface(
-            .control,
-            padding: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
+        .background(controlFill)
+        .overlay(controlStroke)
+        .shadow(
+            color: Color.black.opacity(isHovering || isActive ? controlShadowOpacity : 0),
+            radius: isHovering || isActive ? 4 : 0,
+            x: 0,
+            y: 1
         )
+        .scaleEffect(isHovering ? 1.025 : 1.0)
+        .animation(.easeOut(duration: 0.12), value: isHovering)
+        .onHover { hovering in
+            isHovering = hovering
+        }
         .help(help)
+    }
+
+    private var controlFill: some View {
+        RoundedRectangle(cornerRadius: AlembicGlassSurfaceStyle.control.cornerRadius, style: .continuous)
+            .fill(
+                LinearGradient(
+                    colors: controlFillColors,
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .allowsHitTesting(false)
+    }
+
+    private var controlStroke: some View {
+        RoundedRectangle(cornerRadius: AlembicGlassSurfaceStyle.control.cornerRadius, style: .continuous)
+            .strokeBorder(controlStrokeColor, lineWidth: AlembicGlassTokens.hairline)
+            .allowsHitTesting(false)
+    }
+
+    private var controlFillColors: [Color] {
+        let scale: Double = legibility.glassIntensity.tintScale
+        if isActive {
+            return [
+                Color.accentColor.opacity(min(0.32, 0.18 * scale)),
+                Color.accentColor.opacity(min(0.22, 0.10 * scale)),
+            ]
+        }
+        let topOpacity: Double = min(0.20, (isHovering ? 0.13 : 0.07) * scale)
+        let bottomOpacity: Double = min(0.16, (isHovering ? 0.08 : 0.045) * scale)
+        if colorScheme == .dark {
+            return [
+                Color.white.opacity(topOpacity),
+                Color.white.opacity(bottomOpacity),
+            ]
+        }
+        return [
+            Color.white.opacity(topOpacity + 0.10),
+            Color.black.opacity(bottomOpacity * 0.42),
+        ]
+    }
+
+    private var controlStrokeColor: Color {
+        if isActive {
+            return Color.accentColor.opacity(0.42)
+        }
+        return Color.primary.opacity(colorScheme == .dark ? 0.14 : 0.12)
+    }
+
+    private var controlShadowOpacity: Double {
+        return colorScheme == .dark ? 0.22 : 0.12
     }
 }

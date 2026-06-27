@@ -225,18 +225,15 @@ class RepoImportScanner {
       return;
     }
 
-    List<FileSystemEntity> entries;
     try {
-      entries = dir.listSync(followLinks: false);
+      await for (FileSystemEntity entity in dir.list(followLinks: false)) {
+        if (entity is Directory) {
+          await _walk(entity, rootPath, depth + 1, callback);
+        }
+      }
     } catch (e) {
       _diag.warn(_tag, 'cannot list $dir: $e');
       return;
-    }
-
-    for (final FileSystemEntity entity in entries) {
-      if (entity is Directory) {
-        await _walk(entity, rootPath, depth + 1, callback);
-      }
     }
   }
 
@@ -266,10 +263,10 @@ class RepoImportScanner {
     String rootPath,
   ) async {
     final String absolutePath = dir.path;
-    final String relativePath =
-        absolutePath.startsWith(rootPath) && absolutePath.length > rootPath.length
-            ? absolutePath.substring(rootPath.length + 1)
-            : absolutePath;
+    String relativePath = absolutePath.startsWith(rootPath) &&
+            absolutePath.length > rootPath.length
+        ? absolutePath.substring(rootPath.length + 1)
+        : absolutePath;
 
     final String? remoteUrl = await _readGitRemoteUrl(dir);
     String? ownerLogin;

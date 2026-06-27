@@ -13,6 +13,7 @@ private extension OSLog {
 struct RepositoryItem: Identifiable, Hashable {
     let id: String
     let fullName: String
+    let searchIndex: String
     let owner: String
     let name: String
     let description: String
@@ -275,9 +276,11 @@ final class AlembicRepositoryListBridge: NSObject {
         let forkCount: Int = (map["forkCount"] as? Int) ?? 0
         let language: String? = map["language"] as? String
         let updatedAtMillis: Int64 = AlembicRepositoryListBridge.intValue(from: map["updatedAtMillis"])
+        let searchIndex: String = "\(fullName)\n\(description)".lowercased()
         return RepositoryItem(
             id: fullName.lowercased(),
             fullName: fullName,
+            searchIndex: searchIndex,
             owner: owner,
             name: name,
             description: description,

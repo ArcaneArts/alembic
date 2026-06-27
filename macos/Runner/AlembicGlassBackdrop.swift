@@ -14,6 +14,9 @@ enum AlembicMaterial: String {
     case solid
 
     static func detect() -> AlembicMaterial {
+        if #available(macOS 26.0, *) {
+            return .liquidGlass
+        }
         return .vibrancy
     }
 }
@@ -23,6 +26,10 @@ final class AlembicGlassBackdrop: NSView {
     private(set) var cornerRadius: CGFloat
     private weak var gradientLayer: CAGradientLayer?
     private var appearanceObservation: NSObjectProtocol?
+
+    override var acceptsFirstResponder: Bool {
+        return false
+    }
 
     init(frame: NSRect, cornerRadius: CGFloat) {
         self.cornerRadius = cornerRadius
@@ -39,6 +46,10 @@ final class AlembicGlassBackdrop: NSView {
             type: .info,
             cornerRadius
         )
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        return nil
     }
 
     convenience override init(frame frameRect: NSRect) {
@@ -71,6 +82,9 @@ final class AlembicGlassBackdrop: NSView {
 
     func setMaterial(_ next: AlembicMaterial) {
         material = next
+        if let gradient: CAGradientLayer = gradientLayer {
+            applyGradientColors(gradient)
+        }
     }
 
     private func installBackdrop() {
@@ -86,20 +100,28 @@ final class AlembicGlassBackdrop: NSView {
 
     private func applyGradientColors(_ gradient: CAGradientLayer) {
         let isDark: Bool = AlembicGlassLegibilityController.shared.colorScheme == .dark
+        let intensityScale: CGFloat = AlembicGlassLegibilityController.shared.glassIntensity.backdropScale
+        let materialScale: CGFloat = material == .liquidGlass ? 1.0 : 0.82
+        let scale: CGFloat = intensityScale * materialScale
         if isDark {
+            let topWhite: CGFloat = min(0.08, 0.045 * scale)
+            let middleWhite: CGFloat = min(0.035, 0.018 * scale)
             gradient.colors = [
-                NSColor(white: 0.03, alpha: 1.0).cgColor,
-                NSColor(white: 0.015, alpha: 1.0).cgColor,
+                NSColor(white: topWhite, alpha: 1.0).cgColor,
+                NSColor(white: middleWhite, alpha: 1.0).cgColor,
                 NSColor(white: 0.00, alpha: 1.0).cgColor,
             ]
         } else {
+            let topAlpha: CGFloat = min(0.86, 0.70 + (scale * 0.05))
+            let middleAlpha: CGFloat = min(0.84, 0.66 + (scale * 0.05))
+            let bottomAlpha: CGFloat = min(0.82, 0.60 + (scale * 0.05))
             gradient.colors = [
-                NSColor(white: 0.96, alpha: 0.74).cgColor,
-                NSColor(white: 0.92, alpha: 0.72).cgColor,
-                NSColor(white: 0.88, alpha: 0.68).cgColor,
+                NSColor(white: 0.98, alpha: topAlpha).cgColor,
+                NSColor(white: 0.93, alpha: middleAlpha).cgColor,
+                NSColor(white: 0.86, alpha: bottomAlpha).cgColor,
             ]
         }
-        gradient.locations = [0.0, 0.50, 1.0]
+        gradient.locations = [0.0, 0.54, 1.0]
     }
 
     private func startObservingAppearance() {

@@ -97,7 +97,7 @@ final class AlembicTrayController: NSObject {
         button.toolTip = "Alembic"
         button.target = self
         button.action = #selector(handleStatusItemClick(_:))
-        button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+        button.sendAction(on: [.leftMouseDown, .rightMouseDown])
 
         if isVerbose {
             logStatusItem("install")
@@ -287,11 +287,15 @@ final class AlembicTrayController: NSObject {
         guard let event: NSEvent = NSApp.currentEvent else {
             return false
         }
-        return event.type == .rightMouseUp || event.modifierFlags.contains(.control)
+        return event.type == .rightMouseDown
+            || event.type == .rightMouseUp
+            || event.modifierFlags.contains(.control)
     }
 
     private func showStatusMenu(from button: NSStatusBarButton) {
         let menu: NSMenu = NSMenu(title: "Alembic")
+        menu.autoenablesItems = false
+        suppressHideUntil = Date().addingTimeInterval(0.35)
         menu.addItem(statusMenuItem(
             title: "Show Alembic",
             symbol: "rectangle.on.rectangle",

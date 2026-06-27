@@ -125,10 +125,7 @@ class WorkspaceChannelBridge {
       final RepoImportScanner scanner = RepoImportScanner(
         maxDepth: maxDepth,
         onProgress: (ScanProgress progress) {
-          unawaited(_channel.invokeMethod<void>(
-            SpikeWorkspaceChannelMethods.scanProgress,
-            progress.toJson(),
-          ));
+          unawaited(_pushScanProgress(progress));
         },
       );
       final ScanResult result = await scanner.scan(path);
@@ -152,7 +149,7 @@ class WorkspaceChannelBridge {
   Future<Map<String, dynamic>> _handleImportDiscovered(dynamic args) async {
     final Map<dynamic, dynamic>? map = args is Map ? args : null;
     final String? rootPath = map?['rootPath'] as String?;
-    final List<dynamic>? selectedSlugs = map?['selectedSlugs'] as List<dynamic>?;
+    List<dynamic>? selectedSlugs = map?['selectedSlugs'] as List<dynamic>?;
 
     if (rootPath == null || rootPath.trim().isEmpty) {
       _diag.warn(_tag, 'importDiscovered: empty rootPath');
@@ -162,9 +159,8 @@ class WorkspaceChannelBridge {
       };
     }
 
-    final List<String> slugs = (selectedSlugs ?? <dynamic>[])
-        .whereType<String>()
-        .toList();
+    List<String> slugs =
+        (selectedSlugs ?? <dynamic>[]).whereType<String>().toList();
     _diag.log(
       _tag,
       'importDiscovered: rootPath=$rootPath selectedSlugs=${slugs.length}',
@@ -233,14 +229,16 @@ class WorkspaceChannelBridge {
 
     final String? derivedFolder = _deriveTargetFolder(trimmedUrl);
     if (derivedFolder == null) {
-      _diag.warn(_tag, 'cloneFromUrl: could not derive folder from $trimmedUrl');
+      _diag.warn(
+          _tag, 'cloneFromUrl: could not derive folder from $trimmedUrl');
       return <String, dynamic>{
         'ok': false,
         'error': 'Could not derive a folder name from URL',
       };
     }
 
-    final String targetPath = '${workspaceDir.path}${Platform.pathSeparator}$derivedFolder';
+    String targetPath =
+        '${workspaceDir.path}${Platform.pathSeparator}$derivedFolder';
     final Directory targetDir = Directory(targetPath);
     if (await targetDir.exists()) {
       _diag.warn(_tag, 'cloneFromUrl: target already exists: $targetPath');
@@ -256,13 +254,16 @@ class WorkspaceChannelBridge {
         'git',
         <String>['clone', trimmedUrl, targetPath],
         runInShell: false,
-      );
+      ).timeout(const Duration(minutes: 10));
       if (result.exitCode != 0) {
         final String stderr = (result.stderr ?? '').toString().trim();
-        _diag.error(_tag, 'cloneFromUrl: git exited ${result.exitCode}: $stderr');
+        _diag.error(
+            _tag, 'cloneFromUrl: git exited ${result.exitCode}: $stderr');
         return <String, dynamic>{
           'ok': false,
-          'error': stderr.isEmpty ? 'git clone failed (exit ${result.exitCode})' : stderr,
+          'error': stderr.isEmpty
+              ? 'git clone failed (exit ${result.exitCode})'
+              : stderr,
         };
       }
       _diag.success(_tag, 'cloneFromUrl: cloned to $targetPath');
@@ -280,6 +281,19 @@ class WorkspaceChannelBridge {
     }
   }
 
+  Future<void> _pushScanProgress(ScanProgress progress) async {
+    try {
+      await _channel.invokeMethod<void>(
+        SpikeWorkspaceChannelMethods.scanProgress,
+        progress.toJson(),
+      );
+    } on MissingPluginException {
+      _diag.trace(_tag, 'scan progress dropped: native handler missing');
+    } on PlatformException catch (e) {
+      _diag.warn(_tag, 'scan progress push failed: $e');
+    }
+  }
+
   String? _deriveTargetFolder(String url) {
     String stripped = url.trim();
     if (stripped.endsWith('/')) {
@@ -290,7 +304,7 @@ class WorkspaceChannelBridge {
     }
     final int slashIndex = stripped.lastIndexOf('/');
     final int colonIndex = stripped.lastIndexOf(':');
-    final int separatorIndex = slashIndex > colonIndex ? slashIndex : colonIndex;
+    int separatorIndex = slashIndex > colonIndex ? slashIndex : colonIndex;
     if (separatorIndex < 0 || separatorIndex >= stripped.length - 1) {
       return null;
     }

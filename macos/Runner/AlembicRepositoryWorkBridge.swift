@@ -37,6 +37,7 @@ final class RepositoryWorkBridgeState: ObservableObject {
     @Published var archivedRepositories: Set<String> = []
     @Published var syncingRepositories: Set<String> = []
     @Published var workEntries: [RepositoryWorkEntry] = []
+    @Published var workEntriesByRepository: [String: [RepositoryWorkEntry]] = [:]
     @Published var archiveMasterStates: [String: ArchiveMasterRepoStateDto] = [:]
     @Published var localStates: [String: RepositoryLocalState] = [:]
     @Published var lastUpdateMs: Int64 = 0
@@ -55,7 +56,7 @@ final class RepositoryWorkBridgeState: ObservableObject {
 
     func workForRepo(_ fullName: String) -> [RepositoryWorkEntry] {
         let key: String = fullName.lowercased()
-        return workEntries.filter { $0.fullName.lowercased() == key }
+        return workEntriesByRepository[key] ?? []
     }
 
     func archiveMasterState(for fullName: String) -> ArchiveMasterRepoStateDto? {
@@ -148,6 +149,10 @@ final class AlembicRepositoryWorkBridge: NSObject {
                 progress: progress
             )
         }
+        var workEntriesByRepository: [String: [RepositoryWorkEntry]] = [:]
+        for entry: RepositoryWorkEntry in workEntries {
+            workEntriesByRepository[entry.fullName.lowercased(), default: []].append(entry)
+        }
 
         var masterStates: [String: ArchiveMasterRepoStateDto] = [:]
         for raw in masterStatesRaw {
@@ -188,6 +193,7 @@ final class AlembicRepositoryWorkBridge: NSObject {
             self.state.archivedRepositories = Set(archived.map { $0.lowercased() })
             self.state.syncingRepositories = Set(syncing.map { $0.lowercased() })
             self.state.workEntries = workEntries
+            self.state.workEntriesByRepository = workEntriesByRepository
             self.state.archiveMasterStates = masterStates
             self.state.localStates = localStates
             self.state.lastUpdateMs = nowMillis

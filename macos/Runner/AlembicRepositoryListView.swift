@@ -27,26 +27,50 @@ struct AlembicRepositoryListView: View {
     @State private var cloneStatus: String = ""
     @State private var dragStartOrigin: CGPoint? = nil
     @ObservedObject private var windowPrefs: AlembicWindowPreferences = AlembicWindowPreferences.shared
+    @ObservedObject private var updates: UpdatesBridgeState = AlembicUpdatesBridge.shared.state
 
     private var filteredRepositories: [RepositoryItem] {
-        let q: String = searchQuery.lowercased()
+        let q: String = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let active: Set<String> = workState.activeRepositories
+        let archived: Set<String> = workState.archivedRepositories
+        let syncing: Set<String> = workState.syncingRepositories
+        let localStates: [String: RepositoryLocalState] = workState.localStates
         return state.repositories.filter { item in
             let matchesQuery: Bool = q.isEmpty
-                || item.fullName.lowercased().contains(q)
-                || item.description.lowercased().contains(q)
+                || item.searchIndex.contains(q)
             let matchesOwner: Bool = ownerFilter.isEmpty || item.owner == ownerFilter
-            let matchesState: Bool = stateMatches(item)
+            let matchesState: Bool = stateMatches(
+                item,
+                active: active,
+                archived: archived,
+                syncing: syncing
+            )
             return matchesQuery && matchesOwner && matchesState
-        }.sorted(by: compareRepositories)
+        }.sorted { lhs, rhs in
+            compareRepositories(
+                lhs,
+                rhs,
+                active: active,
+                archived: archived,
+                syncing: syncing,
+                localStates: localStates
+            )
+        }
     }
 
-    private func stateMatches(_ item: RepositoryItem) -> Bool {
+    private func stateMatches(
+        _ item: RepositoryItem,
+        active: Set<String>,
+        archived: Set<String>,
+        syncing: Set<String>
+    ) -> Bool {
+        let key: String = item.id
         switch stateFilter {
-        case "active": return workState.isActive(item.fullName)
-        case "archived": return workState.isArchived(item.fullName)
+        case "active": return active.contains(key)
+        case "archived": return archived.contains(key)
         case "cloud":
-            return !workState.isActive(item.fullName) && !workState.isArchived(item.fullName)
-        case "syncing": return workState.isSyncing(item.fullName)
+            return !active.contains(key) && !archived.contains(key)
+        case "syncing": return syncing.contains(key)
         default: return true
         }
     }
@@ -59,7 +83,14 @@ struct AlembicRepositoryListView: View {
         return Array(owners).sorted()
     }
 
-    private func compareRepositories(_ lhs: RepositoryItem, _ rhs: RepositoryItem) -> Bool {
+    private func compareRepositories(
+        _ lhs: RepositoryItem,
+        _ rhs: RepositoryItem,
+        active: Set<String>,
+        archived: Set<String>,
+        syncing: Set<String>,
+        localStates: [String: RepositoryLocalState]
+    ) -> Bool {
         switch sortMode {
         case "name":
             return lhs.fullName.localizedCaseInsensitiveCompare(rhs.fullName) == .orderedAscending
@@ -78,38 +109,38 @@ struct AlembicRepositoryListView: View {
             if !settingsState.archiveEnabled {
                 return lhs.fullName.localizedCaseInsensitiveCompare(rhs.fullName) == .orderedAscending
             }
-            let lhsActive: Bool = workState.isActive(lhs.fullName)
-            let rhsActive: Bool = workState.isActive(rhs.fullName)
+            let lhsActive: Bool = active.contains(lhs.id)
+            let rhsActive: Bool = active.contains(rhs.id)
             if lhsActive != rhsActive {
                 return lhsActive
             }
-            let lhsDays: Int = daysUntilArchive(for: lhs)
-            let rhsDays: Int = daysUntilArchive(for: rhs)
+            let lhsDays: Int = daysUntilArchive(for: lhs, localStates: localStates)
+            let rhsDays: Int = daysUntilArchive(for: rhs, localStates: localStates)
             if lhsActive && lhsDays != rhsDays {
                 return lhsDays < rhsDays
             }
-            let lhsRank: Int = stateRank(lhs)
-            let rhsRank: Int = stateRank(rhs)
+            let lhsRank: Int = stateRank(lhs, active: active, archived: archived, syncing: syncing)
+            let rhsRank: Int = stateRank(rhs, active: active, archived: archived, syncing: syncing)
             if lhsRank != rhsRank {
                 return lhsRank < rhsRank
             }
             return lhs.fullName.localizedCaseInsensitiveCompare(rhs.fullName) == .orderedAscending
         case "state":
-            let lhsRank: Int = stateRank(lhs)
-            let rhsRank: Int = stateRank(rhs)
+            let lhsRank: Int = stateRank(lhs, active: active, archived: archived, syncing: syncing)
+            let rhsRank: Int = stateRank(rhs, active: active, archived: archived, syncing: syncing)
             if lhsRank != rhsRank {
                 return lhsRank < rhsRank
             }
             return lhs.fullName.localizedCaseInsensitiveCompare(rhs.fullName) == .orderedAscending
         default:
-            let lhsRank: Int = attentionRank(lhs)
-            let rhsRank: Int = attentionRank(rhs)
+            let lhsRank: Int = attentionRank(lhs, active: active, archived: archived, syncing: syncing, localStates: localStates)
+            let rhsRank: Int = attentionRank(rhs, active: active, archived: archived, syncing: syncing, localStates: localStates)
             if lhsRank != rhsRank {
                 return lhsRank < rhsRank
             }
-            if workState.isActive(lhs.fullName) && workState.isActive(rhs.fullName) {
-                let lhsDays: Int = daysUntilArchive(for: lhs)
-                let rhsDays: Int = daysUntilArchive(for: rhs)
+            if active.contains(lhs.id) && active.contains(rhs.id) {
+                let lhsDays: Int = daysUntilArchive(for: lhs, localStates: localStates)
+                let rhsDays: Int = daysUntilArchive(for: rhs, localStates: localStates)
                 if lhsDays != rhsDays {
                     return lhsDays < rhsDays
                 }
@@ -121,26 +152,44 @@ struct AlembicRepositoryListView: View {
         }
     }
 
-    private func attentionRank(_ item: RepositoryItem) -> Int {
-        if workState.isSyncing(item.fullName) { return 0 }
-        if settingsState.archiveEnabled && workState.isActive(item.fullName) && daysUntilArchive(for: item) <= 3 { return 1 }
-        if workState.isActive(item.fullName) { return 2 }
-        if workState.isArchived(item.fullName) { return 3 }
+    private func attentionRank(
+        _ item: RepositoryItem,
+        active: Set<String>,
+        archived: Set<String>,
+        syncing: Set<String>,
+        localStates: [String: RepositoryLocalState]
+    ) -> Int {
+        if syncing.contains(item.id) { return 0 }
+        if settingsState.archiveEnabled && active.contains(item.id) && daysUntilArchive(for: item, localStates: localStates) <= 3 { return 1 }
+        if active.contains(item.id) { return 2 }
+        if archived.contains(item.id) { return 3 }
         return 4
     }
 
-    private func stateRank(_ item: RepositoryItem) -> Int {
-        if workState.isSyncing(item.fullName) { return 0 }
-        if workState.isActive(item.fullName) { return 1 }
-        if workState.isArchived(item.fullName) { return 2 }
+    private func stateRank(
+        _ item: RepositoryItem,
+        active: Set<String>,
+        archived: Set<String>,
+        syncing: Set<String>
+    ) -> Int {
+        if syncing.contains(item.id) { return 0 }
+        if active.contains(item.id) { return 1 }
+        if archived.contains(item.id) { return 2 }
         return 3
     }
 
     private func daysUntilArchive(for item: RepositoryItem) -> Int {
+        return daysUntilArchive(for: item, localStates: workState.localStates)
+    }
+
+    private func daysUntilArchive(
+        for item: RepositoryItem,
+        localStates: [String: RepositoryLocalState]
+    ) -> Int {
         if !settingsState.archiveEnabled {
             return Int.max
         }
-        if let local: RepositoryLocalState = workState.localState(for: item.fullName) {
+        if let local: RepositoryLocalState = localStates[item.id] {
             return local.daysUntilArchive
         }
         return settingsState.daysToArchive
@@ -270,6 +319,14 @@ struct AlembicRepositoryListView: View {
             }
             AlembicGlassIconButton(systemImage: "square.and.arrow.down.on.square", help: "Import repositories", action: onImport)
             AlembicGlassIconButton(systemImage: "gearshape", help: "Settings", action: onSettings)
+                .overlay(alignment: .topTrailing) {
+                    if updates.updateAvailable {
+                        AlembicUpdateDot(bordered: true)
+                            .offset(x: 1, y: -1)
+                            .allowsHitTesting(false)
+                            .help("An update is available — open Settings")
+                    }
+                }
             AlembicGlassIconButton(systemImage: "info.circle", help: "Runtime info", action: onRuntimeInfo)
             AlembicGlassIconButton(
                 systemImage: diagnosticsVisible ? "stethoscope.circle.fill" : "stethoscope",
@@ -602,12 +659,13 @@ struct AlembicRepositoryListView: View {
     }
 
     private var repositoryPanel: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        let filtered: [RepositoryItem] = filteredRepositories
+        return VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Repositories")
                         .font(.system(size: 15, weight: .semibold))
-                    Text(repositoryPanelSubtitle)
+                    Text(repositoryPanelSubtitle(filtered))
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(.secondary)
                 }
@@ -621,10 +679,10 @@ struct AlembicRepositoryListView: View {
 
             repositoryStatsStrip
 
-            if filteredRepositories.isEmpty {
+            if filtered.isEmpty {
                 noResultsRow
             } else {
-                repositoryList
+                repositoryList(filtered)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -901,16 +959,21 @@ struct AlembicRepositoryListView: View {
     }
 
     private var archiveSoonCount: Int {
+        if !settingsState.archiveEnabled {
+            return 0
+        }
+        let active: Set<String> = workState.activeRepositories
+        let localStates: [String: RepositoryLocalState] = workState.localStates
         return state.repositories.filter { item in
-            settingsState.archiveEnabled && workState.isActive(item.fullName) && daysUntilArchive(for: item) <= 3
+            active.contains(item.id) && daysUntilArchive(for: item, localStates: localStates) <= 3
         }.count
     }
 
-    private var repositoryPanelSubtitle: String {
-        if filteredRepositories.count == state.repositories.count {
+    private func repositoryPanelSubtitle(_ filtered: [RepositoryItem]) -> String {
+        if filtered.count == state.repositories.count {
             return "Sorted by \(sortModeLabel.lowercased())"
         }
-        return "\(filteredRepositories.count) matching \(state.repositories.count) total"
+        return "\(filtered.count) matching \(state.repositories.count) total"
     }
 
     private var activitySubtitle: String {
@@ -951,22 +1014,10 @@ struct AlembicRepositoryListView: View {
         }
     }
 
-    private var repositoryCountLabel: String {
-        let total: Int = state.repositories.count
-        let shown: Int = filteredRepositories.count
-        if state.isLoading {
-            return "\(shown) shown  \(state.fetchedCount) fetched  loading"
-        }
-        if total == shown {
-            return "\(workState.activeRepositories.count) active  \(workState.archivedRepositories.count) archived  \(total) repos"
-        }
-        return "\(shown) of \(total)"
-    }
-
-    private var repositoryList: some View {
+    private func repositoryList(_ filtered: [RepositoryItem]) -> some View {
         ScrollView(.vertical, showsIndicators: true) {
             LazyVStack(alignment: .leading, spacing: 6) {
-                ForEach(filteredRepositories) { item in
+                ForEach(filtered) { item in
                     AlembicRepositoryRow(
                         item: item,
                         isActive: workState.isActive(item.fullName),
@@ -1075,6 +1126,8 @@ struct AlembicRepositoryRow: View {
     let onShowDetail: () -> Void
     @State private var isHovering: Bool = false
     @State private var actionInFlight: String? = nil
+    @Environment(\.colorScheme) private var colorScheme
+    @ObservedObject private var legibility: AlembicGlassLegibilityController = AlembicGlassLegibilityController.shared
 
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
@@ -1111,14 +1164,9 @@ struct AlembicRepositoryRow: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
-        .background(
-            RoundedRectangle(cornerRadius: AlembicGlassSurfaceStyle.row.cornerRadius, style: .continuous)
-                .fill(Color.primary.opacity(isHovering ? 0.06 : 0.0))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: AlembicGlassSurfaceStyle.row.cornerRadius, style: .continuous)
-                .strokeBorder(Color.white.opacity(isHovering ? 0.16 : 0.07), lineWidth: 0.5)
-        )
+        .background(rowBackground)
+        .overlay(rowHighlight)
+        .overlay(rowStroke)
         .contentShape(Rectangle())
         .onHover { hovering in
             isHovering = hovering
@@ -1127,6 +1175,81 @@ struct AlembicRepositoryRow: View {
             onShowDetail()
         }
         .contextMenu { contextMenuContent }
+    }
+
+    private var rowBackground: some View {
+        RoundedRectangle(cornerRadius: AlembicGlassSurfaceStyle.row.cornerRadius, style: .continuous)
+            .fill(
+                LinearGradient(
+                    colors: rowBackgroundColors,
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .allowsHitTesting(false)
+    }
+
+    private var rowHighlight: some View {
+        RoundedRectangle(cornerRadius: AlembicGlassSurfaceStyle.row.cornerRadius, style: .continuous)
+            .stroke(
+                LinearGradient(
+                    colors: [
+                        Color.white.opacity(isHovering ? rowHighlightOpacity : rowHighlightOpacity * 0.48),
+                        Color.white.opacity(0),
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ),
+                lineWidth: 1
+            )
+            .blendMode(colorScheme == .dark ? .plusLighter : .normal)
+            .allowsHitTesting(false)
+    }
+
+    private var rowStroke: some View {
+        RoundedRectangle(cornerRadius: AlembicGlassSurfaceStyle.row.cornerRadius, style: .continuous)
+            .strokeBorder(rowStrokeColor, lineWidth: AlembicGlassTokens.hairline)
+            .allowsHitTesting(false)
+    }
+
+    private var rowBackgroundColors: [Color] {
+        let scale: Double = legibility.glassIntensity.tintScale
+        let statusOpacity: Double = min(0.16, (isHovering ? 0.095 : 0.045) * scale)
+        let neutralOpacity: Double = min(0.12, (isHovering ? 0.075 : 0.028) * scale)
+        if colorScheme == .dark {
+            return [
+                rowStatusColor.opacity(statusOpacity),
+                Color.white.opacity(neutralOpacity),
+            ]
+        }
+        return [
+            rowStatusColor.opacity(statusOpacity * 0.82),
+            Color.white.opacity(min(0.22, neutralOpacity + 0.08)),
+        ]
+    }
+
+    private var rowStatusColor: Color {
+        if isSyncing {
+            return .accentColor
+        }
+        if isActive {
+            return .green
+        }
+        if isArchived {
+            return .blue
+        }
+        return .secondary
+    }
+
+    private var rowStrokeColor: Color {
+        if isHovering || isSyncing {
+            return rowStatusColor.opacity(colorScheme == .dark ? 0.34 : 0.28)
+        }
+        return Color.primary.opacity(colorScheme == .dark ? 0.09 : 0.08)
+    }
+
+    private var rowHighlightOpacity: Double {
+        return min(0.70, 0.42 * legibility.glassIntensity.highlightScale)
     }
 
     @ViewBuilder
@@ -1274,6 +1397,9 @@ struct AlembicRepositoryRow: View {
         _ name: String,
         invoke: @escaping (@escaping (AlembicRepositoryActionsBridge.ActionResult) -> Void) -> Void
     ) {
+        if actionInFlight != nil {
+            return
+        }
         actionInFlight = name
         invoke { _ in
             actionInFlight = nil

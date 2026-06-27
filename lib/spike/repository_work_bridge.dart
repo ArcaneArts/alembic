@@ -246,9 +246,13 @@ class RepositoryWorkBridge {
     if (!_attached) {
       return;
     }
-    final Map<String, Object?> snapshot = _buildSnapshot();
+    Map<String, Object?> snapshot = _buildSnapshot();
+    unawaited(_pushSnapshot(snapshot));
+  }
+
+  Future<void> _pushSnapshot(Map<String, Object?> snapshot) async {
     try {
-      _channel.invokeMethod<void>(
+      await _channel.invokeMethod<void>(
         SpikeRepositoryWorkMethods.state,
         snapshot,
       );

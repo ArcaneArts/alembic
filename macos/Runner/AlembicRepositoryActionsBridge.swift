@@ -11,6 +11,8 @@ private extension OSLog {
 
 final class AlembicRepositoryActionsBridge: NSObject {
     static let shared: AlembicRepositoryActionsBridge = AlembicRepositoryActionsBridge()
+    private static let actionTimeoutSeconds: TimeInterval = 120
+    private static let detailTimeoutSeconds: TimeInterval = 20
 
     private var channel: FlutterMethodChannel?
 
@@ -120,16 +122,39 @@ final class AlembicRepositoryActionsBridge: NSObject {
     }
 
     func getDetail(fullName: String, completion: @escaping (RepositoryDetail) -> Void) {
+        guard let channel: FlutterMethodChannel = channel else {
+            DispatchQueue.main.async {
+                completion(AlembicRepositoryActionsBridge.detailError(
+                    fullName: fullName,
+                    message: "Repository detail channel is not attached."
+                ))
+            }
+            return
+        }
         let arguments: [String: Any] = ["fullName": fullName]
         AlembicDiagnosticsBridge.shared.recordNative(
             level: "trace",
             tag: "swift.actions",
             message: "getDetail -> \(fullName)"
         )
-        channel?.invokeMethod("getDetail", arguments: arguments) { result in
+        var didComplete: Bool = false
+        let complete: (RepositoryDetail) -> Void = { detail in
             DispatchQueue.main.async {
-                completion(AlembicRepositoryActionsBridge.parseDetail(raw: result, fullName: fullName))
+                if didComplete {
+                    return
+                }
+                didComplete = true
+                completion(detail)
             }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + AlembicRepositoryActionsBridge.detailTimeoutSeconds) {
+            complete(AlembicRepositoryActionsBridge.detailError(
+                fullName: fullName,
+                message: "Repository detail timed out."
+            ))
+        }
+        channel.invokeMethod("getDetail", arguments: arguments) { result in
+            complete(AlembicRepositoryActionsBridge.parseDetail(raw: result, fullName: fullName))
         }
     }
 
@@ -139,6 +164,17 @@ final class AlembicRepositoryActionsBridge: NSObject {
         accountId: String?,
         completion: @escaping (ActionResult) -> Void
     ) {
+        guard let channel: FlutterMethodChannel = channel else {
+            DispatchQueue.main.async {
+                completion(ActionResult(
+                    ok: false,
+                    state: nil,
+                    fullName: fullName,
+                    error: "Repository action channel is not attached."
+                ))
+            }
+            return
+        }
         var arguments: [String: Any] = ["fullName": fullName]
         if let accountId: String = accountId, !accountId.isEmpty {
             arguments["accountId"] = accountId
@@ -148,10 +184,26 @@ final class AlembicRepositoryActionsBridge: NSObject {
             tag: "swift.actions",
             message: "\(method) -> \(fullName)"
         )
-        channel?.invokeMethod(method, arguments: arguments) { result in
+        var didComplete: Bool = false
+        let complete: (ActionResult) -> Void = { actionResult in
             DispatchQueue.main.async {
-                completion(AlembicRepositoryActionsBridge.parseResult(raw: result))
+                if didComplete {
+                    return
+                }
+                didComplete = true
+                completion(actionResult)
             }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + AlembicRepositoryActionsBridge.actionTimeoutSeconds) {
+            complete(ActionResult(
+                ok: false,
+                state: nil,
+                fullName: fullName,
+                error: "\(method) timed out."
+            ))
+        }
+        channel.invokeMethod(method, arguments: arguments) { result in
+            complete(AlembicRepositoryActionsBridge.parseResult(raw: result))
         }
     }
 
@@ -242,6 +294,28 @@ final class AlembicRepositoryActionsBridge: NSObject {
             archiveMasterLastCommitHash: archiveMaster?["lastCommitHash"] as? String,
             archiveMasterLastErrorMessage: archiveMaster?["lastErrorMessage"] as? String,
             error: map["error"] as? String
+        )
+    }
+
+    private static func detailError(fullName: String, message: String) -> RepositoryDetail {
+        return RepositoryDetail(
+            ok: false,
+            fullName: fullName,
+            repoPath: "",
+            archivePath: "",
+            archiveMasterPath: "",
+            state: "cloud",
+            daysUntilArchival: 0,
+            lastOpenMs: nil,
+            latestFileModificationMs: nil,
+            accountId: nil,
+            accountLogin: nil,
+            archiveMasterFullName: nil,
+            archiveMasterLastCheckedMs: nil,
+            archiveMasterLastPulledMs: nil,
+            archiveMasterLastCommitHash: nil,
+            archiveMasterLastErrorMessage: nil,
+            error: message
         )
     }
 

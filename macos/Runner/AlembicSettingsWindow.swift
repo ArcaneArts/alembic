@@ -3,6 +3,7 @@ import SwiftUI
 
 private enum SettingsPane: String, CaseIterable, Identifiable {
     case general
+    case updates
     case workspace
     case tools
     case archiveMaster
@@ -14,6 +15,7 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .general: return "General"
+        case .updates: return "Updates"
         case .workspace: return "Workspace"
         case .tools: return "Tools"
         case .archiveMaster: return "Archive Master"
@@ -25,6 +27,7 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
     var systemImage: String {
         switch self {
         case .general: return "gearshape"
+        case .updates: return "arrow.down.circle"
         case .workspace: return "folder"
         case .tools: return "wrench.and.screwdriver"
         case .archiveMaster: return "archivebox"
@@ -37,6 +40,7 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
 struct AlembicSettingsWindow: View {
     @ObservedObject var settingsState: SettingsBridgeState
     @ObservedObject var accountsState: AccountsBridgeState
+    @ObservedObject private var updates: UpdatesBridgeState = AlembicUpdatesBridge.shared.state
     @State private var selection: SettingsPane = .general
 
     var body: some View {
@@ -72,6 +76,10 @@ struct AlembicSettingsWindow: View {
                         Text(pane.title)
                             .font(.system(size: 13, weight: selection == pane ? .semibold : .regular))
                             .foregroundStyle(selection == pane ? Color.primary : Color.secondary)
+                        if pane == .updates && updates.updateAvailable {
+                            AlembicUpdateDot()
+                                .help("An update is available")
+                        }
                         Spacer()
                     }
                     .padding(.horizontal, 12)
@@ -106,6 +114,8 @@ struct AlembicSettingsWindow: View {
         switch selection {
         case .general:
             AlembicSettingsGeneralPane(state: settingsState)
+        case .updates:
+            AlembicSettingsUpdatesPane()
         case .workspace:
             AlembicSettingsWorkspacePane(state: settingsState)
         case .tools:
@@ -166,6 +176,27 @@ private struct AlembicSettingsGeneralPane: View {
                                 )
                             )
                             .labelsHidden()
+                        }
+                        Divider().opacity(0.3)
+                        settingRow(
+                            title: "Glass intensity",
+                            description: "Choose how much depth and specular edge treatment the interface uses."
+                        ) {
+                            Picker(
+                                "",
+                                selection: Binding<AlembicGlassIntensity>(
+                                    get: { legibility.glassIntensity },
+                                    set: { next in legibility.setGlassIntensity(next) }
+                                )
+                            ) {
+                                ForEach(AlembicGlassIntensity.allCases, id: \.self) { intensity in
+                                    Text(intensity.displayName).tag(intensity)
+                                }
+                            }
+                            .pickerStyle(.segmented)
+                            .labelsHidden()
+                            .frame(width: 220)
+                            .disabled(!legibility.glassEnabled)
                         }
                     }
                 }
@@ -813,25 +844,19 @@ private struct AlembicSettingsAdvancedPane: View {
 
 struct AlembicSettingsCard<Content: View>: View {
     @ViewBuilder var content: () -> Content
-    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12, content: content)
-            .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: AlembicGlassSurfaceStyle.card.cornerRadius, style: .continuous)
-                    .fill(Color.white.opacity(colorScheme == .dark ? 0.055 : 0.19))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: AlembicGlassSurfaceStyle.card.cornerRadius, style: .continuous)
-                    .strokeBorder(Color.white.opacity(colorScheme == .dark ? 0.16 : 0.34), lineWidth: AlembicGlassTokens.hairline)
+            .alembicGlassSurface(
+                .card,
+                padding: EdgeInsets(top: 16, leading: 16, bottom: 16, trailing: 16)
             )
     }
 }
 
 @ViewBuilder
-private func paneHeader(title: String, description: String) -> some View {
+func paneHeader(title: String, description: String) -> some View {
     VStack(alignment: .leading, spacing: 4) {
         Text(title)
             .font(.system(size: 20, weight: .semibold))
@@ -843,7 +868,7 @@ private func paneHeader(title: String, description: String) -> some View {
 }
 
 @ViewBuilder
-private func settingRow<TrailingContent: View>(
+func settingRow<TrailingContent: View>(
     title: String,
     description: String?,
     @ViewBuilder trailing: () -> TrailingContent

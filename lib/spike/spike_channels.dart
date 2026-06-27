@@ -7,6 +7,7 @@ class SpikeChannels {
   static const String settings = 'alembic.spike.settings';
   static const String diagnostics = 'alembic.spike.diagnostics';
   static const String workspace = 'alembic.spike.workspace';
+  static const String updates = 'alembic.spike.updates';
 }
 
 class SpikeAppChannelMethods {
@@ -71,6 +72,14 @@ class SpikeSettingsChannelMethods {
   static const String setRepoConfig = 'setRepoConfig';
   static const String getRepoConfig = 'getRepoConfig';
   static const String revealDataFolder = 'revealDataFolder';
+}
+
+class SpikeUpdatesChannelMethods {
+  static const String state = 'state';
+  static const String getState = 'getState';
+  static const String setAutoCheck = 'setAutoCheck';
+  static const String checkNow = 'checkNow';
+  static const String install = 'install';
 }
 
 class SpikeRepositoryStatus {

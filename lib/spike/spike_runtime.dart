@@ -12,6 +12,7 @@ import 'package:alembic/spike/repository_work_bridge.dart';
 import 'package:alembic/spike/settings_channel_bridge.dart';
 import 'package:alembic/spike/spike_channels.dart';
 import 'package:alembic/spike/spike_diagnostics.dart';
+import 'package:alembic/spike/update_channel_bridge.dart';
 import 'package:alembic/spike/workspace_channel_bridge.dart';
 import 'package:alembic/util/git_accounts.dart';
 import 'package:flutter/services.dart';
@@ -25,8 +26,10 @@ class AlembicSpikeRuntime {
     RepositoryWorkBridge? workBridge,
     AccountsChannelBridge? accountsBridge,
     SettingsChannelBridge? settingsBridge,
+    UpdateChannelBridge? updatesBridge,
     SpikeDiagnostics? diagnostics,
   })  : _store = store ?? SpikeAppStateStore(),
+        _updatesBridge = updatesBridge ?? UpdateChannelBridge(),
         _repositoryBridge = repositoryBridge ?? RepositoryChannelBridge(),
         _diagnostics = diagnostics ?? SpikeDiagnostics.instance {
     _workspaceBridge = workspaceBridge ??
@@ -51,6 +54,7 @@ class AlembicSpikeRuntime {
   late final RepositoryWorkBridge _workBridge;
   late final AccountsChannelBridge _accountsBridge;
   late final SettingsChannelBridge _settingsBridge;
+  final UpdateChannelBridge _updatesBridge;
   final SpikeDiagnostics _diagnostics;
   Timer? _heartbeatTimer;
   StreamSubscription<SpikeAppState>? _stateSubscription;
@@ -92,6 +96,9 @@ class AlembicSpikeRuntime {
     _diagnostics.log(_logTag, 'attaching settings channel bridge');
     await _settingsBridge.attach();
 
+    _diagnostics.log(_logTag, 'attaching updates channel bridge');
+    await _updatesBridge.attach();
+
     _heartbeatTimer = Timer.periodic(
       const Duration(seconds: 1),
       (_) => _tickHeartbeat(),
@@ -108,6 +115,7 @@ class AlembicSpikeRuntime {
     await _workBridge.dispose();
     await _accountsBridge.dispose();
     await _settingsBridge.dispose();
+    await _updatesBridge.dispose();
     await _repositoryBridge.dispose();
     await _store.close();
     _diagnostics.log(_logTag, 'runtime disposed');

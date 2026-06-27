@@ -155,6 +155,7 @@ class MainFlutterWindow: NSWindow {
     AlembicRepositoryWorkBridge.shared.attach(messenger: messenger)
     AlembicAccountsBridge.shared.attach(messenger: messenger)
     AlembicSettingsBridge.shared.attach(messenger: messenger)
+    AlembicUpdatesBridge.shared.attach(messenger: messenger)
     AlembicWindowBridge.shared.attach(
       window: self,
       backdrop: backdropView,
@@ -179,7 +180,9 @@ class MainFlutterWindow: NSWindow {
         result(LaunchAtLogin.isEnabled)
       case "launchAtStartupSetEnabled":
         if let arguments: [String: Any] = call.arguments as? [String: Any] {
-          LaunchAtLogin.isEnabled = arguments["setEnabledValue"] as! Bool
+          if let enabled: Bool = arguments["setEnabledValue"] as? Bool {
+            LaunchAtLogin.isEnabled = enabled
+          }
         }
         result(nil)
       default:
