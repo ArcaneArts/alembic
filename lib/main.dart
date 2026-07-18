@@ -1,15 +1,24 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
+import 'package:alembic/app/alembic_root.dart';
+import 'package:alembic/bloc/repository_list_store.dart';
+import 'package:alembic/core/account_registry.dart';
+import 'package:alembic/core/archive_master_service.dart';
+import 'package:alembic/core/boot_context.dart';
+import 'package:alembic/core/diagnostics.dart';
+import 'package:alembic/core/legacy_data_migrator.dart';
+import 'package:alembic/core/repository_actions_controller.dart';
+import 'package:alembic/core/repository_runtime_instance.dart';
+import 'package:alembic/core/update_controller.dart';
+import 'package:alembic/core/workspace_scan_service.dart';
 import 'package:alembic/platform/desktop_platform_adapter.dart';
-import 'package:alembic/platform/native_bootstrap.dart';
-import 'package:alembic/spike/boot_context.dart';
-import 'package:alembic/spike/legacy_data_migrator.dart';
-import 'package:alembic/spike/spike_diagnostics.dart';
-import 'package:alembic/spike/spike_runtime.dart';
 import 'package:alembic/util/git_accounts.dart';
+import 'package:alembic/util/legacy_prefs_migration.dart';
+import 'package:alembic/util/window.dart';
 import 'package:fast_log/fast_log.dart';
 import 'package:flutter/widgets.dart' as fw;
 import 'package:hive_flutter/adapters.dart';
@@ -24,6 +33,12 @@ late PackageInfo packageInfo;
 bool windowMode = false;
 late String configPath;
 
+late AccountRegistry accountRegistry;
+late RepositoryListStore repositoryListStore;
+late WorkspaceScanService workspaceScanService;
+late UpdateController updateController;
+late RepositoryActionsController repositoryActionsController;
+
 typedef CommandRunner = Future<int> Function(
   String command,
   List<String> args, {
@@ -37,16 +52,41 @@ Future<void> main() async {
   fw.WidgetsFlutterBinding.ensureInitialized();
   try {
     await _initializeDartRuntime();
-    await NativeBootstrap.install();
-    await AlembicSpikeRuntime().boot();
-    SpikeDiagnostics.instance.success('main', 'Alembic Dart runtime ready');
+    await _startServices();
+    await WindowUtil.init();
+    AlembicDiagnostics.instance.success('main', 'Alembic Dart runtime ready');
     success('Alembic Dart runtime ready');
+    fw.runApp(const AlembicRoot());
   } catch (e, stackTrace) {
-    SpikeDiagnostics.instance
+    AlembicDiagnostics.instance
         .error('main', 'Dart runtime init failed: $e\n$stackTrace');
     error('Dart runtime init failed: $e');
     error('$stackTrace');
   }
+}
+
+Future<void> _startServices() async {
+  accountRegistry = AccountRegistry.fromCurrentStorage();
+  repositoryListStore = RepositoryListStore(registry: accountRegistry);
+  workspaceScanService = WorkspaceScanService(
+    store: repositoryListStore,
+    runtime: repositoryRuntimeInstance,
+  );
+  updateController = UpdateController();
+  repositoryActionsController = RepositoryActionsController(
+    store: repositoryListStore,
+    runtime: repositoryRuntimeInstance,
+  );
+  ArchiveMasterService archiveMaster = ArchiveMasterService(
+    registry: accountRegistry,
+    runtime: repositoryRuntimeInstance,
+  );
+  setArchiveMasterService(archiveMaster);
+  archiveMaster.start();
+  await workspaceScanService.start();
+  updateController.start();
+  unawaited(repositoryListStore.refresh());
+  success('Services constructed and started');
 }
 
 Future<void> _initializeDartRuntime() async {
@@ -61,6 +101,7 @@ Future<void> _initializeDartRuntime() async {
   box = await _openEncryptedDataBox();
   BootContext.instance.hiveEntries = box.length;
   boxSettings = await _openSettingsBoxWithRetry();
+  await LegacyPrefsMigration.run();
   await restoreStoredAuthenticationState();
   packageInfo = await packageInfoFuture;
   await _configureStartup();
@@ -68,7 +109,7 @@ Future<void> _initializeDartRuntime() async {
 }
 
 Future<Box> _openSettingsBoxWithRetry() async {
-  final SpikeDiagnostics diagnostics = SpikeDiagnostics.instance;
+  final AlembicDiagnostics diagnostics = AlembicDiagnostics.instance;
   const int maxAttempts = 4;
   Object? lastError;
   for (int attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -109,7 +150,7 @@ Future<Box> _openSettingsBoxWithRetry() async {
 }
 
 Future<void> _cleanupStaleLockFiles() async {
-  final SpikeDiagnostics diagnostics = SpikeDiagnostics.instance;
+  final AlembicDiagnostics diagnostics = AlembicDiagnostics.instance;
   final List<String> lockNames = <String>[
     's.lock',
     'd.lock',
@@ -138,7 +179,7 @@ Future<void> _cleanupStaleLockFiles() async {
 }
 
 Future<void> _cleanupOldBackupFiles() async {
-  final SpikeDiagnostics diagnostics = SpikeDiagnostics.instance;
+  final AlembicDiagnostics diagnostics = AlembicDiagnostics.instance;
   final Directory dir = Directory(configPath);
   if (!dir.existsSync()) {
     return;
@@ -182,22 +223,23 @@ Future<void> _migrateLegacyDataIfNeeded() async {
     final MigrationReport report = await migrator.migrateIfNeeded(configPath);
     BootContext.instance.migrationReport = report;
     if (report.migrated) {
-      SpikeDiagnostics.instance.success(
+      AlembicDiagnostics.instance.success(
           'main',
           'Migrated legacy account data from ${report.sourcePath} '
               '(${report.copied.length} file(s))');
     } else if (report.attempted) {
-      SpikeDiagnostics.instance.warn(
+      AlembicDiagnostics.instance.warn(
           'main',
           'Legacy migration attempted but no files were copied '
               '(source=${report.sourcePath ?? '<unknown>'})');
     } else {
-      SpikeDiagnostics.instance.trace('main',
+      AlembicDiagnostics.instance.trace('main',
           'No legacy migration needed; searched ${report.searchedPaths.length} path(s)');
     }
   } catch (e, stackTrace) {
-    SpikeDiagnostics.instance.error('main', 'Legacy data migration failed: $e');
-    SpikeDiagnostics.instance.trace('main', 'migration stack: $stackTrace');
+    AlembicDiagnostics.instance
+        .error('main', 'Legacy data migration failed: $e');
+    AlembicDiagnostics.instance.trace('main', 'migration stack: $stackTrace');
   }
 }
 
@@ -229,33 +271,18 @@ Future<void> _setupLogging() async {
 }
 
 void _forwardFastLogToDiagnostics(LogCategory category, String message) {
-  final SpikeDiagnostics diagnostics = SpikeDiagnostics.instance;
-  switch (category) {
-    case LogCategory.error:
-      diagnostics.error('fast_log', message);
-      break;
-    case LogCategory.warning:
-      diagnostics.warn('fast_log', message);
-      break;
-    case LogCategory.success:
-      diagnostics.success('fast_log', message);
-      break;
-    case LogCategory.verbose:
-      diagnostics.trace('fast_log', message);
-      break;
-    case LogCategory.network:
-      diagnostics.trace('fast_log:network', message);
-      break;
-    case LogCategory.navigation:
-      diagnostics.trace('fast_log:nav', message);
-      break;
-    case LogCategory.actioned:
-      diagnostics.log('fast_log:action', message);
-      break;
-    default:
-      diagnostics.log('fast_log', message);
-      break;
-  }
+  AlembicDiagnostics diagnostics = AlembicDiagnostics.instance;
+  (String, void Function(String, String)) route = switch (category) {
+    LogCategory.error => ('fast_log', diagnostics.error),
+    LogCategory.warning => ('fast_log', diagnostics.warn),
+    LogCategory.success => ('fast_log', diagnostics.success),
+    LogCategory.verbose => ('fast_log', diagnostics.trace),
+    LogCategory.network => ('fast_log:network', diagnostics.trace),
+    LogCategory.navigation => ('fast_log:nav', diagnostics.trace),
+    LogCategory.actioned => ('fast_log:action', diagnostics.log),
+    _ => ('fast_log', diagnostics.log),
+  };
+  route.$2(route.$1, message);
 }
 
 Future<void> restoreStoredAuthenticationState() async {
@@ -294,10 +321,8 @@ Future<void> restoreStoredAuthenticationState() async {
   }
 }
 
-String detectStoredTokenType(String token) => detectTokenType(token);
-
 Future<Box> _openEncryptedDataBox() async {
-  final SpikeDiagnostics diagnostics = SpikeDiagnostics.instance;
+  final AlembicDiagnostics diagnostics = AlembicDiagnostics.instance;
   final File hiveFile = File('$configPath/d.hive');
   final int initialBytes = hiveFile.existsSync() ? hiveFile.lengthSync() : 0;
   diagnostics.trace(

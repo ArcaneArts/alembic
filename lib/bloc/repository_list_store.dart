@@ -1,11 +1,16 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:alembic/core/account_registry.dart';
+import 'package:alembic/core/diagnostics.dart';
 import 'package:alembic/domain/repository_dto.dart';
-import 'package:alembic/spike/spike_channels.dart';
-import 'package:alembic/spike/spike_diagnostics.dart';
+import 'package:alembic/domain/repository_list_status.dart';
+import 'package:alembic/platform/desktop_platform_adapter.dart';
 import 'package:alembic/util/git_accounts.dart';
+import 'package:alembic/util/repo_config.dart';
+import 'package:alembic/util/repository_catalog.dart';
+import 'package:alembic/util/semaphore.dart';
 import 'package:github/github.dart';
 import 'package:http/http.dart' as http;
 import 'package:rxdart/subjects.dart';
@@ -16,27 +21,30 @@ class RepositoryListStore {
     Duration? fetchTimeout,
     Duration? perPageTimeout,
     int? maxPages,
-    SpikeDiagnostics? diagnostics,
+    AlembicDiagnostics? diagnostics,
   })  : _registry = registry ?? AccountRegistry.fromCurrentStorage(),
         _fetchTimeout = fetchTimeout ?? const Duration(seconds: 45),
         _perPageTimeout = perPageTimeout ?? const Duration(seconds: 15),
         _maxPages = maxPages ?? 50,
-        _diagnostics = diagnostics ?? SpikeDiagnostics.instance,
+        _diagnostics = diagnostics ?? AlembicDiagnostics.instance,
         _subject = BehaviorSubject<RepositoryListState>.seeded(
           RepositoryListState.initial(),
         );
 
   static const String _logTag = 'repo_store';
   static const int _parallelPageWindow = 4;
+  static const int _refResolveConcurrency = 4;
 
   final AccountRegistry _registry;
   final BehaviorSubject<RepositoryListState> _subject;
   final Duration _fetchTimeout;
   final Duration _perPageTimeout;
   final int _maxPages;
-  final SpikeDiagnostics _diagnostics;
+  final AlembicDiagnostics _diagnostics;
   bool _busy = false;
   int _attemptCounter = 0;
+  int _fetchEpoch = 0;
+  bool _rateLimited = false;
   final Map<String, Repository> _repositoryCache = <String, Repository>{};
 
   Stream<RepositoryListState> get stream => _subject.stream;
@@ -59,14 +67,15 @@ class RepositoryListStore {
     }
     _busy = true;
     _attemptCounter += 1;
-    final int attempt = _attemptCounter;
-    final int startMillis = DateTime.now().millisecondsSinceEpoch;
-    final Stopwatch stopwatch = Stopwatch()..start();
+    _rateLimited = false;
+    int attempt = _attemptCounter;
+    int startMillis = DateTime.now().millisecondsSinceEpoch;
+    Stopwatch stopwatch = Stopwatch()..start();
     _diagnostics.log(_logTag, 'refresh attempt $attempt started');
 
     try {
       _emit(value.copyWith(
-        status: SpikeRepositoryStatus.loading,
+        status: RepositoryListStatus.loading,
         phase: 'preparing',
         attempt: attempt,
         requestStartedMillis: startMillis,
@@ -86,18 +95,18 @@ class RepositoryListStore {
       _registry.refreshFromStorage();
       _emit(value.copyWith(
         phase: 'resolving_account',
-        diagnosticTail: 'Resolving account from storage...',
+        diagnosticTail: 'Resolving accounts from storage...',
       ));
 
-      final GitAccount? primary = _registry.primaryAccount;
-      final GitHub? github = _registry.primaryGitHub;
+      GitAccount? primary = _registry.primaryAccount;
+      List<AccountClient> clients = _registry.clients;
 
-      if (primary == null || github == null) {
+      if (primary == null || clients.isEmpty) {
         _diagnostics.warn(
-            _logTag, 'no primary account configured; emitting noAccount state');
+            _logTag, 'no account configured; emitting noAccount state');
         stopwatch.stop();
         _emit(value.copyWith(
-          status: SpikeRepositoryStatus.noAccount,
+          status: RepositoryListStatus.noAccount,
           phase: 'no_account',
           repositories: const <RepositoryDto>[],
           fetchedCount: 0,
@@ -110,9 +119,9 @@ class RepositoryListStore {
         return;
       }
 
-      final String accountLogin = primary.login ?? primary.name;
+      String accountLogin = primary.login ?? primary.name;
       _diagnostics.log(_logTag,
-          'primary account resolved: $accountLogin (id=${primary.id}, type=${primary.tokenType})');
+          'primary account resolved: $accountLogin (id=${primary.id}, type=${primary.tokenType}); ${clients.length} account(s) total');
       _emit(value.copyWith(
         accountLogin: accountLogin,
         phase: 'connecting',
@@ -120,19 +129,66 @@ class RepositoryListStore {
         diagnosticTail: 'Connecting to api.github.com as $accountLogin...',
       ));
 
-      final List<RepositoryDto> fetched = await _fetchRepositoriesWithTimeout(
-        github: github,
-        accountLogin: accountLogin,
+      List<RepositoryDto> fetched = <RepositoryDto>[];
+      Map<String, Repository> nextCache = <String, Repository>{};
+      int pagesCompleted = 0;
+      int succeededClients = 0;
+      Object? firstError;
+      StackTrace? firstStackTrace;
+
+      for (AccountClient client in clients) {
+        String clientLogin = client.account.login ?? client.account.name;
+        _emit(value.copyWith(
+          phase: 'connecting',
+          endpoint: 'GET /user/repos',
+          diagnosticTail: 'Fetching repositories for $clientLogin...',
+        ));
+        _fetchEpoch += 1;
+        int epoch = _fetchEpoch;
+        try {
+          pagesCompleted = await _fetchRepositoriesPaginated(
+            github: client.github,
+            accountId: client.account.id,
+            results: fetched,
+            nextCache: nextCache,
+            pagesCompleted: pagesCompleted,
+            epoch: epoch,
+          ).timeout(
+            _fetchTimeout,
+            onTimeout: () {
+              throw TimeoutException(
+                  'GitHub /user/repos pagination did not complete in '
+                  '${_fetchTimeout.inSeconds}s for $clientLogin');
+            },
+          );
+          succeededClients += 1;
+        } catch (e, stackTrace) {
+          _fetchEpoch += 1;
+          firstError ??= e;
+          firstStackTrace ??= stackTrace;
+          _diagnostics.error(
+              _logTag, 'fetch failed for account $clientLogin: $e');
+        }
+      }
+
+      if (succeededClients == 0 && firstError != null) {
+        Error.throwWithStackTrace(firstError, firstStackTrace!);
+      }
+
+      await _mergeLocalAndCatalogRefs(
+        clients: clients,
+        results: fetched,
+        nextCache: nextCache,
       );
 
       stopwatch.stop();
-      final int durationMillis = stopwatch.elapsedMilliseconds;
+      int durationMillis = stopwatch.elapsedMilliseconds;
 
       if (fetched.isEmpty) {
         _diagnostics.warn(_logTag,
             'fetch completed in ${durationMillis}ms but returned 0 repositories');
         _emit(value.copyWith(
-          status: SpikeRepositoryStatus.empty,
+          status: RepositoryListStatus.empty,
           phase: 'completed_empty',
           accountLogin: accountLogin,
           repositories: const <RepositoryDto>[],
@@ -148,12 +204,12 @@ class RepositoryListStore {
       }
 
       _diagnostics.success(_logTag,
-          'fetch completed in ${durationMillis}ms with ${fetched.length} repositories');
+          'fetch completed in ${durationMillis}ms with ${fetched.length} repositories across ${clients.length} account(s)');
       _emit(value.copyWith(
-        status: SpikeRepositoryStatus.ready,
-        phase: 'completed_ready',
+        status: RepositoryListStatus.ready,
+        phase: _rateLimited ? 'rate_limited' : 'completed_ready',
         accountLogin: accountLogin,
-        repositories: fetched,
+        repositories: List<RepositoryDto>.unmodifiable(fetched),
         fetchedCount: fetched.length,
         lastRefreshMillis: DateTime.now().millisecondsSinceEpoch,
         requestDurationMillis: durationMillis,
@@ -167,7 +223,7 @@ class RepositoryListStore {
       _diagnostics.error(_logTag,
           'fetch timed out after ${stopwatch.elapsedMilliseconds}ms: ${e.message ?? 'no detail'}');
       _emit(value.copyWith(
-        status: SpikeRepositoryStatus.error,
+        status: RepositoryListStatus.error,
         phase: 'timeout',
         errorMessage:
             'Fetch timed out after ${_fetchTimeout.inSeconds} seconds. '
@@ -181,7 +237,7 @@ class RepositoryListStore {
       _diagnostics.error(_logTag,
           'GitHub API error after ${stopwatch.elapsedMilliseconds}ms: ${e.message}');
       _emit(value.copyWith(
-        status: SpikeRepositoryStatus.error,
+        status: RepositoryListStatus.error,
         phase: 'github_error',
         errorMessage: e.message,
         errorCode: 'github_error',
@@ -194,7 +250,7 @@ class RepositoryListStore {
           'fetch failed after ${stopwatch.elapsedMilliseconds}ms: ${e.runtimeType}: $e');
       _diagnostics.trace(_logTag, 'stack trace: $stackTrace');
       _emit(value.copyWith(
-        status: SpikeRepositoryStatus.error,
+        status: RepositoryListStatus.error,
         phase: 'exception',
         errorMessage: e.toString(),
         errorCode: e.runtimeType.toString(),
@@ -213,87 +269,86 @@ class RepositoryListStore {
     await refresh();
   }
 
-  Future<List<RepositoryDto>> _fetchRepositoriesWithTimeout({
+  Future<int> _fetchRepositoriesPaginated({
     required GitHub github,
-    required String accountLogin,
+    required String accountId,
+    required List<RepositoryDto> results,
+    required Map<String, Repository> nextCache,
+    required int pagesCompleted,
+    required int epoch,
   }) async {
-    return _fetchRepositoriesPaginated(
-      github: github,
-      accountLogin: accountLogin,
-    ).timeout(
-      _fetchTimeout,
-      onTimeout: () {
-        throw TimeoutException(
-            'GitHub /user/repos pagination did not complete in '
-            '${_fetchTimeout.inSeconds}s');
-      },
-    );
-  }
-
-  Future<List<RepositoryDto>> _fetchRepositoriesPaginated({
-    required GitHub github,
-    required String accountLogin,
-  }) async {
-    List<RepositoryDto> results = <RepositoryDto>[];
-    Map<String, Repository> nextCache = <String, Repository>{};
-    int pagesCompleted = 0;
+    int completed = pagesCompleted;
 
     _RepositoryPageResult firstPage = await _fetchRepositoryPage(
       github: github,
       pageNumber: 1,
+      epoch: epoch,
     );
-    pagesCompleted = _applyPageResult(
+    completed = _applyPageResult(
       page: firstPage,
+      accountId: accountId,
       results: results,
       nextCache: nextCache,
-      pagesCompleted: pagesCompleted,
+      pagesCompleted: completed,
+      epoch: epoch,
     );
 
+    if (firstPage.rateLimitRemaining == 0 && firstPage.hasNext) {
+      _emitRateLimited(results.length, epoch);
+    }
     if (!firstPage.hasNext ||
         firstPage.recordCount == 0 ||
         firstPage.rateLimitRemaining == 0) {
       _completePagination(
-        pagesCompleted: pagesCompleted,
+        pagesCompleted: completed,
         results: results,
         nextCache: nextCache,
+        epoch: epoch,
       );
-      return results;
+      return completed;
     }
 
     int? lastPageNumber = firstPage.lastPageNumber;
     if (lastPageNumber == null) {
-      pagesCompleted = await _fetchRemainingPagesSequentially(
+      completed = await _fetchRemainingPagesSequentially(
         github: github,
+        accountId: accountId,
         results: results,
         nextCache: nextCache,
-        pagesCompleted: pagesCompleted,
+        pagesCompleted: completed,
         firstNextPage: 2,
+        epoch: epoch,
       );
     } else {
-      pagesCompleted = await _fetchRemainingPagesConcurrently(
+      completed = await _fetchRemainingPagesConcurrently(
         github: github,
+        accountId: accountId,
         results: results,
         nextCache: nextCache,
-        pagesCompleted: pagesCompleted,
+        pagesCompleted: completed,
         lastPageNumber: lastPageNumber,
+        epoch: epoch,
       );
     }
 
     _completePagination(
-      pagesCompleted: pagesCompleted,
+      pagesCompleted: completed,
       results: results,
       nextCache: nextCache,
+      epoch: epoch,
     );
 
-    return results;
+    return completed;
   }
 
   Future<int> _fetchRemainingPagesConcurrently({
     required GitHub github,
+    required String accountId,
     required List<RepositoryDto> results,
     required Map<String, Repository> nextCache,
     required int pagesCompleted,
     required int lastPageNumber,
+    required int epoch,
   }) async {
     int cappedLastPage =
         lastPageNumber > _maxPages ? _maxPages : lastPageNumber;
@@ -306,14 +361,16 @@ class RepositoryListStore {
       if (chunkEnd > cappedLastPage) {
         chunkEnd = cappedLastPage;
       }
-      _emit(value.copyWith(
-        phase: 'requesting_pages',
-        pageNumber: nextPage,
-        endpoint: 'GET /user/repos?page=$nextPage..$chunkEnd',
-        diagnosticTail: nextPage == chunkEnd
-            ? 'Requesting page $nextPage...'
-            : 'Requesting pages $nextPage-$chunkEnd...',
-      ));
+      if (epoch == _fetchEpoch) {
+        _emit(value.copyWith(
+          phase: 'requesting_pages',
+          pageNumber: nextPage,
+          endpoint: 'GET /user/repos?page=$nextPage..$chunkEnd',
+          diagnosticTail: nextPage == chunkEnd
+              ? 'Requesting page $nextPage...'
+              : 'Requesting pages $nextPage-$chunkEnd...',
+        ));
+      }
 
       List<Future<_RepositoryPageResult>> requests =
           <Future<_RepositoryPageResult>>[];
@@ -322,6 +379,7 @@ class RepositoryListStore {
           github: github,
           pageNumber: page,
           emitRequestState: false,
+          epoch: epoch,
         ));
       }
 
@@ -333,13 +391,15 @@ class RepositoryListStore {
       for (_RepositoryPageResult page in pages) {
         completed = _applyPageResult(
           page: page,
+          accountId: accountId,
           results: results,
           nextCache: nextCache,
           pagesCompleted: completed,
+          epoch: epoch,
         );
-        if (page.rateLimitRemaining == 0) {
+        if (page.rateLimitRemaining == 0 && page.hasNext) {
           rateLimited = true;
-          _emitRateLimited(results.length);
+          _emitRateLimited(results.length, epoch);
           break;
         }
       }
@@ -357,10 +417,12 @@ class RepositoryListStore {
 
   Future<int> _fetchRemainingPagesSequentially({
     required GitHub github,
+    required String accountId,
     required List<RepositoryDto> results,
     required Map<String, Repository> nextCache,
     required int pagesCompleted,
     required int firstNextPage,
+    required int epoch,
   }) async {
     int pageNumber = firstNextPage;
     int completed = pagesCompleted;
@@ -369,19 +431,22 @@ class RepositoryListStore {
       _RepositoryPageResult page = await _fetchRepositoryPage(
         github: github,
         pageNumber: pageNumber,
+        epoch: epoch,
       );
       completed = _applyPageResult(
         page: page,
+        accountId: accountId,
         results: results,
         nextCache: nextCache,
         pagesCompleted: completed,
+        epoch: epoch,
       );
 
       if (!page.hasNext || page.recordCount == 0) {
         break;
       }
       if (page.rateLimitRemaining == 0) {
-        _emitRateLimited(results.length);
+        _emitRateLimited(results.length, epoch);
         break;
       }
       pageNumber += 1;
@@ -398,9 +463,10 @@ class RepositoryListStore {
   Future<_RepositoryPageResult> _fetchRepositoryPage({
     required GitHub github,
     required int pageNumber,
+    required int epoch,
     bool emitRequestState = true,
   }) async {
-    if (emitRequestState) {
+    if (emitRequestState && epoch == _fetchEpoch) {
       _emit(value.copyWith(
         phase: 'requesting_page',
         pageNumber: pageNumber,
@@ -459,18 +525,20 @@ class RepositoryListStore {
     if (response.statusCode != 200) {
       _diagnostics.error(_logTag,
           'page $pageNumber returned non-200 status: ${response.statusCode}');
-      _emit(value.copyWith(
-        phase: 'http_error',
-        pageNumber: pageNumber,
-        lastHttpStatus: response.statusCode,
-        lastResponseBytes: contentLength,
-        lastResponseDurationMillis: pageDurationMillis,
-        rateLimitRemaining: rateLimitRemaining,
-        rateLimitLimit: rateLimitLimit,
-        rateLimitResetMillis: rateLimitResetMillis,
-        diagnosticTail:
-            'HTTP ${response.statusCode} on page $pageNumber: ${_extractMessage(response.body)}',
-      ));
+      if (epoch == _fetchEpoch) {
+        _emit(value.copyWith(
+          phase: 'http_error',
+          pageNumber: pageNumber,
+          lastHttpStatus: response.statusCode,
+          lastResponseBytes: contentLength,
+          lastResponseDurationMillis: pageDurationMillis,
+          rateLimitRemaining: rateLimitRemaining,
+          rateLimitLimit: rateLimitLimit,
+          rateLimitResetMillis: rateLimitResetMillis,
+          diagnosticTail:
+              'HTTP ${response.statusCode} on page $pageNumber: ${_extractMessage(response.body)}',
+        ));
+      }
       throw GitHubError(
         github,
         'GitHub returned HTTP ${response.statusCode}: '
@@ -482,14 +550,11 @@ class RepositoryListStore {
     _diagnostics.trace(_logTag,
         'page $pageNumber decoded ${decoded.length} repository records');
 
-    List<RepositoryDto> pageDtos = <RepositoryDto>[];
-    Map<String, Repository> cacheEntries = <String, Repository>{};
+    List<Repository> records = <Repository>[];
     for (dynamic record in decoded) {
       if (record is Map<String, dynamic>) {
         try {
-          Repository repository = Repository.fromJson(record);
-          pageDtos.add(_toDto(repository));
-          cacheEntries[repository.fullName.toLowerCase()] = repository;
+          records.add(Repository.fromJson(record));
         } catch (e) {
           _diagnostics.warn(_logTag,
               'skipped a malformed repository record on page $pageNumber: $e');
@@ -499,8 +564,7 @@ class RepositoryListStore {
 
     return _RepositoryPageResult(
       pageNumber: pageNumber,
-      repositories: pageDtos,
-      cacheEntries: cacheEntries,
+      records: records,
       recordCount: decoded.length,
       statusCode: response.statusCode,
       responseBytes: contentLength,
@@ -515,19 +579,33 @@ class RepositoryListStore {
 
   int _applyPageResult({
     required _RepositoryPageResult page,
+    required String accountId,
     required List<RepositoryDto> results,
     required Map<String, Repository> nextCache,
     required int pagesCompleted,
+    required int epoch,
   }) {
-    results.addAll(page.repositories);
-    nextCache.addAll(page.cacheEntries);
+    if (epoch != _fetchEpoch) {
+      return pagesCompleted;
+    }
+    int addedCount = 0;
+    for (Repository repository in page.records) {
+      String key = repository.fullName.toLowerCase();
+      if (nextCache.containsKey(key)) {
+        continue;
+      }
+      nextCache[key] = repository;
+      results.add(_toDto(repository));
+      _stampRepositoryAccount(repository, accountId);
+      addedCount += 1;
+    }
     _repositoryCache
       ..clear()
       ..addAll(nextCache);
     int completed = pagesCompleted + 1;
 
     _emit(value.copyWith(
-      status: SpikeRepositoryStatus.loading,
+      status: RepositoryListStatus.loading,
       phase: 'page_complete',
       repositories: List<RepositoryDto>.unmodifiable(results),
       pageNumber: page.pageNumber,
@@ -539,18 +617,237 @@ class RepositoryListStore {
       rateLimitRemaining: page.rateLimitRemaining,
       rateLimitLimit: page.rateLimitLimit,
       rateLimitResetMillis: page.rateLimitResetMillis,
-      diagnosticTail: 'Page ${page.pageNumber}: +${page.repositories.length} '
+      diagnosticTail: 'Page ${page.pageNumber}: +$addedCount '
           'repos (total ${results.length}) in ${page.responseDurationMillis}ms',
     ));
 
     return completed;
   }
 
+  void _stampRepositoryAccount(Repository repository, String accountId) {
+    try {
+      AlembicRepoConfig repoConfig = getRepoConfig(repository);
+      String? existing = repoConfig.accountId;
+      if (existing != null &&
+          existing.isNotEmpty &&
+          _registry.accountById(existing) != null) {
+        return;
+      }
+      repoConfig.accountId = accountId;
+      setRepoConfig(repository, repoConfig);
+    } catch (_) {}
+  }
+
+  Future<void> _mergeLocalAndCatalogRefs({
+    required List<AccountClient> clients,
+    required List<RepositoryDto> results,
+    required Map<String, Repository> nextCache,
+  }) async {
+    Map<String, RepositoryRef> unresolved = <String, RepositoryRef>{};
+    try {
+      for (RepositoryRef ref in _scanWorkspaceRepositoryRefs()) {
+        String key = ref.fullName.toLowerCase();
+        if (!nextCache.containsKey(key)) {
+          unresolved.putIfAbsent(key, () => ref);
+        }
+      }
+    } catch (e) {
+      _diagnostics.warn(_logTag, 'workspace ref scan failed: $e');
+    }
+    try {
+      for (RepositoryRef ref in loadManualRepoRefs()) {
+        String key = ref.fullName.toLowerCase();
+        if (!nextCache.containsKey(key)) {
+          unresolved.putIfAbsent(key, () => ref);
+        }
+      }
+    } catch (e) {
+      _diagnostics.warn(_logTag, 'manual catalog load failed: $e');
+    }
+
+    if (unresolved.isEmpty) {
+      return;
+    }
+
+    _emit(value.copyWith(
+      phase: 'merging_local',
+      diagnosticTail:
+          'Resolving ${unresolved.length} workspace/catalog repositories...',
+    ));
+
+    List<Future<Repository> Function()> jobs =
+        <Future<Repository> Function()>[];
+    for (RepositoryRef ref in unresolved.values) {
+      jobs.add(() async {
+        Repository? resolved = await _resolveRepositoryRef(ref, clients);
+        return resolved ?? _placeholderRepository(ref);
+      });
+    }
+    List<Repository> resolvedRepositories =
+        await jobs.waitSemaphore<Repository>(_refResolveConcurrency);
+
+    int mergedCount = 0;
+    for (Repository repository in resolvedRepositories) {
+      String key = repository.fullName.toLowerCase();
+      if (nextCache.containsKey(key)) {
+        continue;
+      }
+      nextCache[key] = repository;
+      results.add(_toDto(repository));
+      mergedCount += 1;
+    }
+    _repositoryCache
+      ..clear()
+      ..addAll(nextCache);
+    _diagnostics.log(_logTag,
+        'merged $mergedCount workspace/catalog repositories into the list');
+  }
+
+  Future<Repository?> _resolveRepositoryRef(
+    RepositoryRef ref,
+    List<AccountClient> clients,
+  ) async {
+    RepositorySlug slug = RepositorySlug(ref.owner, ref.name);
+    for (AccountClient client in clients) {
+      try {
+        return await client.github.repositories.getRepository(slug);
+      } catch (_) {}
+    }
+
+    GitHub anonymousGitHub = GitHub();
+    try {
+      return await anonymousGitHub.repositories.getRepository(slug);
+    } catch (_) {
+      return null;
+    } finally {
+      anonymousGitHub.dispose();
+    }
+  }
+
+  Repository _placeholderRepository(RepositoryRef ref) =>
+      Repository.fromJson(<String, dynamic>{
+        'id': ref.fullName.toLowerCase().hashCode.abs(),
+        'name': ref.name,
+        'full_name': ref.fullName,
+        'owner': <String, dynamic>{
+          'login': ref.owner,
+          'id': ref.owner.toLowerCase().hashCode.abs(),
+          'avatar_url': 'https://github.com/${ref.owner}.png',
+          'html_url': 'https://github.com/${ref.owner}',
+        },
+        'private': false,
+      });
+
+  List<RepositoryRef> _scanWorkspaceRepositoryRefs() {
+    String workspacePath = DesktopPlatformAdapter.instance
+        .expandHomePath(config.workspaceDirectory);
+    Directory workspaceDirectory = Directory(workspacePath);
+    if (!workspaceDirectory.existsSync()) {
+      return <RepositoryRef>[];
+    }
+
+    Map<String, RepositoryRef> refsByName = <String, RepositoryRef>{};
+    List<FileSystemEntity> ownerDirectories;
+    try {
+      ownerDirectories = workspaceDirectory.listSync(followLinks: false);
+    } catch (_) {
+      return <RepositoryRef>[];
+    }
+
+    for (FileSystemEntity ownerEntity in ownerDirectories) {
+      if (ownerEntity is! Directory) {
+        continue;
+      }
+
+      String ownerFolderName = _lastPathSegment(ownerEntity.path);
+      if (ownerFolderName.startsWith('.')) {
+        continue;
+      }
+
+      List<FileSystemEntity> repositoryDirectories;
+      try {
+        repositoryDirectories = ownerEntity.listSync(followLinks: false);
+      } catch (_) {
+        continue;
+      }
+
+      for (FileSystemEntity repositoryEntity in repositoryDirectories) {
+        if (repositoryEntity is! Directory) {
+          continue;
+        }
+
+        Directory gitDirectory = Directory('${repositoryEntity.path}/.git');
+        if (!gitDirectory.existsSync()) {
+          continue;
+        }
+
+        String repositoryFolderName = _lastPathSegment(repositoryEntity.path);
+        RepositoryRef? ref = _repositoryRefFromLocalDirectory(
+          repositoryEntity,
+          fallbackOwner: ownerFolderName,
+          fallbackName: repositoryFolderName,
+        );
+        if (ref == null) {
+          continue;
+        }
+
+        refsByName[ref.fullName.toLowerCase()] = ref;
+      }
+    }
+
+    List<RepositoryRef> refs = refsByName.values.toList();
+    refs.sort(
+      (RepositoryRef a, RepositoryRef b) =>
+          a.fullName.toLowerCase().compareTo(b.fullName.toLowerCase()),
+    );
+    return refs;
+  }
+
+  RepositoryRef? _repositoryRefFromLocalDirectory(
+    Directory directory, {
+    required String fallbackOwner,
+    required String fallbackName,
+  }) {
+    File gitConfig = File('${directory.path}/.git/config');
+    if (gitConfig.existsSync()) {
+      try {
+        String contents = gitConfig.readAsStringSync();
+        RegExp urlPattern = RegExp(r'^\s*url\s*=\s*(.+)\s*$', multiLine: true);
+        for (RegExpMatch match in urlPattern.allMatches(contents)) {
+          String? rawUrl = match.group(1);
+          if (rawUrl == null) {
+            continue;
+          }
+          RepositoryRef? ref = parseRepositoryRef(rawUrl);
+          if (ref != null) {
+            return ref;
+          }
+        }
+      } catch (_) {}
+    }
+
+    return RepositoryRef(owner: fallbackOwner, name: fallbackName);
+  }
+
+  String _lastPathSegment(String path) {
+    Uri uri = Uri.file(path);
+    List<String> segments =
+        uri.pathSegments.where((String segment) => segment.isNotEmpty).toList();
+    if (segments.isEmpty) {
+      return path;
+    }
+    return segments.last;
+  }
+
   void _completePagination({
     required int pagesCompleted,
     required List<RepositoryDto> results,
     required Map<String, Repository> nextCache,
+    required int epoch,
   }) {
+    if (epoch != _fetchEpoch) {
+      return;
+    }
     _diagnostics.trace(_logTag,
         'pagination complete after $pagesCompleted page(s) with ${results.length} total repos');
 
@@ -559,7 +856,11 @@ class RepositoryListStore {
       ..addAll(nextCache);
   }
 
-  void _emitRateLimited(int fetchedCount) {
+  void _emitRateLimited(int fetchedCount, int epoch) {
+    if (epoch != _fetchEpoch) {
+      return;
+    }
+    _rateLimited = true;
     _diagnostics.warn(_logTag,
         'rate limit exhausted; stopping pagination with partial results');
     _emit(value.copyWith(
@@ -589,16 +890,14 @@ class RepositoryListStore {
 
   String _extractMessage(String body) {
     try {
-      final dynamic decoded = jsonDecode(body);
+      dynamic decoded = jsonDecode(body);
       if (decoded is Map<String, dynamic>) {
-        final Object? message = decoded['message'];
+        Object? message = decoded['message'];
         if (message is String && message.isNotEmpty) {
           return message;
         }
       }
-    } catch (_) {
-      // body wasn't JSON; fall through to raw
-    }
+    } catch (_) {}
     if (body.length > 200) {
       return '${body.substring(0, 200)}...';
     }
@@ -606,10 +905,9 @@ class RepositoryListStore {
   }
 
   RepositoryDto _toDto(Repository repository) {
-    final int updatedAtMillis =
-        repository.updatedAt?.millisecondsSinceEpoch ?? 0;
-    final String description = repository.description.trim();
-    final String language = repository.language.trim();
+    int updatedAtMillis = repository.updatedAt?.millisecondsSinceEpoch ?? 0;
+    String description = repository.description.trim();
+    String language = repository.language.trim();
     return RepositoryDto(
       fullName: repository.fullName,
       owner: repository.owner?.login ?? 'unknown',
@@ -639,8 +937,7 @@ class RepositoryListStore {
 class _RepositoryPageResult {
   _RepositoryPageResult({
     required this.pageNumber,
-    required this.repositories,
-    required this.cacheEntries,
+    required this.records,
     required this.recordCount,
     required this.statusCode,
     required this.responseBytes,
@@ -653,8 +950,7 @@ class _RepositoryPageResult {
   });
 
   final int pageNumber;
-  final List<RepositoryDto> repositories;
-  final Map<String, Repository> cacheEntries;
+  final List<Repository> records;
   final int recordCount;
   final int statusCode;
   final int responseBytes;

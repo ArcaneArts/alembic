@@ -6,7 +6,7 @@ class AppDelegate: FlutterAppDelegate {
   private var alembicActivity: NSObjectProtocol?
 
   override func applicationWillFinishLaunching(_ notification: Notification) {
-    AlembicTrayController.shared.install()
+    NSApp.setActivationPolicy(.accessory)
     NSApp.disableRelaunchOnLogin()
     alembicActivity = ProcessInfo.processInfo.beginActivity(
       options: [.automaticTerminationDisabled],
@@ -15,7 +15,13 @@ class AppDelegate: FlutterAppDelegate {
   }
 
   override func applicationDidFinishLaunching(_ notification: Notification) {
-    AlembicTrayController.shared.install()
+    if Thread.isMainThread {
+      AlembicTrayController.shared.install()
+    } else {
+      DispatchQueue.main.async {
+        AlembicTrayController.shared.install()
+      }
+    }
   }
 
   override func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

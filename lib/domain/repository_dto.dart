@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:alembic/domain/repository_list_status.dart';
+
 class RepositoryDto {
   const RepositoryDto({
     required this.fullName,
@@ -103,7 +105,7 @@ class RepositoryListState {
 
   factory RepositoryListState.initial() {
     return const RepositoryListState(
-      status: 'idle',
+      status: RepositoryListStatus.idle,
       accountLogin: null,
       repositories: <RepositoryDto>[],
       errorMessage: null,

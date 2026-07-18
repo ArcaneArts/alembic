@@ -1,4 +1,4 @@
-/// Lifecycle of an app self-update, surfaced to the native UI.
+/// Lifecycle of an app self-update.
 enum UpdateStatus {
   /// No check has run yet this session.
   idle,
@@ -19,11 +19,10 @@ enum UpdateStatus {
   error,
 }
 
-/// Immutable view of the update state pushed to the native layer.
+/// Immutable view of the update state.
 ///
-/// Pure data (no Flutter/Hive/channel dependencies) so it can be unit tested
-/// in isolation. [UpdateChannelBridge] owns the current instance and pushes
-/// [toJson] over the updates channel.
+/// Pure data (no Flutter/Hive dependencies) so it can be unit tested in
+/// isolation. UpdateController owns the current instance.
 class UpdateSnapshot {
   static const String defaultReleaseUrl =
       'https://github.com/ArcaneArts/alembic/releases/latest';

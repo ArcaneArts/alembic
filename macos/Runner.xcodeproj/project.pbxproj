@@ -23,34 +23,11 @@
 /* Begin PBXBuildFile section */
 		331C80D8294CF71000263BE5 /* RunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 331C80D7294CF71000263BE5 /* RunnerTests.swift */; };
 		335BBD1B22A9A15E00E9071D /* GeneratedPluginRegistrant.swift in Sources */ = {isa = PBXBuildFile; fileRef = 335BBD1A22A9A15E00E9071D /* GeneratedPluginRegistrant.swift */; };
+		33AA20F12044A3C60003A001 /* AlembicTrayController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33AA20F02044A3C60003A001 /* AlembicTrayController.swift */; };
 		33CC10F12044A3C60003C045 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33CC10F02044A3C60003C045 /* AppDelegate.swift */; };
 		33CC10F32044A3C60003C045 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 33CC10F22044A3C60003C045 /* Assets.xcassets */; };
 		33CC10F62044A3C60003C045 /* MainMenu.xib in Resources */ = {isa = PBXBuildFile; fileRef = 33CC10F42044A3C60003C045 /* MainMenu.xib */; };
 		33CC11132044BFA00003C045 /* MainFlutterWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33CC11122044BFA00003C045 /* MainFlutterWindow.swift */; };
-		33AA20F12044A3C60003A001 /* AlembicTrayController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33AA20F02044A3C60003A001 /* AlembicTrayController.swift */; };
-		33BB20A12044C8A00003B001 /* AlembicGlassSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33BB20A02044C8A00003B001 /* AlembicGlassSurface.swift */; };
-		33BB30A12044C8A00003B001 /* AlembicGlassBackdrop.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33BB30A02044C8A00003B001 /* AlembicGlassBackdrop.swift */; };
-		33CD20A12044C8A00003B001 /* AlembicWindowBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33CD20A02044C8A00003B001 /* AlembicWindowBridge.swift */; };
-		33CD20A12044C8A00003B099 /* AlembicWindowPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33CD20A02044C8A00003B099 /* AlembicWindowPreferences.swift */; };
-		33CD30A12044C8A00003B001 /* AlembicModalsBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33CD30A02044C8A00003B001 /* AlembicModalsBridge.swift */; };
-		33CD40A12044C8A00003B001 /* AlembicMenusBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33CD40A02044C8A00003B001 /* AlembicMenusBridge.swift */; };
-		33CD50A12044C8A00003B001 /* AlembicSpikeBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33CD50A02044C8A00003B001 /* AlembicSpikeBridge.swift */; };
-		33CDA0A12044C8A00003B001 /* AlembicDiagnosticsBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33CDA0A02044C8A00003B001 /* AlembicDiagnosticsBridge.swift */; };
-		33CDB0A12044C8A00003B001 /* AlembicDiagnosticsConsole.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33CDB0A02044C8A00003B001 /* AlembicDiagnosticsConsole.swift */; };
-		33CD60A12044C8A00003B001 /* AlembicSpikeRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33CD60A02044C8A00003B001 /* AlembicSpikeRootView.swift */; };
-		33CD70A12044C8A00003B001 /* AlembicRepositoryListBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33CD70A02044C8A00003B001 /* AlembicRepositoryListBridge.swift */; };
-		33CD80A12044C8A00003B001 /* AlembicRepositoryListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33CD80A02044C8A00003B001 /* AlembicRepositoryListView.swift */; };
-		33CD90A12044C8A00003B001 /* AlembicSignInSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33CD90A02044C8A00003B001 /* AlembicSignInSheet.swift */; };
-		33CDC0A12044C8A00003B001 /* AlembicWorkspaceBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33CDC0A02044C8A00003B001 /* AlembicWorkspaceBridge.swift */; };
-		33CDD0A12044C8A00003B001 /* AlembicImportSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33CDD0A02044C8A00003B001 /* AlembicImportSheet.swift */; };
-		33CE10A12044C8A00003B001 /* AlembicRepositoryActionsBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33CE10A02044C8A00003B001 /* AlembicRepositoryActionsBridge.swift */; };
-		33CE20A12044C8A00003B001 /* AlembicRepositoryWorkBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33CE20A02044C8A00003B001 /* AlembicRepositoryWorkBridge.swift */; };
-		33CE30A12044C8A00003B001 /* AlembicAccountsBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33CE30A02044C8A00003B001 /* AlembicAccountsBridge.swift */; };
-		33CE40A12044C8A00003B001 /* AlembicSettingsBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33CE40A02044C8A00003B001 /* AlembicSettingsBridge.swift */; };
-		FACE00000000000000000002 /* AlembicUpdatesBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = FACE00000000000000000001 /* AlembicUpdatesBridge.swift */; };
-		FACE00000000000000000004 /* AlembicSettingsUpdatesPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = FACE00000000000000000003 /* AlembicSettingsUpdatesPane.swift */; };
-		33CE50A12044C8A00003B001 /* AlembicSettingsWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33CE50A02044C8A00003B001 /* AlembicSettingsWindow.swift */; };
-		33CE60A12044C8A00003B001 /* AlembicRepositoryDetailSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33CE60A02044C8A00003B001 /* AlembicRepositoryDetailSheet.swift */; };
 		527BE70C1C2D8BE12B1A86B8 /* Pods_RunnerTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 79AED6E3E6B3055E4103DDB9 /* Pods_RunnerTests.framework */; };
 		E5CC63432D168C440054BA1F /* LaunchAtLogin in Frameworks */ = {isa = PBXBuildFile; productRef = E5CC63422D168C440054BA1F /* LaunchAtLogin */; };
 		F98D79D4B5C79A4FC40CB63F /* Pods_Runner.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E79667E9A69D96734C3247D0 /* Pods_Runner.framework */; };
@@ -92,36 +69,13 @@
 		331C80D7294CF71000263BE5 /* RunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunnerTests.swift; sourceTree = "<group>"; };
 		333000ED22D3DE5D00554162 /* Warnings.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Warnings.xcconfig; sourceTree = "<group>"; };
 		335BBD1A22A9A15E00E9071D /* GeneratedPluginRegistrant.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = GeneratedPluginRegistrant.swift; sourceTree = "<group>"; };
+		33AA20F02044A3C60003A001 /* AlembicTrayController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlembicTrayController.swift; sourceTree = "<group>"; };
 		33CC10ED2044A3C60003C045 /* alembic.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = alembic.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		33CC10F02044A3C60003C045 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		33CC10F22044A3C60003C045 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Assets.xcassets; path = Runner/Assets.xcassets; sourceTree = "<group>"; };
 		33CC10F52044A3C60003C045 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.xib; name = Base; path = Base.lproj/MainMenu.xib; sourceTree = "<group>"; };
 		33CC10F72044A3C60003C045 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = Info.plist; path = Runner/Info.plist; sourceTree = "<group>"; };
 		33CC11122044BFA00003C045 /* MainFlutterWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainFlutterWindow.swift; sourceTree = "<group>"; };
-		33AA20F02044A3C60003A001 /* AlembicTrayController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlembicTrayController.swift; sourceTree = "<group>"; };
-		33BB20A02044C8A00003B001 /* AlembicGlassSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlembicGlassSurface.swift; sourceTree = "<group>"; };
-		33BB30A02044C8A00003B001 /* AlembicGlassBackdrop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlembicGlassBackdrop.swift; sourceTree = "<group>"; };
-		33CD20A02044C8A00003B001 /* AlembicWindowBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlembicWindowBridge.swift; sourceTree = "<group>"; };
-		33CD20A02044C8A00003B099 /* AlembicWindowPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlembicWindowPreferences.swift; sourceTree = "<group>"; };
-		33CD30A02044C8A00003B001 /* AlembicModalsBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlembicModalsBridge.swift; sourceTree = "<group>"; };
-		33CD40A02044C8A00003B001 /* AlembicMenusBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlembicMenusBridge.swift; sourceTree = "<group>"; };
-		33CD50A02044C8A00003B001 /* AlembicSpikeBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlembicSpikeBridge.swift; sourceTree = "<group>"; };
-		33CDA0A02044C8A00003B001 /* AlembicDiagnosticsBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlembicDiagnosticsBridge.swift; sourceTree = "<group>"; };
-		33CDB0A02044C8A00003B001 /* AlembicDiagnosticsConsole.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlembicDiagnosticsConsole.swift; sourceTree = "<group>"; };
-		33CD60A02044C8A00003B001 /* AlembicSpikeRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlembicSpikeRootView.swift; sourceTree = "<group>"; };
-		33CD70A02044C8A00003B001 /* AlembicRepositoryListBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlembicRepositoryListBridge.swift; sourceTree = "<group>"; };
-		33CD80A02044C8A00003B001 /* AlembicRepositoryListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlembicRepositoryListView.swift; sourceTree = "<group>"; };
-		33CD90A02044C8A00003B001 /* AlembicSignInSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlembicSignInSheet.swift; sourceTree = "<group>"; };
-		33CDC0A02044C8A00003B001 /* AlembicWorkspaceBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlembicWorkspaceBridge.swift; sourceTree = "<group>"; };
-		33CDD0A02044C8A00003B001 /* AlembicImportSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlembicImportSheet.swift; sourceTree = "<group>"; };
-		33CE10A02044C8A00003B001 /* AlembicRepositoryActionsBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlembicRepositoryActionsBridge.swift; sourceTree = "<group>"; };
-		33CE20A02044C8A00003B001 /* AlembicRepositoryWorkBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlembicRepositoryWorkBridge.swift; sourceTree = "<group>"; };
-		33CE30A02044C8A00003B001 /* AlembicAccountsBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlembicAccountsBridge.swift; sourceTree = "<group>"; };
-		33CE40A02044C8A00003B001 /* AlembicSettingsBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlembicSettingsBridge.swift; sourceTree = "<group>"; };
-		FACE00000000000000000001 /* AlembicUpdatesBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlembicUpdatesBridge.swift; sourceTree = "<group>"; };
-		FACE00000000000000000003 /* AlembicSettingsUpdatesPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlembicSettingsUpdatesPane.swift; sourceTree = "<group>"; };
-		33CE50A02044C8A00003B001 /* AlembicSettingsWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlembicSettingsWindow.swift; sourceTree = "<group>"; };
-		33CE60A02044C8A00003B001 /* AlembicRepositoryDetailSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlembicRepositoryDetailSheet.swift; sourceTree = "<group>"; };
 		33CEB47222A05771004F2AC0 /* Flutter-Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = "Flutter-Debug.xcconfig"; sourceTree = "<group>"; };
 		33CEB47422A05771004F2AC0 /* Flutter-Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = "Flutter-Release.xcconfig"; sourceTree = "<group>"; };
 		33CEB47722A0578A004F2AC0 /* Flutter-Generated.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = "Flutter-Generated.xcconfig"; path = "ephemeral/Flutter-Generated.xcconfig"; sourceTree = "<group>"; };
@@ -228,29 +182,6 @@
 				33CC10F02044A3C60003C045 /* AppDelegate.swift */,
 				33CC11122044BFA00003C045 /* MainFlutterWindow.swift */,
 				33AA20F02044A3C60003A001 /* AlembicTrayController.swift */,
-				33BB20A02044C8A00003B001 /* AlembicGlassSurface.swift */,
-				33BB30A02044C8A00003B001 /* AlembicGlassBackdrop.swift */,
-				33CD20A02044C8A00003B001 /* AlembicWindowBridge.swift */,
-				33CD20A02044C8A00003B099 /* AlembicWindowPreferences.swift */,
-				33CD30A02044C8A00003B001 /* AlembicModalsBridge.swift */,
-				33CD40A02044C8A00003B001 /* AlembicMenusBridge.swift */,
-				33CD50A02044C8A00003B001 /* AlembicSpikeBridge.swift */,
-				33CDA0A02044C8A00003B001 /* AlembicDiagnosticsBridge.swift */,
-				33CDB0A02044C8A00003B001 /* AlembicDiagnosticsConsole.swift */,
-				33CD60A02044C8A00003B001 /* AlembicSpikeRootView.swift */,
-				33CD70A02044C8A00003B001 /* AlembicRepositoryListBridge.swift */,
-				33CD80A02044C8A00003B001 /* AlembicRepositoryListView.swift */,
-				33CD90A02044C8A00003B001 /* AlembicSignInSheet.swift */,
-				33CDC0A02044C8A00003B001 /* AlembicWorkspaceBridge.swift */,
-				33CDD0A02044C8A00003B001 /* AlembicImportSheet.swift */,
-				33CE10A02044C8A00003B001 /* AlembicRepositoryActionsBridge.swift */,
-				33CE20A02044C8A00003B001 /* AlembicRepositoryWorkBridge.swift */,
-				33CE30A02044C8A00003B001 /* AlembicAccountsBridge.swift */,
-				33CE40A02044C8A00003B001 /* AlembicSettingsBridge.swift */,
-				FACE00000000000000000001 /* AlembicUpdatesBridge.swift */,
-				FACE00000000000000000003 /* AlembicSettingsUpdatesPane.swift */,
-				33CE50A02044C8A00003B001 /* AlembicSettingsWindow.swift */,
-				33CE60A02044C8A00003B001 /* AlembicRepositoryDetailSheet.swift */,
 				33E51913231747F40026EE4D /* DebugProfile.entitlements */,
 				33E51914231749380026EE4D /* Release.entitlements */,
 				33CC11242044D66E0003C045 /* Resources */,
@@ -537,29 +468,6 @@
 				33CC11132044BFA00003C045 /* MainFlutterWindow.swift in Sources */,
 				33CC10F12044A3C60003C045 /* AppDelegate.swift in Sources */,
 				33AA20F12044A3C60003A001 /* AlembicTrayController.swift in Sources */,
-				33BB20A12044C8A00003B001 /* AlembicGlassSurface.swift in Sources */,
-				33BB30A12044C8A00003B001 /* AlembicGlassBackdrop.swift in Sources */,
-				33CD20A12044C8A00003B001 /* AlembicWindowBridge.swift in Sources */,
-				33CD20A12044C8A00003B099 /* AlembicWindowPreferences.swift in Sources */,
-				33CD30A12044C8A00003B001 /* AlembicModalsBridge.swift in Sources */,
-				33CD40A12044C8A00003B001 /* AlembicMenusBridge.swift in Sources */,
-				33CD50A12044C8A00003B001 /* AlembicSpikeBridge.swift in Sources */,
-				33CDA0A12044C8A00003B001 /* AlembicDiagnosticsBridge.swift in Sources */,
-				33CDB0A12044C8A00003B001 /* AlembicDiagnosticsConsole.swift in Sources */,
-				33CD60A12044C8A00003B001 /* AlembicSpikeRootView.swift in Sources */,
-				33CD70A12044C8A00003B001 /* AlembicRepositoryListBridge.swift in Sources */,
-				33CD80A12044C8A00003B001 /* AlembicRepositoryListView.swift in Sources */,
-				33CD90A12044C8A00003B001 /* AlembicSignInSheet.swift in Sources */,
-				33CDC0A12044C8A00003B001 /* AlembicWorkspaceBridge.swift in Sources */,
-				33CDD0A12044C8A00003B001 /* AlembicImportSheet.swift in Sources */,
-				33CE10A12044C8A00003B001 /* AlembicRepositoryActionsBridge.swift in Sources */,
-				33CE20A12044C8A00003B001 /* AlembicRepositoryWorkBridge.swift in Sources */,
-				33CE30A12044C8A00003B001 /* AlembicAccountsBridge.swift in Sources */,
-				33CE40A12044C8A00003B001 /* AlembicSettingsBridge.swift in Sources */,
-				FACE00000000000000000002 /* AlembicUpdatesBridge.swift in Sources */,
-				FACE00000000000000000004 /* AlembicSettingsUpdatesPane.swift in Sources */,
-				33CE50A12044C8A00003B001 /* AlembicSettingsWindow.swift in Sources */,
-				33CE60A12044C8A00003B001 /* AlembicRepositoryDetailSheet.swift in Sources */,
 				335BBD1B22A9A15E00E9071D /* GeneratedPluginRegistrant.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

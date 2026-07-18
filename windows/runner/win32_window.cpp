@@ -3,8 +3,6 @@
 #include <dwmapi.h>
 #include <flutter_windows.h>
 
-#include "alembic_backdrop.h"
-#include "alembic_bridges.h"
 #include "resource.h"
 
 namespace {
@@ -147,7 +145,6 @@ bool Win32Window::Create(const std::wstring& title,
   }
 
   UpdateTheme(window);
-  AlembicBackdrop::ApplyDetected(window);
 
   return OnCreate();
 }
@@ -218,35 +215,6 @@ Win32Window::MessageHandler(HWND hwnd,
 
     case WM_DWMCOLORIZATIONCOLORCHANGED:
       UpdateTheme(hwnd);
-      AlembicBackdrop::ApplyDetected(hwnd);
-      {
-        DWORD light_mode = 1;
-        DWORD light_mode_size = sizeof(light_mode);
-        if (::RegGetValueW(
-                HKEY_CURRENT_USER, kGetPreferredBrightnessRegKey,
-                kGetPreferredBrightnessRegValue, RRF_RT_REG_DWORD, nullptr,
-                &light_mode, &light_mode_size) == ERROR_SUCCESS) {
-          AlembicBridges::Instance().OnThemeChanged(light_mode == 0);
-        }
-      }
-      return 0;
-
-    case WM_SETTINGCHANGE:
-      if (lparam != 0) {
-        const wchar_t* setting = reinterpret_cast<const wchar_t*>(lparam);
-        if (setting && (::lstrcmpiW(setting, L"ImmersiveColorSet") == 0)) {
-          UpdateTheme(hwnd);
-          AlembicBackdrop::ApplyDetected(hwnd);
-          DWORD light_mode = 1;
-          DWORD light_mode_size = sizeof(light_mode);
-          if (::RegGetValueW(
-                  HKEY_CURRENT_USER, kGetPreferredBrightnessRegKey,
-                  kGetPreferredBrightnessRegValue, RRF_RT_REG_DWORD, nullptr,
-                  &light_mode, &light_mode_size) == ERROR_SUCCESS) {
-            AlembicBridges::Instance().OnThemeChanged(light_mode == 0);
-          }
-        }
-      }
       return 0;
   }
 
