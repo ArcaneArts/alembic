@@ -60,7 +60,7 @@ Future<void> main() async {
   } catch (e, stackTrace) {
     AlembicDiagnostics.instance
         .error('main', 'Dart runtime init failed: $e\n$stackTrace');
-    error('Dart runtime init failed: $e');w
+    error('Dart runtime init failed: $e');
     error('$stackTrace');
   }
 }
