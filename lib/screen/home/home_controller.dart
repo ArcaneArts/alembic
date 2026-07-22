@@ -22,7 +22,6 @@ import 'package:rxdart/rxdart.dart';
 class HomeController {
   static const Duration staleCheckInterval = Duration(minutes: 10);
   static const Duration backgroundRefreshInterval = Duration(minutes: 15);
-  static const int archiveDueSoonDays = 3;
 
   final AccountRegistry registry;
   final RepositoryRuntime runtime;
@@ -343,13 +342,14 @@ class HomeController {
   }
 
   List<String> owners(List<HomeRepositoryEntry> entries) {
-    Set<String> owners = <String>{};
+    Map<String, String> ownersByLower = <String, String>{};
     for (HomeRepositoryEntry entry in entries) {
-      if (entry.dto.owner.trim().isNotEmpty) {
-        owners.add(entry.dto.owner);
+      String owner = entry.dto.owner.trim();
+      if (owner.isNotEmpty) {
+        ownersByLower.putIfAbsent(owner.toLowerCase(), () => owner);
       }
     }
-    List<String> sorted = owners.toList()
+    List<String> sorted = ownersByLower.values.toList()
       ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
     return sorted;
   }
@@ -488,7 +488,7 @@ class HomeController {
     }
     if (archiveEnabled &&
         entry.repoState == RepoState.active &&
-        entry.daysUntilArchive <= archiveDueSoonDays) {
+        entry.daysUntilArchive <= HomeStats.archiveDueSoonDays) {
       return 1;
     }
     return switch (entry.repoState) {

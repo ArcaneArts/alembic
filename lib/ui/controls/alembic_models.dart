@@ -39,20 +39,6 @@ class AlembicDropdownOption<T> {
   });
 }
 
-class AlembicNavigationItem<T> {
-  final T value;
-  final String label;
-  final IconData icon;
-  final String? tooltip;
-
-  const AlembicNavigationItem({
-    required this.value,
-    required this.label,
-    required this.icon,
-    this.tooltip,
-  });
-}
-
 class AlembicSegmentedOption<T> {
   final T value;
   final String label;

@@ -433,13 +433,23 @@ final class AlembicTrayController: NSObject {
         menu.addItem(menuItem(title: "Refresh Repositories", key: "refresh"))
         menu.addItem(menuItem(title: "Import Repositories...", key: "import"))
         menu.addItem(menuItem(title: "Settings...", key: "settings"))
+        menu.addItem(menuItem(
+            title: "Reset Window Position",
+            key: "resetPosition",
+            symbolName: "arrow.counterclockwise"
+        ))
         menu.addItem(NSMenuItem.separator())
         menu.addItem(menuItem(title: "Restart Alembic", key: "restart"))
         menu.addItem(menuItem(title: "Quit Alembic", key: "quit"))
         return menu
     }
 
-    private func menuItem(title: String, key: String, enabled: Bool = true) -> NSMenuItem {
+    private func menuItem(
+        title: String,
+        key: String,
+        enabled: Bool = true,
+        symbolName: String? = nil
+    ) -> NSMenuItem {
         let item: NSMenuItem = NSMenuItem(
             title: title,
             action: #selector(handleMenuItemClick(_:)),
@@ -448,6 +458,14 @@ final class AlembicTrayController: NSObject {
         item.target = self
         item.representedObject = key
         item.isEnabled = enabled
+        if let symbolName: String = symbolName,
+           #available(macOS 11.0, *),
+           let symbol: NSImage = NSImage(
+               systemSymbolName: symbolName,
+               accessibilityDescription: title
+           ) {
+            item.image = symbol
+        }
         return item
     }
 

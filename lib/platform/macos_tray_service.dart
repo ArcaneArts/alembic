@@ -8,6 +8,7 @@ enum AlembicTrayMenuAction {
   refresh,
   import,
   settings,
+  resetPosition,
   restart,
   quit;
 
@@ -17,6 +18,7 @@ enum AlembicTrayMenuAction {
         'refresh' => AlembicTrayMenuAction.refresh,
         'import' => AlembicTrayMenuAction.import,
         'settings' => AlembicTrayMenuAction.settings,
+        'resetPosition' => AlembicTrayMenuAction.resetPosition,
         'restart' => AlembicTrayMenuAction.restart,
         'quit' => AlembicTrayMenuAction.quit,
         'exit' => AlembicTrayMenuAction.quit,

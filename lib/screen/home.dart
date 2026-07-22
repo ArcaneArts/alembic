@@ -12,11 +12,11 @@ import 'package:alembic/domain/repository_dto.dart';
 import 'package:alembic/domain/repository_list_status.dart';
 import 'package:alembic/main.dart';
 import 'package:alembic/platform/macos_tray_service.dart';
-import 'package:alembic/screen/home/home_activity_panel.dart';
+import 'package:alembic/screen/home/home_activity_strip.dart';
 import 'package:alembic/screen/home/home_bulk_actions.dart';
+import 'package:alembic/screen/home/home_clone_dialog.dart';
 import 'package:alembic/screen/home/home_controller.dart';
 import 'package:alembic/screen/home/home_repository_browser.dart';
-import 'package:alembic/screen/home/home_repository_importer.dart';
 import 'package:alembic/screen/home/home_repository_operations.dart';
 import 'package:alembic/screen/home/home_repository_rows.dart';
 import 'package:alembic/screen/home/home_session.dart';
@@ -37,6 +37,7 @@ import 'package:arcane/arcane.dart';
 import 'package:flutter/material.dart' as m;
 import 'package:flutter/services.dart' as services;
 import 'package:github/github.dart';
+import 'package:window_manager/window_manager.dart';
 
 class AlembicHome extends StatefulWidget {
   final AccountRegistry registry;
@@ -66,7 +67,6 @@ class _AlembicHomeState extends State<AlembicHome> {
   late final HomeController _controller;
   late final HomeSessionGuard _session;
   late final HomeBulkActionsCoordinator _bulkActions;
-  late final HomeRepositoryImporter _importer;
   late final HomeUpdatesHook _updatesHook;
   late final m.TextEditingController _searchController;
 
@@ -105,11 +105,6 @@ class _AlembicHomeState extends State<AlembicHome> {
       controller: _controller,
       runtime: widget.runtime,
       onChanged: _refreshState,
-    );
-    _importer = HomeRepositoryImporter(
-      controller: _controller,
-      onReload: () => widget.store.refresh(),
-      onStateFilterSelected: _selectStateFilter,
     );
     _updatesHook = HomeUpdatesHook(controller: updateController);
     _filters = _filters.copyWith(stateFilter: _restoreLastStateFilter());
@@ -371,7 +366,15 @@ class _AlembicHomeState extends State<AlembicHome> {
   }
 
   void _openCloneLink() {
-    unawaited(_importer.import(context));
+    unawaited(
+      showHomeCloneDialog(
+        context,
+        controller: _controller,
+        actionsController: widget.actionsController,
+        onReload: () => widget.store.refresh(),
+        onStateFilterSelected: _selectStateFilter,
+      ),
+    );
   }
 
   void _openImportScreen() {
@@ -401,6 +404,12 @@ class _AlembicHomeState extends State<AlembicHome> {
       snapshot: _snapshot,
     );
     HomeStats stats = HomeStats.fromEntries(entries);
+    List<String> owners = _controller.owners(entries);
+    if (entries.isNotEmpty &&
+        _filters.ownerFilter != null &&
+        !owners.contains(_filters.ownerFilter)) {
+      _filters = _filters.copyWith(clearOwnerFilter: true);
+    }
     List<HomeRepositoryEntry> visible = _controller.visibleEntries(
       entries: entries,
       filters: _filters,
@@ -430,7 +439,6 @@ class _AlembicHomeState extends State<AlembicHome> {
         visibleEntries: visible,
         filters: _filters,
         runtime: widget.runtime,
-        actionsController: widget.actionsController,
         revision: _revision,
         archiveEnabled: archiveEnabled,
         accountForRepository: _controller.accountForRepository,
@@ -444,52 +452,65 @@ class _AlembicHomeState extends State<AlembicHome> {
       );
     }
 
-    Widget scaffold = AlembicScaffold(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-      child: m.Material(
-        type: m.MaterialType.transparency,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            HomeTopBar(
-              filters: _filters,
-              stats: stats,
-              owners: _controller.owners(entries),
-              archiveEnabled: archiveEnabled,
-              refreshing: loading,
-              updateAvailable: _updateAvailable,
-              progress: _controller.progress,
-              progressLabel: _controller.progressLabel,
-              searchController: _searchController,
-              onSearchChanged: _onSearchChanged,
-              onStateFilterSelected: _selectStateFilter,
-              onSortSelected: _selectSortMode,
-              onOwnerSelected: _selectOwner,
-              onRefresh: () => unawaited(_refreshRepositories()),
-              onCloneLink: _openCloneLink,
-              onImport: _openImportScreen,
-              onOpenSettings: _openSettings,
+    Widget scaffold = Stack(
+      children: <Widget>[
+        AlembicScaffold(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+          child: m.Material(
+            type: m.MaterialType.transparency,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                HomeTopBar(
+                  filters: _filters,
+                  stats: stats,
+                  owners: owners,
+                  archiveEnabled: archiveEnabled,
+                  refreshing: loading,
+                  updateAvailable: _updateAvailable,
+                  progress: _controller.progress,
+                  progressLabel: _controller.progressLabel,
+                  searchController: _searchController,
+                  onSearchChanged: _onSearchChanged,
+                  onStateFilterSelected: _selectStateFilter,
+                  onSortSelected: _selectSortMode,
+                  onOwnerSelected: _selectOwner,
+                  onRefresh: () => unawaited(_refreshRepositories()),
+                  onCloneLink: _openCloneLink,
+                  onImport: _openImportScreen,
+                  onOpenSettings: _openSettings,
+                ),
+                const Gap(10),
+                if (showList && _listState.phase == 'rate_limited') ...<Widget>[
+                  HomeRateLimitNotice(
+                    listState: _listState,
+                    onRetry: () => unawaited(widget.store.retry()),
+                  ),
+                  const Gap(AlembicShadcnTokens.gapSm),
+                ],
+                if (showList &&
+                    _listState.status ==
+                        RepositoryListStatus.error) ...<Widget>[
+                  HomeRefreshErrorNotice(
+                    listState: _listState,
+                    onRetry: () => unawaited(widget.store.retry()),
+                  ),
+                  const Gap(AlembicShadcnTokens.gapSm),
+                ],
+                Expanded(child: content),
+              ],
             ),
-            const Gap(14),
-            if (showList && _listState.phase == 'rate_limited') ...<Widget>[
-              HomeRateLimitNotice(
-                listState: _listState,
-                onRetry: () => unawaited(widget.store.retry()),
-              ),
-              const Gap(AlembicShadcnTokens.gapSm),
-            ],
-            if (showList &&
-                _listState.status == RepositoryListStatus.error) ...<Widget>[
-              HomeRefreshErrorNotice(
-                listState: _listState,
-                onRetry: () => unawaited(widget.store.retry()),
-              ),
-              const Gap(AlembicShadcnTokens.gapSm),
-            ],
-            Expanded(child: content),
-          ],
+          ),
         ),
-      ),
+        if (Platform.isMacOS)
+          const Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: AlembicShadcnTokens.macTitlebarInset,
+            child: DragToMoveArea(child: SizedBox.expand()),
+          ),
+      ],
     );
 
     return m.CallbackShortcuts(
@@ -509,13 +530,10 @@ class _AlembicHomeState extends State<AlembicHome> {
 }
 
 class _HomeReadyLayout extends StatelessWidget {
-  static const double sidebarBreakpoint = 940;
-
   final List<HomeRepositoryEntry> entries;
   final List<HomeRepositoryEntry> visibleEntries;
   final HomeFilterState filters;
   final RepositoryRuntime runtime;
-  final RepositoryActionsController actionsController;
   final int revision;
   final bool archiveEnabled;
   final GitAccount? Function(Repository repository) accountForRepository;
@@ -533,7 +551,6 @@ class _HomeReadyLayout extends StatelessWidget {
     required this.visibleEntries,
     required this.filters,
     required this.runtime,
-    required this.actionsController,
     required this.revision,
     required this.archiveEnabled,
     required this.accountForRepository,
@@ -547,53 +564,28 @@ class _HomeReadyLayout extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) => LayoutBuilder(
-        builder: (context, constraints) {
-          Widget browser = HomeRepositoryBrowserPane(
-            entries: visibleEntries,
-            totalCount: entries.length,
-            runtime: runtime,
-            revision: revision,
-            archiveEnabled: archiveEnabled,
-            filters: filters,
-            accountForRepository: accountForRepository,
-            canForkRepository: canForkRepository,
-            onPrimaryAction: onPrimaryAction,
-            onRepositoryAction: onRepositoryAction,
-            onShowDetails: onShowDetails,
-            onCloneSelected: onCloneSelected,
-            onClearFilters: onClearFilters,
-            onImportRepository: onImportRepository,
-          );
-          if (constraints.maxWidth >= sidebarBreakpoint) {
-            double sidebarWidth =
-                (constraints.maxWidth * 0.26).clamp(280.0, 320.0).toDouble();
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: <Widget>[
-                Expanded(child: browser),
-                const Gap(AlembicShadcnTokens.gapMd),
-                SizedBox(
-                  width: sidebarWidth,
-                  child: m.SingleChildScrollView(
-                    child: HomeSidebarPanel(
-                      runtime: runtime,
-                      actionsController: actionsController,
-                      entries: entries,
-                      archiveEnabled: archiveEnabled,
-                    ),
-                  ),
-                ),
-              ],
-            );
-          }
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
-              HomeActivityStrip(runtime: runtime),
-              Expanded(child: browser),
-            ],
-          );
-        },
+  Widget build(BuildContext context) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          HomeActivityStrip(runtime: runtime),
+          Expanded(
+            child: HomeRepositoryBrowserPane(
+              entries: visibleEntries,
+              totalCount: entries.length,
+              runtime: runtime,
+              revision: revision,
+              archiveEnabled: archiveEnabled,
+              filters: filters,
+              accountForRepository: accountForRepository,
+              canForkRepository: canForkRepository,
+              onPrimaryAction: onPrimaryAction,
+              onRepositoryAction: onRepositoryAction,
+              onShowDetails: onShowDetails,
+              onCloneSelected: onCloneSelected,
+              onClearFilters: onClearFilters,
+              onImportRepository: onImportRepository,
+            ),
+          ),
+        ],
       );
 }

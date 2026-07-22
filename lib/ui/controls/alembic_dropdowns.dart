@@ -37,9 +37,6 @@ class AlembicDropdownMenu<T> extends StatelessWidget {
     Widget button = Builder(
       builder: (BuildContext context) => _AlembicDropdownTrigger(
         label: label,
-        optionLabels: <String>[
-          for (AlembicDropdownOption<T> item in items) item.label,
-        ],
         onPressed: items.isEmpty ? null : () => _showMenu(context),
         leadingIcon: leadingIcon,
         trailingIcon: trailingIcon,
@@ -214,7 +211,6 @@ class AlembicSelect<T> extends StatelessWidget {
 
 class _AlembicDropdownTrigger extends StatelessWidget {
   final String label;
-  final List<String> optionLabels;
   final VoidCallback? onPressed;
   final IconData? leadingIcon;
   final IconData trailingIcon;
@@ -225,7 +221,6 @@ class _AlembicDropdownTrigger extends StatelessWidget {
 
   const _AlembicDropdownTrigger({
     required this.label,
-    required this.optionLabels,
     required this.onPressed,
     required this.leadingIcon,
     required this.trailingIcon,
@@ -277,49 +272,13 @@ class _AlembicDropdownTrigger extends StatelessWidget {
       iconOnly: iconOnly,
       child: button,
     );
-    if (iconOnly) {
+    if (iconOnly || minWidth == null) {
       return framed;
     }
-    double contentMinWidth = _contentMinWidth(context, theme);
-    double effectiveMinWidth = minWidth != null && minWidth! > contentMinWidth
-        ? minWidth!
-        : contentMinWidth;
     return ConstrainedBox(
-      constraints: BoxConstraints(minWidth: effectiveMinWidth),
+      constraints: BoxConstraints(minWidth: minWidth!),
       child: framed,
     );
-  }
-
-  double _contentMinWidth(BuildContext context, ThemeData theme) {
-    TextStyle style = theme.typography.small.copyWith(
-      fontWeight: FontWeight.w600,
-    );
-    TextPainter painter = TextPainter(
-      textDirection: Directionality.of(context),
-      maxLines: 1,
-      textScaler: MediaQuery.textScalerOf(context),
-    );
-    double widest = 0;
-    for (String text in <String>[label, ...optionLabels]) {
-      painter.text = TextSpan(text: text, style: style);
-      painter.layout();
-      if (painter.width > widest) {
-        widest = painter.width;
-      }
-    }
-    painter.dispose();
-    EdgeInsets padding = compact
-        ? AlembicShadcnTokens.compactControlPadding
-        : AlembicShadcnTokens.controlPadding;
-    double chrome = padding.horizontal +
-        2 +
-        15 +
-        AlembicShadcnTokens.gapSm +
-        (leadingIcon == null ? 0 : 15 + AlembicShadcnTokens.gapSm);
-    double total = widest.ceilToDouble() + chrome;
-    return total > AlembicShadcnTokens.dropdownTriggerMaxWidth
-        ? AlembicShadcnTokens.dropdownTriggerMaxWidth
-        : total;
   }
 }
 

@@ -4,8 +4,11 @@ import 'dart:io';
 import 'package:alembic/app/alembic_dialogs.dart';
 import 'package:alembic/app/alembic_theme.dart';
 import 'package:alembic/platform/desktop_platform_adapter.dart';
-import 'package:alembic/screen/settings/settings_navigation.dart';
-import 'package:alembic/screen/settings/settings_types.dart';
+import 'package:alembic/screen/settings/accounts_pane.dart';
+import 'package:alembic/screen/settings/advanced_pane.dart';
+import 'package:alembic/screen/settings/general_pane.dart';
+import 'package:alembic/screen/settings/tools_pane.dart';
+import 'package:alembic/screen/settings/workspace_pane.dart';
 import 'package:alembic/ui/alembic_ui.dart';
 import 'package:alembic/util/clone_transport.dart';
 import 'package:alembic/util/git_signing.dart';
@@ -16,29 +19,22 @@ import 'package:flutter/material.dart' as m;
 
 Future<void> showSettingsModal(
   BuildContext context, {
-  SettingsPane initialPane = SettingsPane.general,
   VoidCallback? onLogout,
 }) {
   return Navigator.of(context, rootNavigator: true).push(
     m.MaterialPageRoute<void>(
       builder: (_) => Settings(
-        initialPane: initialPane,
         onLogout: onLogout,
-        modal: true,
       ),
     ),
   );
 }
 
 class Settings extends StatefulWidget {
-  final bool modal;
-  final SettingsPane initialPane;
   final VoidCallback? onLogout;
 
   const Settings({
     super.key,
-    this.modal = false,
-    this.initialPane = SettingsPane.general,
     this.onLogout,
   });
 
@@ -46,16 +42,12 @@ class Settings extends StatefulWidget {
   State<Settings> createState() => _SettingsState();
 }
 
-class _SettingsState extends State<Settings> with m.WidgetsBindingObserver {
-  static const double _sidebarWidth = 200;
-  static const double _sidebarGap = 24;
-
+class _SettingsState extends State<Settings> {
   late final m.TextEditingController _archiveDaysController;
   late final GitSigningManager _signingManager;
   late CloneTransportMode _cloneTransportMode;
   GitSigningStatus? _signingStatus;
   bool _signingBusy = false;
-  SettingsPane _pane = SettingsPane.general;
 
   static bool get _isFlutterTestEnvironment {
     if (const bool.fromEnvironment('FLUTTER_TEST')) {
@@ -69,8 +61,6 @@ class _SettingsState extends State<Settings> with m.WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
-    m.WidgetsBinding.instance.addObserver(this);
-    _pane = widget.initialPane;
     _signingManager = const GitSigningManager();
     _cloneTransportMode = loadCloneTransportMode();
     _archiveDaysController = m.TextEditingController(
@@ -89,24 +79,8 @@ class _SettingsState extends State<Settings> with m.WidgetsBindingObserver {
 
   @override
   void dispose() {
-    m.WidgetsBinding.instance.removeObserver(this);
     _archiveDaysController.dispose();
     super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(m.AppLifecycleState state) {
-    if (state != m.AppLifecycleState.inactive &&
-        state != m.AppLifecycleState.hidden &&
-        state != m.AppLifecycleState.paused) {
-      return;
-    }
-    if (_pane == SettingsPane.general || !mounted) {
-      return;
-    }
-    setState(() {
-      _pane = SettingsPane.general;
-    });
   }
 
   Future<void> _selectDirectory({
@@ -248,55 +222,45 @@ class _SettingsState extends State<Settings> with m.WidgetsBindingObserver {
     }
   }
 
-  void _selectPane(SettingsPane pane) {
-    setState(() {
-      _pane = pane;
-    });
-  }
+  List<Widget> _sections() => <Widget>[
+        GeneralSettingsPane(
+          onThemeModeChanged: _setThemeMode,
+        ),
+        WorkspaceSettingsPane(
+          archiveDaysController: _archiveDaysController,
+          onSelectDirectory: _selectDirectory,
+        ),
+        ToolsSettingsPane(
+          cloneTransportMode: _cloneTransportMode,
+          signingBusy: _signingBusy,
+          signingStatus: _signingStatus,
+          onCloneTransportChanged: _onCloneTransportChanged,
+          onConfigureCommitSigning: _configureCommitSigning,
+        ),
+        AccountsSettingsPane(
+          onLogout: widget.onLogout,
+        ),
+        const AdvancedSettingsPane(),
+      ];
 
   @override
   Widget build(BuildContext context) {
-    Widget content = SettingsContent(
-      pane: _pane,
-      archiveDaysController: _archiveDaysController,
-      cloneTransportMode: _cloneTransportMode,
-      signingBusy: _signingBusy,
-      signingStatus: _signingStatus,
-      onSelectDirectory: _selectDirectory,
-      onCloneTransportChanged: _onCloneTransportChanged,
-      onConfigureCommitSigning: _configureCommitSigning,
-      onThemeModeChanged: _setThemeMode,
-      onLogout: widget.onLogout,
-    );
     return m.Material(
       color: Theme.of(context).colorScheme.background,
       child: AlembicScaffold(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            _SettingsHeader(
-              onDone: () => Navigator.of(context).pop(),
+            _SettingsSection(
+              child: _SettingsHeader(
+                onDone: () => Navigator.of(context).pop(),
+              ),
             ),
-            const Gap(AlembicShadcnTokens.gapXl),
+            const Gap(10),
             Expanded(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  SizedBox(
-                    width: _sidebarWidth,
-                    child: SettingsSidebar(
-                      pane: _pane,
-                      onSelected: _selectPane,
-                    ),
-                  ),
-                  const Gap(_sidebarGap),
-                  Expanded(
-                    child: _SettingsBody(
-                      content: content,
-                    ),
-                  ),
-                ],
+              child: _SettingsBody(
+                sections: _sections(),
               ),
             ),
           ],
@@ -317,30 +281,16 @@ class _SettingsHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     ThemeData theme = Theme.of(context);
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: <Widget>[
         Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Text(
-                'Settings',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.typography.x2Large.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const Gap(AlembicShadcnTokens.gapXs),
-              Text(
-                'Configure startup, workspace, accounts, and tooling.',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.typography.small.copyWith(
-                  color: theme.colorScheme.mutedForeground,
-                ),
-              ),
-            ],
+          child: Text(
+            'Settings',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.typography.small.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ),
         const Gap(AlembicShadcnTokens.gapMd),
@@ -354,25 +304,40 @@ class _SettingsHeader extends StatelessWidget {
 }
 
 class _SettingsBody extends StatelessWidget {
-  static const double _paneMaxWidth = 680;
+  static const double _sectionGap = 14;
 
-  final Widget content;
+  final List<Widget> sections;
 
   const _SettingsBody({
-    required this.content,
+    required this.sections,
   });
 
   @override
   Widget build(BuildContext context) => m.ListView(
         padding: const EdgeInsets.only(bottom: AlembicShadcnTokens.gapXl),
         children: <Widget>[
-          Align(
-            alignment: AlignmentDirectional.topStart,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: _paneMaxWidth),
-              child: content,
-            ),
-          ),
+          for (int i = 0; i < sections.length; i++) ...<Widget>[
+            if (i > 0) const Gap(_sectionGap),
+            _SettingsSection(child: sections[i]),
+          ],
         ],
+      );
+}
+
+class _SettingsSection extends StatelessWidget {
+  static const double _contentMaxWidth = 860;
+
+  final Widget child;
+
+  const _SettingsSection({
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) => Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: _contentMaxWidth),
+          child: child,
+        ),
       );
 }

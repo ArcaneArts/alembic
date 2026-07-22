@@ -1,11 +1,16 @@
+import 'dart:async';
+
 import 'package:alembic/app/alembic_theme.dart';
 import 'package:alembic/core/update_controller.dart';
+import 'package:alembic/core/update_status.dart';
 import 'package:alembic/main.dart';
 import 'package:alembic/platform/desktop_platform_adapter.dart';
 import 'package:alembic/screen/settings/settings_rows.dart';
 import 'package:alembic/ui/alembic_ui.dart';
 import 'package:alembic/util/window.dart';
 import 'package:arcane/arcane.dart';
+import 'package:flutter/material.dart' as m;
+import 'package:url_launcher/url_launcher.dart';
 
 class GeneralSettingsPane extends StatefulWidget {
   final ValueChanged<ThemeMode> onThemeModeChanged;
@@ -74,32 +79,36 @@ class _GeneralSettingsPaneState extends State<GeneralSettingsPane> {
     DesktopPlatformAdapter adapter = DesktopPlatformAdapter.instance;
     return AlembicSettingsPane(
       title: 'General',
-      subtitle: 'Global startup, tray behavior, and appearance.',
+      subtitle: 'Global startup, tray behavior, appearance, and updates.',
       children: <Widget>[
-        AlembicSettingsToggleRow(
-          title: 'Launch at startup',
-          description: 'Add or remove Alembic from desktop startup.',
-          value: _launchAtStartupEnabled,
-          onChanged: _setLaunchAtStartup,
+        _PairedToggleRow(
+          first: AlembicSettingsToggleRow(
+            title: 'Launch at startup',
+            description: 'Add or remove Alembic from desktop startup.',
+            value: _launchAtStartupEnabled,
+            onChanged: _setLaunchAtStartup,
+          ),
+          second: AlembicSettingsToggleRow(
+            title: 'Automatic update checks',
+            description:
+                'Check release metadata once shortly after launch. Alembic never interrupts you about updates.',
+            value: _updateAutoCheckEnabled,
+            onChanged: _setUpdateAutoCheck,
+          ),
         ),
-        AlembicSettingsToggleRow(
-          title: 'Automatic update checks',
-          description:
-              'Check release metadata once shortly after launch. Alembic never interrupts you about updates.',
-          value: _updateAutoCheckEnabled,
-          onChanged: _setUpdateAutoCheck,
-        ),
-        AlembicSettingsToggleRow(
-          title: 'Hide window on blur',
-          description: 'Dismiss the window when focus leaves the app.',
-          value: _hideOnBlur,
-          onChanged: _setHideOnBlur,
-        ),
-        AlembicSettingsToggleRow(
-          title: 'Start hidden in tray',
-          description: 'Launch Alembic hidden until the tray icon is used.',
-          value: _startHidden,
-          onChanged: _setStartHidden,
+        _PairedToggleRow(
+          first: AlembicSettingsToggleRow(
+            title: 'Hide window on blur',
+            description: 'Dismiss the window when focus leaves the app.',
+            value: _hideOnBlur,
+            onChanged: _setHideOnBlur,
+          ),
+          second: AlembicSettingsToggleRow(
+            title: 'Start hidden in tray',
+            description: 'Launch Alembic hidden until the tray icon is used.',
+            value: _startHidden,
+            onChanged: _setStartHidden,
+          ),
         ),
         AlembicSettingsMenuRow<ThemeMode>(
           title: 'Theme mode',
@@ -122,7 +131,210 @@ class _GeneralSettingsPaneState extends State<GeneralSettingsPane> {
               'Alembic adapts file explorer, updater, and launch flows by platform.',
           value: adapter.currentPlatform.name,
         ),
+        const AlembicSettingsSectionHeader(title: 'Updates'),
+        const _UpdatesStatusRow(),
       ],
     );
+  }
+}
+
+class _PairedToggleRow extends StatelessWidget {
+  static const double _pairMinWidth = 780;
+  static const double _stackedDividerPadding = 9;
+
+  final AlembicSettingsToggleRow first;
+  final AlembicSettingsToggleRow second;
+
+  const _PairedToggleRow({
+    required this.first,
+    required this.second,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    ThemeData theme = Theme.of(context);
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        if (constraints.maxWidth >= _pairMinWidth) {
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Expanded(child: first),
+              const Gap(AlembicShadcnTokens.gapXl),
+              Expanded(child: second),
+            ],
+          );
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            first,
+            Padding(
+              padding: const EdgeInsets.symmetric(
+                vertical: _stackedDividerPadding,
+              ),
+              child: m.Divider(
+                height: 1,
+                thickness: 1,
+                color: theme.colorScheme.border,
+              ),
+            ),
+            second,
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _UpdatesStatusRow extends StatelessWidget {
+  const _UpdatesStatusRow();
+
+  @override
+  Widget build(BuildContext context) => StreamBuilder<UpdateSnapshot>(
+        stream: updateController.stream,
+        initialData: updateController.value,
+        builder: (context, snapshot) => _UpdatesStatusContent(
+          snapshot: snapshot.data ?? updateController.value,
+        ),
+      );
+}
+
+class _UpdatesStatusContent extends StatelessWidget {
+  static const m.Color _amber = m.Color(0xFFF0A32E);
+  static const m.Color _green = m.Color(0xFF4C9E5F);
+
+  final UpdateSnapshot snapshot;
+
+  const _UpdatesStatusContent({
+    required this.snapshot,
+  });
+
+  bool get _busy =>
+      snapshot.status == UpdateStatus.checking ||
+      snapshot.status == UpdateStatus.downloading;
+
+  IconData _iconFor() => switch (snapshot.status) {
+        UpdateStatus.updateAvailable ||
+        UpdateStatus.downloading =>
+          m.Icons.circle,
+        UpdateStatus.checking => m.Icons.sync,
+        UpdateStatus.error => m.Icons.warning_amber_rounded,
+        UpdateStatus.upToDate => m.Icons.check_circle_outline,
+        UpdateStatus.idle => m.Icons.info_outline,
+      };
+
+  m.Color _iconColorFor(ThemeData theme) => switch (snapshot.status) {
+        UpdateStatus.updateAvailable || UpdateStatus.downloading => _amber,
+        UpdateStatus.checking => theme.colorScheme.mutedForeground,
+        UpdateStatus.error => theme.colorScheme.destructive,
+        UpdateStatus.upToDate => _green,
+        UpdateStatus.idle => theme.colorScheme.mutedForeground,
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    ThemeData theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        Row(
+          children: <Widget>[
+            m.Icon(_iconFor(), size: 14, color: _iconColorFor(theme)),
+            const Gap(AlembicShadcnTokens.gapSm),
+            Expanded(
+              child: Text(
+                snapshot.statusLine,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.typography.xSmall.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            const Gap(AlembicShadcnTokens.gapMd),
+            if (snapshot.updateAvailable) ...<Widget>[
+              AlembicToolbarButton(
+                label: 'Update Now',
+                prominent: true,
+                compact: true,
+                busy: snapshot.status == UpdateStatus.downloading,
+                onPressed: snapshot.status == UpdateStatus.updateAvailable
+                    ? () => unawaited(updateController.install())
+                    : null,
+              ),
+              const Gap(AlembicShadcnTokens.gapSm),
+            ],
+            AlembicToolbarButton(
+              label: 'Check Now',
+              compact: true,
+              onPressed:
+                  _busy ? null : () => unawaited(updateController.checkNow()),
+            ),
+            const Gap(AlembicShadcnTokens.gapSm),
+            AlembicToolbarButton(
+              label: 'Release page',
+              trailingIcon: m.Icons.open_in_new,
+              compact: true,
+              onPressed: () =>
+                  unawaited(launchUrl(Uri.parse(snapshot.releaseUrl))),
+            ),
+          ],
+        ),
+        if (snapshot.status == UpdateStatus.downloading) ...<Widget>[
+          const Gap(AlembicShadcnTokens.gapSm),
+          AlembicProgressBar(
+            value: snapshot.downloadProgress,
+            height: 3,
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+extension _UpdateSnapshotPresentation on UpdateSnapshot {
+  String get statusLine => switch (status) {
+        UpdateStatus.updateAvailable =>
+          'Update available · $currentVersion -> ${latestVersion ?? 'newer version'}',
+        UpdateStatus.downloading =>
+          'Downloading ${latestVersion ?? 'update'} · $_progressPercent%',
+        UpdateStatus.checking => 'Checking for updates...',
+        UpdateStatus.error => errorMessage == null
+            ? _withCheckedSuffix('Update check failed')
+            : 'Update check failed · $errorMessage',
+        UpdateStatus.upToDate => _withCheckedSuffix('Up to date'),
+        UpdateStatus.idle => autoCheckEnabled
+            ? 'Alembic $currentVersion · checks shortly after launch'
+            : 'Alembic $currentVersion · automatic checks off',
+      };
+
+  int get _progressPercent => ((downloadProgress ?? 0) * 100).round();
+
+  String get _checkedLabel {
+    int? ms = lastCheckedMs;
+    if (ms == null) {
+      return '';
+    }
+    Duration elapsed =
+        DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(ms));
+    if (elapsed.inMinutes < 1) {
+      return 'checked just now';
+    }
+    if (elapsed.inMinutes < 60) {
+      return 'checked ${elapsed.inMinutes}m ago';
+    }
+    if (elapsed.inHours < 24) {
+      return 'checked ${elapsed.inHours}h ago';
+    }
+    return 'checked ${elapsed.inDays}d ago';
+  }
+
+  String _withCheckedSuffix(String base) {
+    String checked = _checkedLabel;
+    if (checked.isEmpty) {
+      return base;
+    }
+    return '$base · $checked';
   }
 }

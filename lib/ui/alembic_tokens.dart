@@ -30,12 +30,8 @@ class AlembicShadcnTokens {
   static const double compactButtonMinWidth = 56;
   static const double commandButtonWidth = 104;
   static const double commandIconWidth = 36;
-  static const double tabIconWidth = 34;
-  static const double tabExpandedMaxWidth = 128;
-  static const double tabLabelBreakpoint = 700;
-  static const double dropdownTriggerMaxWidth = 320;
   static const double dropdownMenuMaxHeight = 320;
-  static const double macTitlebarInset = 34;
+  static const double macTitlebarInset = 12;
 
   static const double gapXs = 4;
   static const double gapSm = 8;

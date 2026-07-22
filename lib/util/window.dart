@@ -175,6 +175,10 @@ class WindowUtil {
           key: 'settings',
           label: 'Settings...',
         ),
+        MenuItem(
+          key: 'resetPosition',
+          label: 'Reset Window Position',
+        ),
         MenuItem.separator(),
         MenuItem(
           key: 'restart',
@@ -229,8 +233,36 @@ class WindowUtil {
       restart();
       return;
     }
+    if (action == AlembicTrayMenuAction.resetPosition) {
+      resetWindowPosition();
+      return;
+    }
     show();
     _menuActionController.add(action);
+  }
+
+  static Future<void> resetWindowPosition() async {
+    if (windowMode) {
+      return;
+    }
+    _windowSize = const Size(defaultWidth, defaultHeight);
+    await boxSettings.delete('window_width');
+    await boxSettings.delete('window_height');
+    await _safeWindowCall(
+      'reset window size',
+      () => windowManager.setSize(
+        const Size(defaultWidth, defaultHeight),
+        animate: false,
+      ),
+    );
+    await _setWindowsTaskbarVisibility(visible: true);
+    bool positionedNearTray = DesktopPlatformAdapter.instance.isMacOS &&
+        await _positionNearTrayBounds();
+    if (!positionedNearTray) {
+      await _safeWindowCall('center window', () => windowManager.center());
+    }
+    await _safeWindowCall('show window', () => windowManager.show());
+    await _safeWindowCall('focus window', () => windowManager.focus());
   }
 
   static Future<void> restart() async {
@@ -284,7 +316,7 @@ class WindowUtil {
         size: _windowSize,
         minimumSize: const Size(minWidth, minHeight),
         center: false,
-        windowButtonVisibility: true,
+        windowButtonVisibility: false,
         title: 'Alembic',
         alwaysOnTop: false,
         skipTaskbar: DesktopPlatformAdapter.instance.isTrayFirstPlatform,
@@ -408,37 +440,55 @@ class WindowUtil {
   }
 
   static Future<void> _positionNearTray() async {
-    Rect? trayBounds = DesktopPlatformAdapter.instance.isMacOS
-        ? await MacOSTrayService.instance.getBounds()
-        : await trayManager.getBounds();
+    bool positionedNearTray = await _positionNearTrayBounds();
+    if (positionedNearTray) {
+      return;
+    }
     List<Display> displays = await screenRetriever.getAllDisplays();
     if (displays.isEmpty) {
       return;
     }
-
-    Rect? usableTrayBounds = _usableTrayBounds(trayBounds);
-    Display display = usableTrayBounds == null
-        ? await _defaultDisplay(displays)
-        : _displayForTrayBounds(
-            trayBounds: usableTrayBounds,
-            displays: displays,
-          );
+    Display display = await _defaultDisplay(displays);
     Rect visibleBounds = _visibleBoundsForDisplay(display);
     Size windowSize = await _currentWindowSize();
-    Offset position = usableTrayBounds == null
-        ? _defaultTrayFallbackPosition(
-            visibleBounds: visibleBounds,
-            windowSize: windowSize,
-          )
-        : _positionForTrayBounds(
-            trayBounds: usableTrayBounds,
-            visibleBounds: visibleBounds,
-            windowSize: windowSize,
-          );
+    Offset position = _defaultTrayFallbackPosition(
+      visibleBounds: visibleBounds,
+      windowSize: windowSize,
+    );
     await _safeWindowCall(
       'move window near tray',
       () => windowManager.setPosition(position, animate: false),
     );
+  }
+
+  static Future<bool> _positionNearTrayBounds() async {
+    Rect? trayBounds = DesktopPlatformAdapter.instance.isMacOS
+        ? await MacOSTrayService.instance.getBounds()
+        : await trayManager.getBounds();
+    Rect? usableTrayBounds = _usableTrayBounds(trayBounds);
+    if (usableTrayBounds == null) {
+      return false;
+    }
+    List<Display> displays = await screenRetriever.getAllDisplays();
+    if (displays.isEmpty) {
+      return false;
+    }
+    Display display = _displayForTrayBounds(
+      trayBounds: usableTrayBounds,
+      displays: displays,
+    );
+    Rect visibleBounds = _visibleBoundsForDisplay(display);
+    Size windowSize = await _currentWindowSize();
+    Offset position = _positionForTrayBounds(
+      trayBounds: usableTrayBounds,
+      visibleBounds: visibleBounds,
+      windowSize: windowSize,
+    );
+    await _safeWindowCall(
+      'move window near tray',
+      () => windowManager.setPosition(position, animate: false),
+    );
+    return true;
   }
 
   static Rect? _usableTrayBounds(Rect? trayBounds) {

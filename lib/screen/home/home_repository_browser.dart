@@ -52,24 +52,28 @@ class _HomeRepositoryBrowserPaneState extends State<HomeRepositoryBrowserPane> {
   static const String _repositoryListKeyPrefix = 'repository:';
 
   late final ScrollController _scrollController;
-  final Set<String> _selectedKeys = <String>{};
+  late final HomeSelectionController _selection;
 
   @override
   void initState() {
     super.initState();
     _scrollController = ScrollController();
+    _selection = HomeSelectionController();
   }
 
   @override
   void dispose() {
     _scrollController.dispose();
+    _selection.dispose();
     super.dispose();
   }
 
   @override
   void didUpdateWidget(covariant HomeRepositoryBrowserPane oldWidget) {
     super.didUpdateWidget(oldWidget);
-    _pruneSelection();
+    _selection.prune(<String>{
+      for (HomeRepositoryEntry entry in widget.entries) entry.lowerKey,
+    });
   }
 
   String get _subtitle {
@@ -81,7 +85,7 @@ class _HomeRepositoryBrowserPaneState extends State<HomeRepositoryBrowserPane> {
   }
 
   List<HomeRepositoryEntry> get _selectedEntries => widget.entries
-      .where((entry) => _selectedKeys.contains(entry.lowerKey))
+      .where((entry) => _selection.isSelected(entry.lowerKey))
       .toList();
 
   @override
@@ -91,18 +95,20 @@ class _HomeRepositoryBrowserPaneState extends State<HomeRepositoryBrowserPane> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
         Padding(
-          padding: const EdgeInsets.only(bottom: AlembicShadcnTokens.gapMd),
-          child: AlembicSectionHeader(
-            title: 'Repositories',
+          padding: const EdgeInsets.only(bottom: AlembicShadcnTokens.gapSm),
+          child: _BrowserHeader(
             subtitle: _subtitle,
             trailing: widget.entries.isEmpty
                 ? null
-                : _HeaderActions(
-                    totalVisible: widget.entries.length,
-                    selectedCount: _selectedEntries.length,
-                    onSelectAll: _selectVisible,
-                    onClearSelection: _clearSelection,
-                    onCloneSelected: _cloneSelected,
+                : m.ListenableBuilder(
+                    listenable: _selection,
+                    builder: (context, _) => _HeaderActions(
+                      totalVisible: widget.entries.length,
+                      selectedCount: _selection.count,
+                      onSelectAll: _selectVisible,
+                      onClearSelection: _selection.clear,
+                      onCloneSelected: _cloneSelected,
+                    ),
                   ),
           ),
         ),
@@ -125,41 +131,22 @@ class _HomeRepositoryBrowserPaneState extends State<HomeRepositoryBrowserPane> {
                   revision: widget.revision,
                   archiveEnabled: widget.archiveEnabled,
                   keyPrefix: _repositoryListKeyPrefix,
-                  selectedKeys: _selectedKeys,
+                  selection: _selection,
                   accountForRepository: widget.accountForRepository,
                   canForkRepository: widget.canForkRepository,
                   onPrimaryAction: widget.onPrimaryAction,
                   onRepositoryAction: widget.onRepositoryAction,
                   onShowDetails: widget.onShowDetails,
-                  onSelectedChanged: _toggleSelection,
                 ),
         ),
       ],
     );
   }
 
-  void _toggleSelection(HomeRepositoryEntry entry, bool selected) {
-    setState(() {
-      if (selected) {
-        _selectedKeys.add(entry.lowerKey);
-      } else {
-        _selectedKeys.remove(entry.lowerKey);
-      }
-    });
-  }
-
   void _selectVisible() {
-    setState(() {
-      for (HomeRepositoryEntry entry in widget.entries) {
-        _selectedKeys.add(entry.lowerKey);
-      }
-    });
-  }
-
-  void _clearSelection() {
-    setState(() {
-      _selectedKeys.clear();
-    });
+    _selection.selectAll(<String>[
+      for (HomeRepositoryEntry entry in widget.entries) entry.lowerKey,
+    ]);
   }
 
   Future<void> _cloneSelected() async {
@@ -171,14 +158,48 @@ class _HomeRepositoryBrowserPaneState extends State<HomeRepositoryBrowserPane> {
     if (!mounted) {
       return;
     }
-    _clearSelection();
+    _selection.clear();
   }
+}
 
-  void _pruneSelection() {
-    Set<String> visibleKeys = <String>{
-      for (HomeRepositoryEntry entry in widget.entries) entry.lowerKey,
-    };
-    _selectedKeys.removeWhere((key) => !visibleKeys.contains(key));
+class _BrowserHeader extends StatelessWidget {
+  final String subtitle;
+  final Widget? trailing;
+
+  const _BrowserHeader({
+    required this.subtitle,
+    required this.trailing,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    ThemeData theme = Theme.of(context);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: <Widget>[
+        Text(
+          'Repositories',
+          style: theme.typography.small.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const Gap(AlembicShadcnTokens.gapSm),
+        Expanded(
+          child: Text(
+            subtitle,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.typography.xSmall.copyWith(
+              color: theme.colorScheme.mutedForeground,
+            ),
+          ),
+        ),
+        if (trailing != null) ...<Widget>[
+          const Gap(AlembicShadcnTokens.gapMd),
+          trailing!,
+        ],
+      ],
+    );
   }
 }
 
@@ -262,20 +283,20 @@ class _EmptyBrowser extends StatelessWidget {
 }
 
 class _RepositoryList extends StatelessWidget {
+  static const double _rowCacheExtent = 480;
+
   final ScrollController scrollController;
   final List<HomeRepositoryEntry> entries;
   final RepositoryRuntime runtime;
   final int revision;
   final bool archiveEnabled;
   final String keyPrefix;
-  final Set<String> selectedKeys;
+  final HomeSelectionController selection;
   final GitAccount? Function(Repository repository) accountForRepository;
   final bool Function(Repository repository) canForkRepository;
   final HomeEntryCallback onPrimaryAction;
   final HomeEntryActionCallback onRepositoryAction;
   final HomeEntryCallback onShowDetails;
-  final void Function(HomeRepositoryEntry entry, bool selected)
-      onSelectedChanged;
 
   const _RepositoryList({
     required this.scrollController,
@@ -284,13 +305,12 @@ class _RepositoryList extends StatelessWidget {
     required this.revision,
     required this.archiveEnabled,
     required this.keyPrefix,
-    required this.selectedKeys,
+    required this.selection,
     required this.accountForRepository,
     required this.canForkRepository,
     required this.onPrimaryAction,
     required this.onRepositoryAction,
     required this.onShowDetails,
-    required this.onSelectedChanged,
   });
 
   int? _findRepositoryIndex(m.Key key) {
@@ -312,39 +332,28 @@ class _RepositoryList extends StatelessWidget {
         controller: scrollController,
         child: m.CustomScrollView(
           controller: scrollController,
-          cacheExtent: AlembicShadcnTokens.listRowHeight * 8,
+          cacheExtent: _rowCacheExtent,
           slivers: <Widget>[
             m.SliverPadding(
-              padding: const EdgeInsets.symmetric(
-                vertical: AlembicShadcnTokens.gapSm,
-              ),
+              padding: const EdgeInsets.only(bottom: AlembicShadcnTokens.gapSm),
               sliver: m.SliverList.builder(
                 itemCount: entries.length,
                 findChildIndexCallback: _findRepositoryIndex,
                 itemBuilder: (context, index) {
                   HomeRepositoryEntry entry = entries[index];
-                  return Padding(
+                  return HomeRepositoryRow(
                     key: m.ValueKey<String>('$keyPrefix${entry.lowerKey}'),
-                    padding: EdgeInsets.only(
-                      bottom: index == entries.length - 1
-                          ? 0
-                          : AlembicShadcnTokens.gapXs,
-                    ),
-                    child: HomeRepositoryRow(
-                      entry: entry,
-                      runtime: runtime,
-                      revision: revision,
-                      archiveEnabled: archiveEnabled,
-                      account: accountForRepository(entry.repository),
-                      canFork: canForkRepository(entry.repository),
-                      selectable: true,
-                      selected: selectedKeys.contains(entry.lowerKey),
-                      onSelectedChanged: (selected) =>
-                          onSelectedChanged(entry, selected),
-                      onPrimaryAction: onPrimaryAction,
-                      onAction: onRepositoryAction,
-                      onShowDetails: onShowDetails,
-                    ),
+                    entry: entry,
+                    runtime: runtime,
+                    revision: revision,
+                    archiveEnabled: archiveEnabled,
+                    account: accountForRepository(entry.repository),
+                    canFork: canForkRepository(entry.repository),
+                    selection: selection,
+                    showSeparator: index != entries.length - 1,
+                    onPrimaryAction: onPrimaryAction,
+                    onAction: onRepositoryAction,
+                    onShowDetails: onShowDetails,
                   );
                 },
               ),

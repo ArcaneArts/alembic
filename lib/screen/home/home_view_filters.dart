@@ -1,5 +1,6 @@
 import 'package:alembic/core/arcane_repository.dart';
 import 'package:alembic/domain/repository_dto.dart';
+import 'package:flutter/foundation.dart';
 import 'package:github/github.dart';
 
 enum HomeStateFilter {
@@ -68,6 +69,8 @@ class HomeRepositoryEntry {
 }
 
 class HomeStats {
+  static const int archiveDueSoonDays = 3;
+
   final int total;
   final int active;
   final int archived;
@@ -75,6 +78,7 @@ class HomeStats {
   final int syncing;
   final int private;
   final int forks;
+  final int archiveDueSoon;
 
   const HomeStats({
     required this.total,
@@ -84,6 +88,7 @@ class HomeStats {
     required this.syncing,
     required this.private,
     required this.forks,
+    required this.archiveDueSoon,
   });
 
   const HomeStats.empty()
@@ -93,7 +98,8 @@ class HomeStats {
         cloud = 0,
         syncing = 0,
         private = 0,
-        forks = 0;
+        forks = 0,
+        archiveDueSoon = 0;
 
   factory HomeStats.fromEntries(List<HomeRepositoryEntry> entries) {
     int active = 0;
@@ -102,9 +108,13 @@ class HomeStats {
     int syncing = 0;
     int private = 0;
     int forks = 0;
+    int archiveDueSoon = 0;
     for (HomeRepositoryEntry entry in entries) {
       if (entry.repoState == RepoState.active) {
         active += 1;
+        if (entry.daysUntilArchive <= archiveDueSoonDays) {
+          archiveDueSoon += 1;
+        }
       } else if (entry.repoState == RepoState.archived) {
         archived += 1;
       } else {
@@ -128,7 +138,49 @@ class HomeStats {
       syncing: syncing,
       private: private,
       forks: forks,
+      archiveDueSoon: archiveDueSoon,
     );
+  }
+}
+
+class HomeSelectionController extends ChangeNotifier {
+  final Set<String> _keys = <String>{};
+
+  bool get active => _keys.isNotEmpty;
+
+  int get count => _keys.length;
+
+  bool isSelected(String key) => _keys.contains(key);
+
+  void toggle(String key, bool selected) {
+    bool changed = selected ? _keys.add(key) : _keys.remove(key);
+    if (changed) {
+      notifyListeners();
+    }
+  }
+
+  void selectAll(Iterable<String> keys) {
+    int before = _keys.length;
+    _keys.addAll(keys);
+    if (_keys.length != before) {
+      notifyListeners();
+    }
+  }
+
+  void clear() {
+    if (_keys.isEmpty) {
+      return;
+    }
+    _keys.clear();
+    notifyListeners();
+  }
+
+  void prune(Set<String> validKeys) {
+    int before = _keys.length;
+    _keys.removeWhere((String key) => !validKeys.contains(key));
+    if (_keys.length != before) {
+      notifyListeners();
+    }
   }
 }
 

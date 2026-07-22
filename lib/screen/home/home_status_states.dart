@@ -45,13 +45,13 @@ class HomeWelcomeState extends StatelessWidget {
               children: <Widget>[
                 m.Icon(
                   m.Icons.water_drop_outlined,
-                  size: 44,
+                  size: 36,
                   color: theme.colorScheme.foreground,
                 ),
-                const Gap(AlembicShadcnTokens.gapLg),
+                const Gap(AlembicShadcnTokens.gapMd),
                 Text(
                   'Welcome to Alembic',
-                  style: theme.typography.x2Large.copyWith(
+                  style: theme.typography.large.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -64,7 +64,7 @@ class HomeWelcomeState extends StatelessWidget {
                     color: theme.colorScheme.mutedForeground,
                   ),
                 ),
-                const Gap(AlembicShadcnTokens.gapXl),
+                const Gap(AlembicShadcnTokens.gapLg),
                 AlembicToolbarButton(
                   label: 'Connect with Personal Access Token',
                   leadingIcon: m.Icons.vpn_key_outlined,
@@ -78,7 +78,7 @@ class HomeWelcomeState extends StatelessWidget {
                   quiet: true,
                   onPressed: () => launchUrlString(alembicGenerateTokenUrl),
                 ),
-                const Gap(AlembicShadcnTokens.gapXl),
+                const Gap(AlembicShadcnTokens.gapLg),
                 Text(
                   'REQUIRED SCOPES',
                   style: theme.typography.xSmall.copyWith(
@@ -128,15 +128,15 @@ class HomeLoadingState extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              const AlembicProgressMark(size: 22),
-              const Gap(AlembicShadcnTokens.gapXl),
+              const AlembicProgressMark(size: 18),
+              const Gap(AlembicShadcnTokens.gapMd),
               Text(
                 listState.phaseTitle,
                 style: theme.typography.large.copyWith(
                   fontWeight: FontWeight.w700,
                 ),
               ),
-              const Gap(8),
+              const Gap(6),
               Text(
                 listState.phaseSubtitle,
                 textAlign: TextAlign.center,
@@ -190,10 +190,10 @@ class HomeErrorState extends StatelessWidget {
               children: <Widget>[
                 m.Icon(
                   m.Icons.warning_amber_outlined,
-                  size: 32,
+                  size: 28,
                   color: theme.colorScheme.destructive,
                 ),
-                const Gap(AlembicShadcnTokens.gapLg),
+                const Gap(AlembicShadcnTokens.gapMd),
                 Text(
                   'Could not load repositories',
                   style: theme.typography.large.copyWith(
@@ -216,7 +216,7 @@ class HomeErrorState extends StatelessWidget {
                     tone: AlembicBadgeTone.outline,
                   ),
                 ],
-                const Gap(AlembicShadcnTokens.gapXl),
+                const Gap(AlembicShadcnTokens.gapLg),
                 Wrap(
                   spacing: AlembicShadcnTokens.gapSm,
                   runSpacing: AlembicShadcnTokens.gapSm,
@@ -266,10 +266,10 @@ class HomeEmptyState extends StatelessWidget {
             children: <Widget>[
               m.Icon(
                 m.Icons.inbox_outlined,
-                size: 30,
+                size: 26,
                 color: theme.colorScheme.mutedForeground,
               ),
-              const Gap(AlembicShadcnTokens.gapLg),
+              const Gap(AlembicShadcnTokens.gapMd),
               Text(
                 login.isEmpty
                     ? 'No repositories yet'
@@ -286,7 +286,7 @@ class HomeEmptyState extends StatelessWidget {
                   color: theme.colorScheme.mutedForeground,
                 ),
               ),
-              const Gap(AlembicShadcnTokens.gapXl),
+              const Gap(AlembicShadcnTokens.gapLg),
               AlembicToolbarButton(
                 label: 'Refresh',
                 leadingIcon: m.Icons.refresh,
