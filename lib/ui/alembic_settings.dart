@@ -5,6 +5,11 @@ import 'package:arcane/arcane.dart';
 import 'package:flutter/material.dart' as m;
 
 class AlembicSettingsPane extends StatelessWidget {
+  static const EdgeInsets _rowPadding =
+      EdgeInsets.symmetric(horizontal: 10, vertical: 9);
+  static const EdgeInsets _sectionHeaderPadding =
+      EdgeInsets.symmetric(horizontal: 10, vertical: 8);
+
   final String title;
   final String subtitle;
   final List<Widget> children;
@@ -24,7 +29,7 @@ class AlembicSettingsPane extends StatelessWidget {
     List<Widget> rows = <Widget>[
       Padding(
         padding: const EdgeInsets.only(
-          bottom: AlembicShadcnTokens.gapLg,
+          bottom: AlembicShadcnTokens.gapMd,
         ),
         child: AlembicSectionHeader(
           title: title,
@@ -43,7 +48,9 @@ class AlembicSettingsPane extends StatelessWidget {
       );
       rows.add(
         Padding(
-          padding: AlembicShadcnTokens.rowPadding,
+          padding: child is AlembicSettingsSectionHeader
+              ? _sectionHeaderPadding
+              : _rowPadding,
           child: child,
         ),
       );
@@ -52,6 +59,29 @@ class AlembicSettingsPane extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: rows,
+      ),
+    );
+  }
+}
+
+class AlembicSettingsSectionHeader extends StatelessWidget {
+  final String title;
+
+  const AlembicSettingsSectionHeader({
+    super.key,
+    required this.title,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    ThemeData theme = Theme.of(context);
+    return Text(
+      title,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: theme.typography.small.copyWith(
+        fontWeight: FontWeight.w600,
+        color: theme.colorScheme.mutedForeground,
       ),
     );
   }

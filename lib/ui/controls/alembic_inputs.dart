@@ -51,6 +51,7 @@ class AlembicTextInput extends StatelessWidget {
   final ValueChanged<String>? onChanged;
   final ValueChanged<String>? onSubmitted;
   final Widget? leading;
+  final Widget? trailing;
   final bool enabled;
 
   const AlembicTextInput({
@@ -63,6 +64,7 @@ class AlembicTextInput extends StatelessWidget {
     this.onChanged,
     this.onSubmitted,
     this.leading,
+    this.trailing,
     this.enabled = true,
   });
 
@@ -94,6 +96,7 @@ class AlembicTextInput extends StatelessWidget {
       enabled: enabled,
       style: textStyle,
       cursorColor: theme.colorScheme.foreground,
+      textAlignVertical: m.TextAlignVertical.center,
       textInputAction: onSubmitted == null ? null : m.TextInputAction.done,
       decoration: m.InputDecoration(
         hintText: placeholder,
@@ -104,9 +107,12 @@ class AlembicTextInput extends StatelessWidget {
         fillColor: enabled ? theme.colorScheme.card : theme.colorScheme.muted,
         isDense: true,
         counterText: maxLength == null ? null : '',
+        constraints: const m.BoxConstraints(
+          minHeight: AlembicShadcnTokens.controlHeight,
+        ),
         contentPadding: m.EdgeInsets.symmetric(
           horizontal: leading == null ? 12 : 0,
-          vertical: 10,
+          vertical: 8,
         ),
         prefixIcon: leading == null
             ? null
@@ -115,7 +121,16 @@ class AlembicTextInput extends StatelessWidget {
               ),
         prefixIconConstraints: const m.BoxConstraints(
           minWidth: 38,
-          minHeight: AlembicShadcnTokens.buttonHeight,
+          minHeight: AlembicShadcnTokens.controlHeight,
+        ),
+        suffixIcon: trailing == null
+            ? null
+            : _AlembicInputLeading(
+                leading: trailing!,
+              ),
+        suffixIconConstraints: const m.BoxConstraints(
+          minWidth: 38,
+          minHeight: AlembicShadcnTokens.controlHeight,
         ),
         border: border,
         enabledBorder: border,

@@ -1,91 +1,110 @@
+import 'package:alembic/app/alembic_dialogs.dart';
 import 'package:alembic/core/arcane_repository.dart';
 import 'package:alembic/core/repository_runtime.dart';
 import 'package:alembic/screen/home/home_actions.dart';
 import 'package:alembic/screen/home/home_controller.dart';
 import 'package:alembic/screen/home/home_tiles.dart';
 import 'package:alembic/ui/alembic_ui.dart';
+import 'package:alembic/util/repo_config.dart';
 import 'package:arcane/arcane.dart';
 import 'package:flutter/material.dart' as m;
 import 'package:github/github.dart';
 
 class HomeBulkActionsCoordinator {
+  static const int maxReportedFailures = 8;
+
   final HomeController controller;
   final RepositoryRuntime runtime;
-  final Future<List<Repository>> Function() getAllRepositories;
   final VoidCallback onChanged;
 
   const HomeBulkActionsCoordinator({
     required this.controller,
     required this.runtime,
-    required this.getAllRepositories,
     required this.onChanged,
   });
 
-  Future<void> executeOperation(
+  static String failureMessage(List<String> failed) {
+    List<String> shown = failed.take(maxReportedFailures).toList();
+    int remaining = failed.length - shown.length;
+    String names = shown.join('\n');
+    return remaining > 0
+        ? 'The operation failed for ${failed.length} repositories:\n$names\nand $remaining more.'
+        : 'The operation failed for ${failed.length} '
+            '${failed.length == 1 ? 'repository' : 'repositories'}:\n$names';
+  }
+
+  Future<List<String>> executeOperation(
     Iterable<Repository> repositories,
     Future<void> Function(ArcaneRepository repository) operation, {
     String label = 'Working repositories',
   }) async {
-    await controller.executeBulkOperation(
+    List<String> failed = await controller.executeBulkOperation(
       repositories,
       operation,
       label: label,
     );
     onChanged();
+    return failed;
   }
 
-  Future<void> executeAction(HomeBulkAction action) async {
+  Future<List<String>> executeAction(HomeBulkAction action) async {
+    bool archiveEnabled = config.archiveEnabled;
     List<Repository> active = runtime.activeRepositories;
     if (action == HomeBulkAction.pullActive) {
-      await executeOperation(
+      return executeOperation(
         active,
-        (ArcaneRepository repository) => repository.ensureRepositoryUpdated(
+        (repository) => repository.ensureRepositoryUpdated(
           controller.githubForRepository(repository.repository),
         ),
         label: HomeBulkAction.pullActive.label,
       );
-      return;
     }
     if (action == HomeBulkAction.archiveActive) {
-      await executeOperation(
+      if (!archiveEnabled) {
+        return const <String>[];
+      }
+      return executeOperation(
         active,
-        (ArcaneRepository repository) => repository.archive(),
+        (repository) => repository.archive(),
         label: HomeBulkAction.archiveActive.label,
       );
-      return;
     }
 
-    List<Repository> repositories = await getAllRepositories();
+    List<Repository> repositories = controller.store.cachedRepositories;
     Iterable<Repository> archivedRepositories = repositories.where(
       (Repository repository) =>
           controller.repositoryFor(repository).isArchivedSync,
     );
 
     if (action == HomeBulkAction.updateArchives) {
-      await executeOperation(
+      if (!archiveEnabled) {
+        return const <String>[];
+      }
+      return executeOperation(
         archivedRepositories,
-        (ArcaneRepository repository) => repository.updateArchive(
+        (repository) => repository.updateArchive(
           controller.githubForRepository(repository.repository),
         ),
         label: HomeBulkAction.updateArchives.label,
       );
-      return;
     }
     if (action == HomeBulkAction.activateArchives) {
-      await executeOperation(
+      if (!archiveEnabled) {
+        return const <String>[];
+      }
+      return executeOperation(
         archivedRepositories,
-        (ArcaneRepository repository) => repository.unarchive(
+        (repository) => repository.unarchive(
           controller.githubForRepository(repository.repository),
           waitForPull: true,
         ),
         label: HomeBulkAction.activateArchives.label,
       );
-      return;
     }
 
-    await executeOperation(
+    return executeOperation(
       repositories,
-      (ArcaneRepository repository) => repository.ensureRepositoryActive(
+      (repository) => repository.ensureRepositoryActive(
         controller.githubForRepository(repository.repository),
       ),
       label: HomeBulkAction.activateEverything.label,
@@ -97,7 +116,14 @@ class HomeBulkActionsCoordinator {
     if (selected == null) {
       return;
     }
-    await executeAction(selected);
+    List<String> failed = await executeAction(selected);
+    if (failed.isNotEmpty && context.mounted) {
+      await showAlembicInfoDialog(
+        context,
+        title: 'Bulk Action Issues',
+        message: failureMessage(failed),
+      );
+    }
   }
 
   Future<HomeBulkAction?> _pickAction(BuildContext context) {
@@ -143,14 +169,17 @@ class HomeBulkActionsCoordinator {
   }
 
   List<HomeBulkAction> _availableActions() {
-    List<HomeBulkAction> actions = <HomeBulkAction>[];
-    if (runtime.activeRepositories.isNotEmpty) {
-      actions.add(HomeBulkAction.pullActive);
-      actions.add(HomeBulkAction.archiveActive);
-    }
-    actions.add(HomeBulkAction.updateArchives);
-    actions.add(HomeBulkAction.activateArchives);
-    actions.add(HomeBulkAction.activateEverything);
-    return actions;
+    bool archiveEnabled = config.archiveEnabled;
+    return <HomeBulkAction>[
+      if (runtime.activeRepositories.isNotEmpty) ...<HomeBulkAction>[
+        HomeBulkAction.pullActive,
+        if (archiveEnabled) HomeBulkAction.archiveActive,
+      ],
+      if (archiveEnabled) ...<HomeBulkAction>[
+        HomeBulkAction.updateArchives,
+        HomeBulkAction.activateArchives,
+      ],
+      HomeBulkAction.activateEverything,
+    ];
   }
 }

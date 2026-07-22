@@ -6,7 +6,7 @@ import 'package:alembic/util/repo_config.dart';
 import 'package:arcane/arcane.dart';
 import 'package:flutter/material.dart' as m;
 
-class ToolsSettingsPane extends StatelessWidget {
+class ToolsSettingsPane extends StatefulWidget {
   final CloneTransportMode cloneTransportMode;
   final bool signingBusy;
   final GitSigningStatus? signingStatus;
@@ -22,15 +22,48 @@ class ToolsSettingsPane extends StatelessWidget {
     required this.onConfigureCommitSigning,
   });
 
+  @override
+  State<ToolsSettingsPane> createState() => _ToolsSettingsPaneState();
+}
+
+class _ToolsSettingsPaneState extends State<ToolsSettingsPane> {
   String _commitSigningLabel() {
-    if (signingBusy) {
+    if (widget.signingBusy) {
       return 'Configuring...';
     }
-    return signingStatus?.label ?? 'Checking...';
+    return widget.signingStatus?.label ?? 'Checking...';
+  }
+
+  String _editorLabel(ApplicationTool tool) => tool.supportedOnCurrentPlatform
+      ? tool.displayName
+      : '${tool.displayName} (Unsupported)';
+
+  String _gitLabel(GitTool tool) => tool.supportedOnCurrentPlatform
+      ? tool.displayName
+      : '${tool.displayName} (Unsupported)';
+
+  void _setEditorTool(ApplicationTool tool) {
+    setConfig(config..editorTool = tool);
+    setState(() {});
+  }
+
+  void _setGitTool(GitTool tool) {
+    setConfig(config..gitTool = tool);
+    setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
+    ApplicationTool editorTool = config.editorTool ?? ApplicationTool.intellij;
+    GitTool gitTool = config.gitTool ?? GitTool.gitkraken;
+    List<ApplicationTool> editorItems = <ApplicationTool>[
+      ...XApplicationTool.supportedTools,
+      if (!editorTool.supportedOnCurrentPlatform) editorTool,
+    ];
+    List<GitTool> gitItems = <GitTool>[
+      ...XGitTool.supportedTools,
+      if (!gitTool.supportedOnCurrentPlatform) gitTool,
+    ];
     return AlembicSettingsPane(
       title: 'Tools',
       subtitle: 'Editor launchers, Git clients, and signing defaults.',
@@ -38,40 +71,34 @@ class ToolsSettingsPane extends StatelessWidget {
         AlembicSettingsMenuRow<ApplicationTool>(
           title: 'Editor tool',
           description: 'Default editor for opening repositories.',
-          valueLabel:
-              (config.editorTool ?? ApplicationTool.intellij).displayName,
-          items: XApplicationTool.supportedTools,
-          itemLabel: (ApplicationTool tool) => tool.displayName,
-          onSelected: (ApplicationTool tool) {
-            setConfig(config..editorTool = tool);
-            (context as Element).markNeedsBuild();
-          },
+          valueLabel: _editorLabel(editorTool),
+          items: editorItems,
+          itemLabel: _editorLabel,
+          onSelected: _setEditorTool,
         ),
         AlembicSettingsMenuRow<GitTool>(
           title: 'Git tool',
           description: 'Default Git client for repository launch actions.',
-          valueLabel: (config.gitTool ?? GitTool.gitkraken).displayName,
-          items: XGitTool.supportedTools,
-          itemLabel: (GitTool tool) => tool.displayName,
-          onSelected: (GitTool tool) {
-            setConfig(config..gitTool = tool);
-            (context as Element).markNeedsBuild();
-          },
+          valueLabel: _gitLabel(gitTool),
+          items: gitItems,
+          itemLabel: _gitLabel,
+          onSelected: _setGitTool,
         ),
         AlembicSettingsMenuRow<CloneTransportMode>(
           title: 'Clone transport',
           description: 'Preferred transport when Alembic clones repositories.',
-          valueLabel: cloneTransportMode.label,
+          valueLabel: widget.cloneTransportMode.label,
           items: CloneTransportMode.values,
-          itemLabel: (CloneTransportMode mode) => mode.label,
-          onSelected: onCloneTransportChanged,
+          itemLabel: (mode) => mode.label,
+          onSelected: widget.onCloneTransportChanged,
         ),
         AlembicSettingsActionRow(
           title: 'Commit signing',
           description: 'Configure global intrinsic SSH commit signing.',
           value: _commitSigningLabel(),
-          actionLabel: signingBusy ? 'Working...' : 'Configure',
-          onPressed: signingBusy ? null : onConfigureCommitSigning,
+          actionLabel: widget.signingBusy ? 'Working...' : 'Configure',
+          onPressed:
+              widget.signingBusy ? null : widget.onConfigureCommitSigning,
         ),
         const _SshSigningExample(),
       ],

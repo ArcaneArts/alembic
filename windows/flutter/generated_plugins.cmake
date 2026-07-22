@@ -4,7 +4,6 @@
 
 list(APPEND FLUTTER_PLUGIN_LIST
   desktop_drop
-  flutter_acrylic
   irondash_engine_context
   screen_retriever_windows
   super_native_extensions

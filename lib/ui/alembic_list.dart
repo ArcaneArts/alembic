@@ -32,25 +32,16 @@ class AlembicListRow extends StatelessWidget {
       description: description,
       meta: meta,
     );
-    Widget actions = SizedBox(
-      width: AlembicShadcnTokens.rowActionColumnWidth,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          SizedBox(
-            width: AlembicShadcnTokens.rowActionButtonWidth,
-            child: primaryAction,
-          ),
-          if (secondaryActions != null) ...<Widget>[
-            const Gap(AlembicShadcnTokens.gapSm),
-            Align(
-              alignment: Alignment.centerRight,
-              child: secondaryActions!,
-            ),
-          ],
+    Widget actions = Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: <Widget>[
+        primaryAction,
+        if (secondaryActions != null) ...<Widget>[
+          const Gap(AlembicShadcnTokens.gapSm),
+          secondaryActions!,
         ],
-      ),
+      ],
     );
     return Center(
       child: ConstrainedBox(

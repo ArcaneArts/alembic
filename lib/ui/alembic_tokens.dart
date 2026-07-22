@@ -3,7 +3,7 @@ import 'package:flutter/material.dart' as m;
 
 class AlembicShadcnTokens {
   static const EdgeInsets shellPadding = EdgeInsets.all(10);
-  static const EdgeInsets surfacePadding = EdgeInsets.all(12);
+  static const EdgeInsets surfacePadding = EdgeInsets.all(16);
   static const EdgeInsets compactSurfacePadding = EdgeInsets.all(8);
   static const EdgeInsets controlPadding =
       EdgeInsets.symmetric(horizontal: 10, vertical: 7);
@@ -22,25 +22,22 @@ class AlembicShadcnTokens {
   static const double listDescriptionLineHeight = 16;
   static const double sidebarWidth = 292;
   static const double asideWidth = 280;
-  static const double buttonHeight = 34;
+  static const double controlHeight = 36;
   static const double compactButtonHeight = 30;
-  static const double iconButtonSize = 34;
+  static const double iconButtonSize = 36;
   static const double compactIconButtonSize = 34;
-  static const double buttonMinWidth = 104;
-  static const double compactButtonMinWidth = 104;
+  static const double buttonMinWidth = 72;
+  static const double compactButtonMinWidth = 56;
   static const double commandButtonWidth = 104;
-  static const double commandIconWidth = 34;
-  static const double rowActionButtonWidth = 104;
-  static const double rowActionColumnWidth = 104;
-  static const double tabWidth = 104;
-  static const double tabIconWidth = 34;
+  static const double commandIconWidth = 36;
   static const double dropdownMenuMaxHeight = 320;
+  static const double macTitlebarInset = 12;
 
   static const double gapXs = 4;
   static const double gapSm = 8;
-  static const double gapMd = 10;
-  static const double gapLg = 12;
-  static const double gapXl = 16;
+  static const double gapMd = 12;
+  static const double gapLg = 16;
+  static const double gapXl = 20;
 
   static const ColorScheme lightScheme = ColorScheme(
     brightness: Brightness.light,

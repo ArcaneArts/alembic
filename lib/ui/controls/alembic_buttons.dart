@@ -16,6 +16,7 @@ class AlembicToolbarButton extends StatelessWidget {
   final bool iconOnly;
   final bool busy;
   final bool smallLabel;
+  final bool expand;
   final String? tooltip;
 
   const AlembicToolbarButton({
@@ -31,6 +32,7 @@ class AlembicToolbarButton extends StatelessWidget {
     this.iconOnly = false,
     this.busy = false,
     this.smallLabel = false,
+    this.expand = false,
     this.tooltip,
   }) : assert(!iconOnly || leadingIcon != null || trailingIcon != null);
 
@@ -45,7 +47,7 @@ class AlembicToolbarButton extends StatelessWidget {
           ? AlembicShadcnTokens.iconButtonSize
           : compact
               ? AlembicShadcnTokens.compactButtonHeight
-              : AlembicShadcnTokens.buttonHeight,
+              : AlembicShadcnTokens.controlHeight,
       padding: iconOnly
           ? EdgeInsets.zero
           : compact
@@ -57,6 +59,7 @@ class AlembicToolbarButton extends StatelessWidget {
       border: tone.border(theme),
       disabledForeground: theme.colorScheme.mutedForeground,
       disabledBackground: tone.disabledBackground(theme),
+      expand: expand,
       child: content,
     );
     Widget sizedButton = AlembicControlFrame(
@@ -64,12 +67,20 @@ class AlembicToolbarButton extends StatelessWidget {
       iconOnly: iconOnly,
       child: button,
     );
-    if (tooltip == null && !iconOnly) {
-      return sizedButton;
+    Widget framed = tooltip == null && !iconOnly
+        ? sizedButton
+        : m.Tooltip(
+            message: tooltip ?? label,
+            child: sizedButton,
+          );
+    if (expand) {
+      return framed;
     }
-    return m.Tooltip(
-      message: tooltip ?? label,
-      child: sizedButton,
+    return Align(
+      alignment: AlignmentDirectional.centerStart,
+      widthFactor: 1,
+      heightFactor: 1,
+      child: framed,
     );
   }
 
@@ -129,12 +140,14 @@ class AlembicSelectionToggle extends StatelessWidget {
   final bool selected;
   final ValueChanged<bool>? onChanged;
   final String label;
+  final double size;
 
   const AlembicSelectionToggle({
     super.key,
     required this.selected,
     required this.onChanged,
     required this.label,
+    this.size = AlembicShadcnTokens.compactIconButtonSize,
   });
 
   @override
@@ -142,15 +155,16 @@ class AlembicSelectionToggle extends StatelessWidget {
     ThemeData theme = Theme.of(context);
     _AlembicButtonTone tone =
         selected ? _AlembicButtonTone.primary : _AlembicButtonTone.outline;
+    double scale = size / AlembicShadcnTokens.compactIconButtonSize;
     return SizedBox.square(
-      dimension: AlembicShadcnTokens.compactIconButtonSize,
+      dimension: size,
       child: m.Tooltip(
         message: label,
         child: _AlembicButtonSurface(
           onPressed: onChanged == null ? null : () => onChanged!(!selected),
-          height: AlembicShadcnTokens.compactIconButtonSize,
+          height: size,
           padding: EdgeInsets.zero,
-          borderRadius: AlembicShadcnTokens.controlRadius,
+          borderRadius: AlembicShadcnTokens.controlRadius * scale,
           foreground: tone.foreground(theme),
           background: tone.background(theme),
           border: tone.border(theme),
@@ -158,7 +172,7 @@ class AlembicSelectionToggle extends StatelessWidget {
           disabledBackground: tone.disabledBackground(theme),
           child: m.Icon(
             selected ? m.Icons.check : m.Icons.check_box_outline_blank,
-            size: 16,
+            size: 16 * scale,
           ),
         ),
       ),
@@ -211,6 +225,7 @@ class _AlembicButtonSurface extends StatelessWidget {
   final m.Color border;
   final m.Color disabledForeground;
   final m.Color disabledBackground;
+  final bool expand;
   final Widget child;
 
   const _AlembicButtonSurface({
@@ -223,6 +238,7 @@ class _AlembicButtonSurface extends StatelessWidget {
     required this.border,
     required this.disabledForeground,
     required this.disabledBackground,
+    this.expand = false,
     required this.child,
   });
 
@@ -240,22 +256,24 @@ class _AlembicButtonSurface extends StatelessWidget {
         borderRadius: BorderRadius.circular(borderRadius),
         child: Container(
           height: height,
-          alignment: Alignment.center,
           padding: padding,
           decoration: BoxDecoration(
             color: resolvedBackground,
             borderRadius: BorderRadius.circular(borderRadius),
             border: Border.all(color: resolvedBorder),
           ),
-          child: IconTheme.merge(
-            data: m.IconThemeData(color: resolvedForeground),
-            child: m.DefaultTextStyle.merge(
-              style: TextStyle(
-                color: resolvedForeground,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
+          child: Center(
+            widthFactor: expand ? null : 1,
+            child: IconTheme.merge(
+              data: m.IconThemeData(color: resolvedForeground),
+              child: m.DefaultTextStyle.merge(
+                style: TextStyle(
+                  color: resolvedForeground,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+                child: child,
               ),
-              child: child,
             ),
           ),
         ),

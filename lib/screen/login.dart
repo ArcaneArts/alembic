@@ -7,16 +7,12 @@ import 'package:flutter/material.dart' as m;
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:url_launcher/url_launcher_string.dart';
 
-Widget _defaultLoginSuccessRoute(BuildContext context) => const SplashScreen();
-
 class LoginScreen extends StatefulWidget {
   final TokenValidator tokenValidator;
-  final WidgetBuilder nextScreenBuilder;
 
   const LoginScreen({
     super.key,
     this.tokenValidator = const TokenValidator(),
-    this.nextScreenBuilder = _defaultLoginSuccessRoute,
   });
 
   @override
@@ -25,10 +21,10 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   static const String _tokenCreationUrl =
-      'https://github.com/settings/tokens/new?scopes=repo,read:org,admin:org';
+      'https://github.com/settings/tokens/new?scopes=repo,read:org&description=Alembic';
 
   late final m.TextEditingController _tokenController;
-  late final FocusNode _tokenFocusNode;
+  late final m.TextEditingController _nameController;
   bool _isTokenValid = false;
   bool _isSubmitting = false;
   String? _validationMessage;
@@ -37,7 +33,7 @@ class _LoginScreenState extends State<LoginScreen> {
   void initState() {
     super.initState();
     _tokenController = m.TextEditingController();
-    _tokenFocusNode = FocusNode();
+    _nameController = m.TextEditingController();
     _tokenController.addListener(_validateToken);
   }
 
@@ -45,13 +41,13 @@ class _LoginScreenState extends State<LoginScreen> {
   void dispose() {
     _tokenController.removeListener(_validateToken);
     _tokenController.dispose();
-    _tokenFocusNode.dispose();
+    _nameController.dispose();
     super.dispose();
   }
 
   void _validateToken() {
-    final String text = _tokenController.text.trim();
-    final bool isValid = text.isNotEmpty &&
+    String text = _tokenController.text.trim();
+    bool isValid = text.isNotEmpty &&
         (text.startsWith('github_pat_') ||
             text.startsWith('ghp_') ||
             (text.length == 40 && RegExp(r'^[a-f0-9]+$').hasMatch(text)));
@@ -66,20 +62,18 @@ class _LoginScreenState extends State<LoginScreen> {
     });
   }
 
-  String _detectTokenType(String token) => detectTokenType(token);
-
   Future<void> _doLogin(String? providedToken) async {
     if (_isSubmitting) {
       return;
     }
 
-    final String token = (providedToken ?? _tokenController.text).trim();
+    String token = (providedToken ?? _tokenController.text).trim();
     setState(() {
       _isSubmitting = true;
       _validationMessage = null;
     });
 
-    final TokenValidationResult validationResult =
+    TokenValidationResult validationResult =
         await widget.tokenValidator.validate(token);
     if (!validationResult.isValid) {
       if (!mounted) {
@@ -92,14 +86,17 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    final String tokenType = _detectTokenType(token);
-    final String suggestedName = (validationResult.login ?? '').trim().isEmpty
-        ? 'Account ${loadGitAccounts().length + 1}'
-        : validationResult.login!.trim();
+    String displayName = _nameController.text.trim();
+    String login = (validationResult.login ?? '').trim();
+    String accountName = displayName.isNotEmpty
+        ? displayName
+        : login.isNotEmpty
+            ? login
+            : 'Account ${loadGitAccounts().length + 1}';
     await addGitAccount(
-      name: suggestedName,
+      name: accountName,
       token: token,
-      tokenType: tokenType,
+      tokenType: detectTokenType(token),
       login: validationResult.login,
     );
 
@@ -112,19 +109,43 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     Navigator.of(context).pushAndRemoveUntil(
-      m.MaterialPageRoute<void>(builder: widget.nextScreenBuilder),
+      m.MaterialPageRoute<void>(builder: (_) => const SplashScreen()),
       (_) => false,
     );
   }
 
-  Future<void> _openTokenCreationPage() {
-    return launchUrlString(_tokenCreationUrl);
-  }
+  Future<void> _openTokenCreationPage() => launchUrlString(_tokenCreationUrl);
+
+  @override
+  Widget build(BuildContext context) => AlembicScaffold(
+        child: m.SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              const _LoginMarketingPanel(),
+              const Gap(AlembicShadcnTokens.gapLg),
+              _LoginSignInPanel(
+                tokenController: _tokenController,
+                nameController: _nameController,
+                isTokenValid: _isTokenValid,
+                isSubmitting: _isSubmitting,
+                validationMessage: _validationMessage,
+                onSubmitToken: _doLogin,
+                onGenerateToken: _openTokenCreationPage,
+              ),
+            ],
+          ),
+        ),
+      );
+}
+
+class _LoginMarketingPanel extends StatelessWidget {
+  const _LoginMarketingPanel();
 
   @override
   Widget build(BuildContext context) {
     ThemeData theme = Theme.of(context);
-    Widget marketingPanel = AlembicPanel(
+    return AlembicPanel(
       padding: AlembicShadcnTokens.shellPadding,
       tone: AlembicSurfaceTone.elevated,
       child: Column(
@@ -163,7 +184,7 @@ class _LoginScreenState extends State<LoginScreen> {
               const Gap(AlembicShadcnTokens.gapLg),
               Expanded(
                 child: Text(
-                  'Connect GitHub with a clean local workspace.',
+                  'Welcome to Alembic',
                   style: theme.typography.x2Large.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
@@ -181,21 +202,55 @@ class _LoginScreenState extends State<LoginScreen> {
         ],
       ),
     );
-    Widget signInPanel = AlembicPanel(
+  }
+}
+
+class _LoginSignInPanel extends StatelessWidget {
+  final m.TextEditingController tokenController;
+  final m.TextEditingController nameController;
+  final bool isTokenValid;
+  final bool isSubmitting;
+  final String? validationMessage;
+  final Future<void> Function(String?) onSubmitToken;
+  final Future<void> Function() onGenerateToken;
+
+  const _LoginSignInPanel({
+    required this.tokenController,
+    required this.nameController,
+    required this.isTokenValid,
+    required this.isSubmitting,
+    required this.validationMessage,
+    required this.onSubmitToken,
+    required this.onGenerateToken,
+  });
+
+  bool get _canSubmit => isTokenValid && !isSubmitting;
+
+  @override
+  Widget build(BuildContext context) {
+    ThemeData theme = Theme.of(context);
+    ThemeData monoFieldTheme = theme.copyWith(
+      typography: () => theme.typography.copyWith(
+        small: () => theme.typography.small.copyWith(
+          fontFamily: 'JetBrainsMono',
+        ),
+      ),
+    );
+    return AlembicPanel(
       padding: AlembicShadcnTokens.shellPadding,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(
-            'Sign in',
+            'Connect GitHub',
             style: theme.typography.x2Large.copyWith(
               fontWeight: FontWeight.w700,
             ),
           ),
           const Gap(8),
           Text(
-            'Paste a GitHub personal access token to unlock repository sync.',
+            'Paste a GitHub personal access token. Alembic stores it encrypted on this device.',
             style: theme.typography.small.copyWith(
               color: theme.colorScheme.mutedForeground,
             ),
@@ -205,61 +260,80 @@ class _LoginScreenState extends State<LoginScreen> {
             label: 'Personal access token',
             supportingText:
                 'Alembic validates the token before saving it in encrypted local storage.',
-            child: AlembicTextInput(
-              controller: _tokenController,
-              placeholder: 'github_pat_... or ghp_...',
-              obscureText: true,
-              leading: const m.Icon(m.Icons.vpn_key, size: 16),
-              onSubmitted: _isTokenValid && !_isSubmitting ? _doLogin : null,
+            child: Theme(
+              data: monoFieldTheme,
+              child: AlembicTextInput(
+                controller: tokenController,
+                placeholder: 'ghp_... or github_pat_...',
+                obscureText: true,
+                leading: const m.Icon(m.Icons.vpn_key, size: 16),
+                onSubmitted: _canSubmit ? onSubmitToken : null,
+              ),
             ),
           ),
           const Gap(10),
           Text(
-            _validationMessage ??
-                (_isTokenValid
+            validationMessage ??
+                (isTokenValid
                     ? 'Token format looks valid.'
-                    : 'Supported formats: github_pat_..., ghp_..., or a 40-character classic token.'),
+                    : 'Supported formats: ghp_..., github_pat_..., or a 40-character classic token.'),
             style: theme.typography.xSmall.copyWith(
-              color: _validationMessage == null
+              color: validationMessage == null
                   ? theme.colorScheme.mutedForeground
                   : theme.colorScheme.destructive,
             ),
           ),
           const Gap(AlembicShadcnTokens.gapLg),
+          AlembicLabeledField(
+            label: 'Display name',
+            supportingText: 'Optional label for this account.',
+            child: AlembicTextInput(
+              controller: nameController,
+              placeholder: 'Personal, Work, etc.',
+              onSubmitted: _canSubmit ? (_) => onSubmitToken(null) : null,
+            ),
+          ),
+          const Gap(AlembicShadcnTokens.gapLg),
           Row(
             children: <Widget>[
-              Expanded(
-                child: AlembicToolbarButton(
-                  onPressed: _openTokenCreationPage,
-                  label: 'Create token',
+              Text(
+                'Required scopes',
+                style: theme.typography.xSmall.copyWith(
+                  color: theme.colorScheme.mutedForeground,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
-              const Gap(AlembicShadcnTokens.gapMd),
-              Expanded(
-                child: AlembicToolbarButton(
-                  onPressed: _isTokenValid && !_isSubmitting
-                      ? () => _doLogin(null)
-                      : null,
-                  label: _isSubmitting ? 'Validating...' : 'Continue',
-                  prominent: true,
-                ),
+              const Gap(AlembicShadcnTokens.gapSm),
+              const AlembicBadge(
+                label: 'repo',
+                tone: AlembicBadgeTone.secondary,
+              ),
+              const Gap(AlembicShadcnTokens.gapXs),
+              const AlembicBadge(
+                label: 'read:org',
+                tone: AlembicBadgeTone.secondary,
+              ),
+            ],
+          ),
+          const Gap(AlembicShadcnTokens.gapLg),
+          Row(
+            children: <Widget>[
+              AlembicToolbarButton(
+                onPressed: isSubmitting ? null : () => onGenerateToken(),
+                label: 'Generate new token',
+                quiet: true,
+                leadingIcon: m.Icons.open_in_new,
+              ),
+              const Spacer(),
+              AlembicToolbarButton(
+                onPressed: _canSubmit ? () => onSubmitToken(null) : null,
+                label: isSubmitting ? 'Connecting...' : 'Connect',
+                prominent: true,
+                busy: isSubmitting,
               ),
             ],
           ),
         ],
-      ),
-    );
-
-    return AlembicScaffold(
-      child: m.SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            marketingPanel,
-            const Gap(AlembicShadcnTokens.gapLg),
-            signInPanel,
-          ],
-        ),
       ),
     );
   }

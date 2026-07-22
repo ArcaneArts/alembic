@@ -1,27 +1,43 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'dart:typed_data';
 
-import 'package:alembic/app/alembic_theme.dart';
+import 'package:alembic/app/alembic_root.dart';
+import 'package:alembic/bloc/repository_list_store.dart';
+import 'package:alembic/core/account_registry.dart';
+import 'package:alembic/core/archive_master_service.dart';
+import 'package:alembic/core/boot_context.dart';
+import 'package:alembic/core/diagnostics.dart';
+import 'package:alembic/core/legacy_data_migrator.dart';
+import 'package:alembic/core/repository_actions_controller.dart';
+import 'package:alembic/core/repository_runtime_instance.dart';
+import 'package:alembic/core/update_controller.dart';
+import 'package:alembic/core/workspace_scan_service.dart';
 import 'package:alembic/platform/desktop_platform_adapter.dart';
-import 'package:alembic/screen/splash.dart';
 import 'package:alembic/util/git_accounts.dart';
+import 'package:alembic/util/legacy_prefs_migration.dart';
 import 'package:alembic/util/window.dart';
-import 'package:arcane/arcane.dart';
-import 'package:arcane_desktop/arcane_desktop.dart';
 import 'package:fast_log/fast_log.dart';
 import 'package:flutter/widgets.dart' as fw;
 import 'package:hive_flutter/adapters.dart';
 import 'package:launch_at_startup/launch_at_startup.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:tray_manager/tray_manager.dart';
+import 'package:rxdart/rxdart.dart';
 
 late Box box;
 late Box boxSettings;
 late PackageInfo packageInfo;
 bool windowMode = false;
 late String configPath;
+
+late AccountRegistry accountRegistry;
+late RepositoryListStore repositoryListStore;
+late WorkspaceScanService workspaceScanService;
+late UpdateController updateController;
+late RepositoryActionsController repositoryActionsController;
 
 typedef CommandRunner = Future<int> Function(
   String command,
@@ -33,35 +49,208 @@ typedef CommandRunner = Future<int> Function(
 });
 
 Future<void> main() async {
+  fw.WidgetsFlutterBinding.ensureInitialized();
   try {
-    fw.WidgetsFlutterBinding.ensureInitialized();
-    await _initializeApp();
-    AWM.barTitle = _buildWindowTitle;
-    AWM.barLeading = _buildWindowLeading;
-    if (!windowMode) {
-      AWM.tray = trayManager;
-    }
+    await _initializeDartRuntime();
+    await _startServices();
+    await WindowUtil.init();
+    AlembicDiagnostics.instance.success('main', 'Alembic Dart runtime ready');
+    success('Alembic Dart runtime ready');
     fw.runApp(const AlembicRoot());
   } catch (e, stackTrace) {
-    error('ERROR $e');
-    error('ERROR $stackTrace');
+    AlembicDiagnostics.instance
+        .error('main', 'Dart runtime init failed: $e\n$stackTrace');
+    error('Dart runtime init failed: $e');
+    error('$stackTrace');
   }
 }
 
-Future<void> _initializeApp() async {
-  lDebugMode = true;
+Future<void> _startServices() async {
+  accountRegistry = AccountRegistry.fromCurrentStorage();
+  repositoryListStore = RepositoryListStore(registry: accountRegistry);
+  workspaceScanService = WorkspaceScanService(
+    store: repositoryListStore,
+    runtime: repositoryRuntimeInstance,
+  );
+  updateController = UpdateController();
+  repositoryActionsController = RepositoryActionsController(
+    store: repositoryListStore,
+    runtime: repositoryRuntimeInstance,
+  );
+  ArchiveMasterService archiveMaster = ArchiveMasterService(
+    registry: accountRegistry,
+    runtime: repositoryRuntimeInstance,
+  );
+  setArchiveMasterService(archiveMaster);
+  archiveMaster.start();
+  await workspaceScanService.start();
+  updateController.start();
+  unawaited(repositoryListStore.refresh());
+  success('Services constructed and started');
+}
+
+Future<void> _initializeDartRuntime() async {
+  lDebugMode = Platform.environment['ALEMBIC_FAST_LOG_STDOUT'] == '1' ||
+      Platform.environment['ALEMBIC_DIAGNOSTICS_STDOUT'] == '1';
   await _setupDirectoriesAndLogging();
-  await _setupAppSettings();
-  success('=====================================');
+  await _cleanupStaleLockFiles();
+  await _cleanupOldBackupFiles();
+  await _migrateLegacyDataIfNeeded();
+  final Future<PackageInfo> packageInfoFuture = PackageInfo.fromPlatform();
+  Hive.init(configPath);
+  box = await _openEncryptedDataBox();
+  BootContext.instance.hiveEntries = box.length;
+  boxSettings = await _openSettingsBoxWithRetry();
+  await LegacyPrefsMigration.run();
+  await restoreStoredAuthenticationState();
+  packageInfo = await packageInfoFuture;
+  await _configureStartup();
+  success('Dart storage and auth state initialized');
+}
+
+Future<Box> _openSettingsBoxWithRetry() async {
+  final AlembicDiagnostics diagnostics = AlembicDiagnostics.instance;
+  const int maxAttempts = 4;
+  Object? lastError;
+  for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      final Box opened = await Hive.openBox('s');
+      if (attempt > 1) {
+        diagnostics.success(
+            'hive_open', 'settings box opened on attempt $attempt');
+      }
+      return opened;
+    } catch (e) {
+      lastError = e;
+      diagnostics.warn(
+        'hive_open',
+        'settings box open attempt $attempt failed: $e',
+      );
+      final File lockFile = File('$configPath/s.lock');
+      if (lockFile.existsSync()) {
+        try {
+          lockFile.deleteSync();
+          diagnostics.log('hive_open', 'deleted stale s.lock to retry');
+        } catch (deleteError) {
+          diagnostics.warn(
+              'hive_open', 'could not delete s.lock: $deleteError');
+        }
+      }
+      await Future<void>.delayed(Duration(milliseconds: 200 * attempt));
+    }
+  }
+  diagnostics.error(
+    'hive_open',
+    'settings box failed after $maxAttempts attempts; using in-memory fallback: $lastError',
+  );
+  return Hive.openBox<dynamic>(
+    's_fallback_${DateTime.now().millisecondsSinceEpoch}',
+    bytes: Uint8List(0),
+  );
+}
+
+Future<void> _cleanupStaleLockFiles() async {
+  final AlembicDiagnostics diagnostics = AlembicDiagnostics.instance;
+  final List<String> lockNames = <String>[
+    's.lock',
+    'd.lock',
+    'alembic.cb.lock',
+    'alembic.hb.lock',
+  ];
+  for (final String name in lockNames) {
+    final File lockFile = File('$configPath/$name');
+    if (!lockFile.existsSync()) {
+      continue;
+    }
+    try {
+      final FileStat stat = lockFile.statSync();
+      final Duration age = DateTime.now().difference(stat.modified);
+      if (age.inMinutes > 5 || stat.size == 0) {
+        lockFile.deleteSync();
+        diagnostics.log(
+          'lock_cleanup',
+          'removed stale lock $name (age=${age.inMinutes}m size=${stat.size})',
+        );
+      }
+    } catch (e) {
+      diagnostics.trace('lock_cleanup', 'could not inspect/delete $name: $e');
+    }
+  }
+}
+
+Future<void> _cleanupOldBackupFiles() async {
+  final AlembicDiagnostics diagnostics = AlembicDiagnostics.instance;
+  final Directory dir = Directory(configPath);
+  if (!dir.existsSync()) {
+    return;
+  }
+  try {
+    final List<FileSystemEntity> entries = dir.listSync();
+    final List<File> backups = entries
+        .whereType<File>()
+        .where((File f) => f.path.contains('.pre_migration_'))
+        .toList()
+      ..sort((File a, File b) =>
+          b.statSync().modified.compareTo(a.statSync().modified));
+    if (backups.length <= 1) {
+      return;
+    }
+    final List<File> toDelete = backups.sublist(1);
+    int deleted = 0;
+    for (final File file in toDelete) {
+      try {
+        file.deleteSync();
+        deleted++;
+      } catch (_) {}
+    }
+    if (deleted > 0) {
+      diagnostics.log(
+        'backup_cleanup',
+        'removed $deleted old pre_migration backup(s); kept newest',
+      );
+    }
+  } catch (e) {
+    diagnostics.trace('backup_cleanup', 'cleanup failed: $e');
+  }
+}
+
+Future<void> _migrateLegacyDataIfNeeded() async {
+  if (!Platform.isMacOS) {
+    return;
+  }
+  try {
+    final LegacyDataMigrator migrator = LegacyDataMigrator();
+    final MigrationReport report = await migrator.migrateIfNeeded(configPath);
+    BootContext.instance.migrationReport = report;
+    if (report.migrated) {
+      AlembicDiagnostics.instance.success(
+          'main',
+          'Migrated legacy account data from ${report.sourcePath} '
+              '(${report.copied.length} file(s))');
+    } else if (report.attempted) {
+      AlembicDiagnostics.instance.warn(
+          'main',
+          'Legacy migration attempted but no files were copied '
+              '(source=${report.sourcePath ?? '<unknown>'})');
+    } else {
+      AlembicDiagnostics.instance.trace('main',
+          'No legacy migration needed; searched ${report.searchedPaths.length} path(s)');
+    }
+  } catch (e, stackTrace) {
+    AlembicDiagnostics.instance
+        .error('main', 'Legacy data migration failed: $e');
+    AlembicDiagnostics.instance.trace('main', 'migration stack: $stackTrace');
+  }
 }
 
 Future<void> _setupDirectoriesAndLogging() async {
   final Directory appDocDir = await getApplicationDocumentsDirectory();
   configPath = '${appDocDir.path}/Alembic';
   await Directory(configPath).create(recursive: true);
+  BootContext.instance.configPath = configPath;
   windowMode = Directory('$configPath/WINDOW_MODE').existsSync();
-  info('App directory: $configPath');
   await _setupLogging();
+  info('App directory: $configPath');
 }
 
 Future<void> _setupLogging() async {
@@ -77,21 +266,23 @@ Future<void> _setupLogging() async {
   final IOSink logSink = logFile.openWrite(mode: FileMode.writeOnlyAppend);
   lLogHandler = (LogCategory category, String message) {
     logSink.writeln('${category.name}: $message');
+    _forwardFastLogToDiagnostics(category, message);
   };
 }
 
-Future<void> _setupAppSettings() async {
-  verbose('Getting package info');
-  final Future<PackageInfo> packageInfoFuture = PackageInfo.fromPlatform();
-  Hive.init(configPath);
-  verbose('Opening Hive boxes');
-  box = await _openEncryptedDataBox();
-  verbose('Opening settings box');
-  boxSettings = await Hive.openBox('s');
-  await restoreStoredAuthenticationState();
-  verbose('Init Window');
-  await WindowUtil.init();
-  await _configureStartup(packageInfoFuture);
+void _forwardFastLogToDiagnostics(LogCategory category, String message) {
+  AlembicDiagnostics diagnostics = AlembicDiagnostics.instance;
+  (String, void Function(String, String)) route = switch (category) {
+    LogCategory.error => ('fast_log', diagnostics.error),
+    LogCategory.warning => ('fast_log', diagnostics.warn),
+    LogCategory.success => ('fast_log', diagnostics.success),
+    LogCategory.verbose => ('fast_log', diagnostics.trace),
+    LogCategory.network => ('fast_log:network', diagnostics.trace),
+    LogCategory.navigation => ('fast_log:nav', diagnostics.trace),
+    LogCategory.actioned => ('fast_log:action', diagnostics.log),
+    _ => ('fast_log', diagnostics.log),
+  };
+  route.$2(route.$1, message);
 }
 
 Future<void> restoreStoredAuthenticationState() async {
@@ -130,37 +321,106 @@ Future<void> restoreStoredAuthenticationState() async {
   }
 }
 
-String detectStoredTokenType(String token) => detectTokenType(token);
-
 Future<Box> _openEncryptedDataBox() async {
+  final AlembicDiagnostics diagnostics = AlembicDiagnostics.instance;
+  final File hiveFile = File('$configPath/d.hive');
+  final int initialBytes = hiveFile.existsSync() ? hiveFile.lengthSync() : 0;
+  diagnostics.trace(
+    'hive_open',
+    'opening encrypted box d at $configPath/d.hive (existing=$initialBytes bytes)',
+  );
+
   final List<int> secureKey = await _loadOrCreateDataKey();
+  diagnostics.trace(
+    'hive_open',
+    'loaded secure key (${secureKey.length} bytes) from hive_data.key',
+  );
+
   try {
-    return await Hive.openBox(
+    final Box box = await Hive.openBox(
       'd',
       encryptionCipher: HiveAesCipher(secureKey),
     );
-  } catch (_) {
-    final List<int> legacyKey = _legacyHiveKey();
-    final Box legacyBox = await Hive.openBox(
-      'd',
-      encryptionCipher: HiveAesCipher(legacyKey),
+    diagnostics.trace(
+      'hive_open',
+      'opened with primary key; entries=${box.length} '
+          'keys=${box.keys.take(8).toList()}',
     );
+    return box;
+  } catch (e, stackTrace) {
+    diagnostics.warn(
+      'hive_open',
+      'primary key failed (likely from a previous install with deterministic key): $e',
+    );
+    diagnostics.trace('hive_open', 'primary key error stack: $stackTrace');
+
+    final List<int> legacyKey = _legacyHiveKey();
+    diagnostics.log(
+      'hive_open',
+      'attempting deterministic legacy key fallback (${legacyKey.length} bytes)',
+    );
+
+    final Box legacyBox;
+    try {
+      legacyBox = await Hive.openBox(
+        'd',
+        encryptionCipher: HiveAesCipher(legacyKey),
+      );
+    } catch (e2, stackTrace2) {
+      diagnostics.error(
+        'hive_open',
+        'BOTH primary and legacy keys failed to decrypt d.hive '
+            '(initialBytes=$initialBytes): $e2',
+      );
+      diagnostics.trace('hive_open', 'legacy key error stack: $stackTrace2');
+      diagnostics.error(
+        'hive_open',
+        'd.hive is unrecoverable with both keys; opening a fresh empty box',
+      );
+      await Hive.deleteBoxFromDisk('d');
+      return Hive.openBox(
+        'd',
+        encryptionCipher: HiveAesCipher(secureKey),
+      );
+    }
+
     final Map<dynamic, dynamic> legacyData =
         Map<dynamic, dynamic>.from(legacyBox.toMap());
+    diagnostics.success(
+      'hive_open',
+      'legacy key decrypted box; recovered ${legacyData.length} key(s) '
+          'keys=${legacyData.keys.take(8).toList()}',
+    );
     await legacyBox.close();
     await Hive.deleteBoxFromDisk('d');
+    diagnostics.trace('hive_open', 'deleted old encrypted box from disk');
+
     final Box migratedBox = await Hive.openBox(
       'd',
       encryptionCipher: HiveAesCipher(secureKey),
     );
     if (legacyData.isNotEmpty) {
       await migratedBox.putAll(legacyData);
+      diagnostics.success(
+        'hive_open',
+        're-encrypted ${legacyData.length} entries with the new key',
+      );
+    } else {
+      diagnostics.warn(
+        'hive_open',
+        'legacy box contained zero entries; nothing carried over',
+      );
     }
     await migratedBox.close();
-    return Hive.openBox(
+    final Box finalBox = await Hive.openBox(
       'd',
       encryptionCipher: HiveAesCipher(secureKey),
     );
+    diagnostics.success(
+      'hive_open',
+      'reopened with new key; final entries=${finalBox.length}',
+    );
+    return finalBox;
   }
 }
 
@@ -186,9 +446,7 @@ List<int> _legacyHiveKey() {
   return List<int>.generate(32, (_) => random.nextInt(256));
 }
 
-Future<void> _configureStartup(Future<PackageInfo> packageInfoFuture) async {
-  verbose('Waiting for PackageInfo');
-  packageInfo = await packageInfoFuture;
+Future<void> _configureStartup() async {
   verbose('PackageInfo: ${packageInfo.version}');
 
   final String startupExecutable = Platform.resolvedExecutable;
@@ -204,7 +462,6 @@ Future<void> _configureStartup(Future<PackageInfo> packageInfoFuture) async {
     appPath: startupExecutable,
   );
 
-  verbose('Checking if autolaunch is enabled');
   final bool autolaunchEnabled =
       boxSettings.get('autolaunch', defaultValue: true) == true;
   await applyLaunchAtStartupPreference(autolaunchEnabled);
@@ -217,7 +474,7 @@ Future<bool> applyLaunchAtStartupPreference(bool enabled) async {
         ? await launchAtStartup.enable()
         : await launchAtStartup.disable();
     if (result) {
-      success('Autolaunch ${enabled ? 'enabled' : 'disabled'}');
+      verbose('Autolaunch ${enabled ? 'enabled' : 'disabled'}');
     } else {
       warn('Autolaunch $action returned false');
     }
@@ -227,35 +484,6 @@ Future<bool> applyLaunchAtStartupPreference(bool enabled) async {
     error('Failed to $action autolaunch stack trace: $stackTrace');
     return false;
   }
-}
-
-class AlembicRoot extends StatelessWidget {
-  const AlembicRoot({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return ArcaneWindow(
-      child: ArcaneApp(
-        debugShowCheckedModeBanner: false,
-        title: 'Alembic',
-        theme: buildAlembicTheme(),
-        home: const SplashScreen(),
-      ),
-    );
-  }
-}
-
-Widget _buildWindowLeading(BuildContext context) {
-  return const SizedBox(width: 8);
-}
-
-Widget _buildWindowTitle(BuildContext context) {
-  return Text(
-    'Alembic',
-    style: Theme.of(context).typography.small.copyWith(
-          fontWeight: FontWeight.w600,
-        ),
-  );
 }
 
 String expandPath(String path) {

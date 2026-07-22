@@ -248,7 +248,7 @@ open "$target"
 param(
   [string]$Payload,
   [string]$Target,
-  [int]$Pid,
+  [int]$AppPid,
   [string]$Manual
 )
 $ErrorActionPreference = "Stop"
@@ -259,8 +259,8 @@ try {
   Write-Output "Starting Alembic update"
   Write-Output "Payload: $Payload"
   Write-Output "Target: $Target"
-  Write-Output "App pid: $Pid"
-  while (Get-Process -Id $Pid -ErrorAction SilentlyContinue) {
+  Write-Output "App pid: $AppPid"
+  while (Get-Process -Id $AppPid -ErrorAction SilentlyContinue) {
     Start-Sleep -Seconds 1
   }
   if (!(Test-Path -LiteralPath $Payload)) {
@@ -311,7 +311,7 @@ try {
         payloadPath,
         '-Target',
         installTarget,
-        '-Pid',
+        '-AppPid',
         '$pid',
         '-Manual',
         manualInstallerUrl,

@@ -21,7 +21,7 @@ class AlembicBadge extends StatelessWidget {
     Color border = _borderFor(theme);
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
         color: background,
         borderRadius: BorderRadius.circular(AlembicShadcnTokens.badgeRadius),

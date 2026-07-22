@@ -37,8 +37,7 @@ class HomeSessionGuard {
   }
 
   Future<void> promptTokenMigrationIfNeeded(BuildContext context) async {
-    bool shouldPrompt =
-        await controller.consumeClassicTokenMigrationPrompt();
+    bool shouldPrompt = await controller.consumeClassicTokenMigrationPrompt();
     if (!shouldPrompt || !context.mounted) {
       return;
     }

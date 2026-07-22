@@ -1,8 +1,7 @@
 import 'dart:async';
 
-import 'package:alembic/core/account_registry.dart';
 import 'package:alembic/core/archive_master_service.dart';
-import 'package:alembic/core/repository_runtime.dart';
+import 'package:alembic/core/repository_runtime_instance.dart';
 import 'package:alembic/main.dart';
 import 'package:alembic/screen/home.dart';
 import 'package:alembic/screen/login.dart';
@@ -16,10 +15,10 @@ class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
   @override
-  State<SplashScreen> createState() => SplashScreenState();
+  State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class SplashScreenState extends State<SplashScreen>
+class _SplashScreenState extends State<SplashScreen>
     with SingleTickerProviderStateMixin {
   late final m.AnimationController _controller;
   late final m.Animation<double> _fade;
@@ -51,8 +50,7 @@ class SplashScreenState extends State<SplashScreen>
 
   Future<void> _handleAuthentication() async {
     await restoreStoredAuthenticationState();
-
-    final List<GitAccount> accounts = loadGitAccounts();
+    List<GitAccount> accounts = loadGitAccounts();
     if (accounts.isEmpty) {
       _navigateToLogin();
       return;
@@ -62,9 +60,7 @@ class SplashScreenState extends State<SplashScreen>
 
   void _navigateToLogin() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
         m.MaterialPageRoute<void>(builder: (_) => const LoginScreen()),
         (_) => false,
@@ -73,22 +69,18 @@ class SplashScreenState extends State<SplashScreen>
   }
 
   void _navigateToHome() {
+    unawaited(repositoryListStore.refresh());
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) {
-        return;
-      }
-      final AccountRegistry registry = AccountRegistry.fromCurrentStorage();
-      final RepositoryRuntime runtime = RepositoryRuntime();
-      final ArchiveMasterService archiveMasterService = ArchiveMasterService(
-        registry: registry,
-        runtime: runtime,
-      );
+      if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
         m.MaterialPageRoute<void>(
           builder: (_) => AlembicHome(
-            registry: registry,
-            runtime: runtime,
-            archiveMasterService: archiveMasterService,
+            registry: accountRegistry,
+            runtime: repositoryRuntimeInstance,
+            archiveMasterService: archiveMasterService!,
+            store: repositoryListStore,
+            scanService: workspaceScanService,
+            actionsController: repositoryActionsController,
           ),
         ),
         (_) => false,
@@ -97,84 +89,89 @@ class SplashScreenState extends State<SplashScreen>
   }
 
   @override
-  Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-    return AlembicScaffold(
-      child: Center(
-        child: m.AnimatedBuilder(
-          animation: _controller,
-          builder: (BuildContext context, Widget? child) {
-            return Opacity(
+  Widget build(BuildContext context) => AlembicScaffold(
+        child: Center(
+          child: m.AnimatedBuilder(
+            animation: _controller,
+            builder: (_, child) => Opacity(
               opacity: _fade.value,
               child: Transform.translate(
                 offset: Offset(0, _slide.value),
                 child: child,
               ),
-            );
-          },
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 540),
-            child: AlembicPanel(
-              padding: AlembicShadcnTokens.shellPadding,
-              tone: AlembicSurfaceTone.elevated,
-              child: Row(
-                children: <Widget>[
-                  Container(
-                    width: 84,
-                    height: 84,
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.secondary,
-                      borderRadius: BorderRadius.circular(
-                        AlembicShadcnTokens.controlRadius,
-                      ),
-                      border: Border.all(color: theme.colorScheme.border),
-                    ),
-                    child: Center(
-                      child: SvgPicture.asset(
-                        'assets/icon.svg',
-                        width: 42,
-                        height: 42,
-                        colorFilter: m.ColorFilter.mode(
-                          theme.colorScheme.foreground,
-                          m.BlendMode.srcIn,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const Gap(AlembicShadcnTokens.gapLg),
-                  Expanded(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        const AlembicBadge(
-                          label: 'Workspace bootstrap',
-                          tone: AlembicBadgeTone.secondary,
-                        ),
-                        const Gap(AlembicShadcnTokens.gapMd),
-                        Text(
-                          'Preparing Alembic',
-                          style: theme.typography.x3Large.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const Gap(8),
-                        Text(
-                          'Loading credentials, repository state, and desktop services.',
-                          style: theme.typography.small.copyWith(
-                            color: theme.colorScheme.mutedForeground,
-                          ),
-                        ),
-                        const Gap(AlembicShadcnTokens.gapLg),
-                        const m.LinearProgressIndicator(minHeight: 6),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
+            ),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 540),
+              child: const _SplashPanel(),
             ),
           ),
         ),
+      );
+}
+
+class _SplashPanel extends StatelessWidget {
+  const _SplashPanel();
+
+  @override
+  Widget build(BuildContext context) {
+    ThemeData theme = Theme.of(context);
+    return AlembicPanel(
+      padding: AlembicShadcnTokens.shellPadding,
+      tone: AlembicSurfaceTone.elevated,
+      child: Row(
+        children: <Widget>[
+          Container(
+            width: 84,
+            height: 84,
+            decoration: BoxDecoration(
+              color: theme.colorScheme.secondary,
+              borderRadius: BorderRadius.circular(
+                AlembicShadcnTokens.controlRadius,
+              ),
+              border: Border.all(color: theme.colorScheme.border),
+            ),
+            child: Center(
+              child: SvgPicture.asset(
+                'assets/icon.svg',
+                width: 42,
+                height: 42,
+                colorFilter: m.ColorFilter.mode(
+                  theme.colorScheme.foreground,
+                  m.BlendMode.srcIn,
+                ),
+              ),
+            ),
+          ),
+          const Gap(AlembicShadcnTokens.gapLg),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                const AlembicBadge(
+                  label: 'Workspace bootstrap',
+                  tone: AlembicBadgeTone.secondary,
+                ),
+                const Gap(AlembicShadcnTokens.gapMd),
+                Text(
+                  'Preparing Alembic',
+                  style: theme.typography.x3Large.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const Gap(8),
+                Text(
+                  'Loading credentials, repository state, and desktop services.',
+                  style: theme.typography.small.copyWith(
+                    color: theme.colorScheme.mutedForeground,
+                  ),
+                ),
+                const Gap(AlembicShadcnTokens.gapLg),
+                const m.LinearProgressIndicator(minHeight: 6),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

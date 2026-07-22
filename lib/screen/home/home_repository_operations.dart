@@ -1,11 +1,9 @@
 import 'package:alembic/app/alembic_dialogs.dart';
 import 'package:alembic/core/arcane_repository.dart';
+import 'package:alembic/core/repository_actions_controller.dart';
 import 'package:alembic/core/repository_auth.dart';
-import 'package:alembic/core/repository_runtime.dart';
-import 'package:alembic/screen/home/home_actions.dart';
 import 'package:alembic/screen/home/repository_auth_dialog.dart';
-import 'package:alembic/screen/repository_settings.dart';
-import 'package:alembic/util/archive_master.dart';
+import 'package:alembic/screen/repository_detail.dart';
 import 'package:alembic/util/window.dart';
 import 'package:alembic/widget/repository_tile_actions.dart';
 import 'package:flutter/widgets.dart';
@@ -15,126 +13,147 @@ import 'package:url_launcher/url_launcher_string.dart';
 class HomeRepositoryOperations implements RepositoryTileActionOperations {
   final BuildContext context;
   final Repository repository;
+  final String? accountId;
+  final RepositoryActionsController actionsController;
   final ArcaneRepository arcaneRepository;
-  final GitHub github;
-  final RepositoryRuntime runtime;
-  final RepoState state;
-  final List<String> work;
   final Future<void> Function() onChanged;
 
   const HomeRepositoryOperations({
     required this.context,
     required this.repository,
+    required this.accountId,
+    required this.actionsController,
     required this.arcaneRepository,
-    required this.github,
-    required this.runtime,
-    required this.state,
-    required this.work,
     required this.onChanged,
   });
 
+  String get _fullName => repository.fullName;
+
   @override
-  Future<void> showDetails() async {
-    String owner = repository.owner?.login ?? 'unknown';
-    String workLabel = work.isEmpty ? 'None' : work.join(', ');
-    List<String> lines = <String>[
-      'State: ${state.label}',
-      'Owner: $owner',
-      'Work: $workLabel',
-      'Workspace: ${arcaneRepository.repoPath}',
-      'Archive: ${arcaneRepository.imagePath}',
-    ];
-    if (state == RepoState.active) {
-      int daysUntilArchive = await arcaneRepository.daysUntilArchival;
-      lines.add('Auto-archive in: $daysUntilArchive day(s)');
-    }
-    if (!context.mounted) {
-      return;
-    }
-    await showAlembicInfoDialog(
-      context,
-      title: repository.fullName,
-      message: lines.join('\n'),
-    );
-  }
+  Future<void> showDetails() =>
+      showRepositoryDetailDialog(context, repository: repository);
+
+  @override
+  Future<void> openSettings() =>
+      showRepositoryDetailDialog(context, repository: repository);
 
   @override
   Future<void> openInFinder() async {
     await WindowUtil.hide();
-    await arcaneRepository.openInFinder();
-    runtime.notifyChanged();
-    await onChanged();
+    await _run(
+      () => actionsController.openInFinder(_fullName, accountId: accountId),
+      failureTitle: 'Could Not Reveal Repository',
+    );
   }
-
-  @override
-  Future<void> openSettings() =>
-      showRepositorySettingsModal(context, repository);
 
   @override
   Future<void> openExternalUrl(String url) => launchUrlString(url);
 
   @override
-  Future<void> pull() async {
-    await arcaneRepository.ensureRepositoryUpdated(github);
-    await onChanged();
-  }
-
-  @override
-  Future<void> archive() async {
-    await arcaneRepository.archive();
-    await onChanged();
-  }
-
-  @override
-  Future<void> deleteRepository() async {
-    await arcaneRepository.deleteRepository();
-    await onChanged();
-  }
-
-  @override
-  Future<void> activate() async {
-    await arcaneRepository.unarchive(github);
-    await onChanged();
-  }
-
-  @override
-  Future<void> updateArchive() async {
-    await arcaneRepository.updateArchive(github);
-    await onChanged();
-  }
-
-  @override
-  Future<void> deleteArchive() async {
-    await arcaneRepository.deleteArchive();
-    await onChanged();
-  }
-
-  @override
-  Future<void> cloneRepository() async {
-    await arcaneRepository.ensureRepositoryActive(github);
-    await onChanged();
-  }
-
-  @override
-  Future<void> archiveFromCloud() async {
-    await arcaneRepository.archiveFromCloud(github);
-    await onChanged();
-  }
-
-  @override
-  Future<void> forkAndClone() async {
-    try {
-      await arcaneRepository.forkAndClone(github);
-      await onChanged();
-    } catch (e) {
-      if (!context.mounted) {
-        return;
-      }
-      await showAlembicInfoDialog(
-        context,
-        title: 'Fork Failed',
-        message: '$e',
+  Future<void> pull() => _run(
+        () => actionsController.pull(_fullName, accountId: accountId),
+        failureTitle: 'Pull Failed',
       );
+
+  @override
+  Future<void> archive() => _run(
+        () => actionsController.archive(_fullName, accountId: accountId),
+        failureTitle: 'Archive Failed',
+      );
+
+  @override
+  Future<void> deleteRepository() => _run(
+        () => actionsController.delete(_fullName, accountId: accountId),
+        failureTitle: 'Delete Failed',
+      );
+
+  @override
+  Future<void> activate() => _run(
+        () => actionsController.unarchive(_fullName, accountId: accountId),
+        failureTitle: 'Unarchive Failed',
+      );
+
+  @override
+  Future<void> updateArchive() => _run(
+        () => actionsController.updateArchive(_fullName, accountId: accountId),
+        failureTitle: 'Archive Refresh Failed',
+      );
+
+  @override
+  Future<void> deleteArchive() => _run(
+        () => actionsController.deleteArchive(_fullName, accountId: accountId),
+        failureTitle: 'Delete Archive Failed',
+      );
+
+  @override
+  Future<void> cloneRepository() => _run(
+        () => actionsController.clone(_fullName, accountId: accountId),
+        failureTitle: 'Clone Failed',
+      );
+
+  @override
+  Future<void> archiveFromCloud() => _run(
+        () =>
+            actionsController.archiveFromCloud(_fullName, accountId: accountId),
+        failureTitle: 'Archive From Cloud Failed',
+      );
+
+  @override
+  Future<void> forkAndClone() => _run(
+        () => actionsController.fork(_fullName, accountId: accountId),
+        failureTitle: 'Fork Failed',
+      );
+
+  @override
+  Future<void> enrollArchiveMaster() => _run(
+        () => actionsController.enrollArchiveMaster(
+          _fullName,
+          accountId: accountId,
+        ),
+        failureTitle: 'Archive Master Enroll Failed',
+      );
+
+  @override
+  Future<void> unenrollArchiveMaster() => _run(
+        () => actionsController.unenrollArchiveMaster(
+          _fullName,
+          accountId: accountId,
+        ),
+        failureTitle: 'Archive Master Removal Failed',
+      );
+
+  @override
+  Future<void> refreshArchiveMaster() => _run(
+        () => actionsController.refreshArchiveMaster(
+          _fullName,
+          accountId: accountId,
+        ),
+        failureTitle: 'Archive Master Refresh Failed',
+      );
+
+  @override
+  Future<void> promoteArchiveMaster() => _run(
+        () => actionsController.promoteArchiveMaster(
+          _fullName,
+          accountId: accountId,
+        ),
+        failureTitle: 'Archive Master Promotion Failed',
+      );
+
+  @override
+  Future<void> changeAuth() async {
+    const RepositoryAuthInspector inspector = RepositoryAuthInspector();
+    RepoAuthInfo current = await inspector.read(arcaneRepository);
+    if (!context.mounted) {
+      return;
+    }
+    bool applied = await showRepositoryAuthDialog(
+      context: context,
+      repo: arcaneRepository,
+      current: current,
+    );
+    if (applied) {
+      await onChanged();
     }
   }
 
@@ -156,65 +175,10 @@ class HomeRepositoryOperations implements RepositoryTileActionOperations {
       context,
       title: 'Delete archive ${repository.fullName}?',
       description:
-          'Delete this archived image from local storage. Any unsynced local changes inside the archive will be lost.',
+          'Delete this archived .zip image from local storage. Any unsynced local changes inside the archive will be lost.',
       confirmText: 'Delete Archive',
       destructive: true,
     );
-  }
-
-  @override
-  Future<void> enrollArchiveMaster() async {
-    await addArchiveMasterRepository(
-      owner: repository.owner?.login ?? '',
-      repository: repository.name,
-      accountId: arcaneRepository.accountId,
-    );
-    await arcaneRepository.ensureArchiveMaster(github);
-    await onChanged();
-  }
-
-  @override
-  Future<void> unenrollArchiveMaster() async {
-    await removeArchiveMasterRepository(
-      repository.owner?.login ?? '',
-      repository.name,
-    );
-    await arcaneRepository.removeArchiveMaster();
-    await onChanged();
-  }
-
-  @override
-  Future<void> refreshArchiveMaster() async {
-    try {
-      await arcaneRepository.ensureArchiveMaster(github);
-      await onChanged();
-    } catch (e) {
-      if (!context.mounted) {
-        return;
-      }
-      await showAlembicInfoDialog(
-        context,
-        title: 'Archive Master Refresh Failed',
-        message: '$e',
-      );
-    }
-  }
-
-  @override
-  Future<void> promoteArchiveMaster() async {
-    try {
-      await arcaneRepository.promoteArchiveMaster(github);
-      await onChanged();
-    } catch (e) {
-      if (!context.mounted) {
-        return;
-      }
-      await showAlembicInfoDialog(
-        context,
-        title: 'Archive Master Promotion Failed',
-        message: '$e',
-      );
-    }
   }
 
   @override
@@ -229,20 +193,18 @@ class HomeRepositoryOperations implements RepositoryTileActionOperations {
     );
   }
 
-  @override
-  Future<void> changeAuth() async {
-    const RepositoryAuthInspector inspector = RepositoryAuthInspector();
-    final RepoAuthInfo current = await inspector.read(arcaneRepository);
-    if (!context.mounted) {
-      return;
+  Future<void> _run(
+    Future<RepositoryActionResult> Function() action, {
+    required String failureTitle,
+  }) async {
+    RepositoryActionResult result = await action();
+    if (!result.ok && context.mounted) {
+      await showAlembicInfoDialog(
+        context,
+        title: failureTitle,
+        message: result.error ?? 'The action failed for an unknown reason.',
+      );
     }
-    final bool applied = await showRepositoryAuthDialog(
-      context: context,
-      repo: arcaneRepository,
-      current: current,
-    );
-    if (applied) {
-      await onChanged();
-    }
+    await onChanged();
   }
 }

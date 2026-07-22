@@ -4,7 +4,6 @@ import 'package:alembic/core/account_registry.dart';
 import 'package:alembic/core/arcane_repository.dart';
 import 'package:alembic/core/repository_runtime.dart';
 import 'package:alembic/util/archive_master.dart';
-import 'package:alembic/util/environment.dart';
 import 'package:alembic/util/repo_config.dart';
 import 'package:alembic/util/semaphore.dart';
 import 'package:fast_log/fast_log.dart';
@@ -53,7 +52,7 @@ class ArchiveMasterService {
     }
     _scheduleTimer?.cancel();
     _initialDelayTimer?.cancel();
-    if (alembicIsFlutterTestEnvironment()) {
+    if (!config.archiveEnabled) {
       return;
     }
     final int intervalMinutes = config.archiveMasterIntervalMinutes;
@@ -79,7 +78,7 @@ class ArchiveMasterService {
   }
 
   Future<void> runOnce({bool force = false}) async {
-    if (_running) {
+    if (!config.archiveEnabled || _running) {
       return;
     }
     final List<ArchiveMasterTarget> targets = loadArchiveMasterTargets();
@@ -124,10 +123,9 @@ class ArchiveMasterService {
         runtime: runtime,
         accountId: work.accountId,
       );
-      final GitHub github =
-          registry.githubForAccount(work.accountId ?? '') ??
-              registry.primaryGitHub ??
-              GitHub();
+      final GitHub github = registry.githubForAccount(work.accountId ?? '') ??
+          registry.primaryGitHub ??
+          GitHub();
       await arcane.ensureArchiveMaster(github);
     } catch (e) {
       warn('Archive master target ${work.repository.fullName} failed: $e');
@@ -156,7 +154,8 @@ class ArchiveMasterService {
             accountId: target.accountId ?? registry.primaryAccountId,
           );
         } else {
-          final List<Repository> orgRepos = await _fetchOrganizationRepositories(
+          final List<Repository> orgRepos =
+              await _fetchOrganizationRepositories(
             owner: target.owner,
             preferredAccountId: target.accountId,
           );
@@ -168,7 +167,8 @@ class ArchiveMasterService {
           }
         }
       } catch (e) {
-        warn('Archive master target ${target.displayName} resolution failed: $e');
+        warn(
+            'Archive master target ${target.displayName} resolution failed: $e');
       }
     }
     return dedup.values.toList();
@@ -215,9 +215,8 @@ class ArchiveMasterService {
         if (repos.isNotEmpty) {
           return repos;
         }
-        final List<Repository> userRepos = await github.repositories
-            .listUserRepositories(owner)
-            .toList();
+        final List<Repository> userRepos =
+            await github.repositories.listUserRepositories(owner).toList();
         if (userRepos.isNotEmpty) {
           return userRepos;
         }

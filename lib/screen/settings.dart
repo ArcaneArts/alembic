@@ -4,11 +4,13 @@ import 'dart:io';
 import 'package:alembic/app/alembic_dialogs.dart';
 import 'package:alembic/app/alembic_theme.dart';
 import 'package:alembic/platform/desktop_platform_adapter.dart';
-import 'package:alembic/screen/settings/settings_navigation.dart';
-import 'package:alembic/screen/settings/settings_types.dart';
+import 'package:alembic/screen/settings/accounts_pane.dart';
+import 'package:alembic/screen/settings/advanced_pane.dart';
+import 'package:alembic/screen/settings/general_pane.dart';
+import 'package:alembic/screen/settings/tools_pane.dart';
+import 'package:alembic/screen/settings/workspace_pane.dart';
 import 'package:alembic/ui/alembic_ui.dart';
 import 'package:alembic/util/clone_transport.dart';
-import 'package:alembic/util/environment.dart';
 import 'package:alembic/util/git_signing.dart';
 import 'package:alembic/util/repo_config.dart';
 import 'package:arcane/arcane.dart';
@@ -17,59 +19,54 @@ import 'package:flutter/material.dart' as m;
 
 Future<void> showSettingsModal(
   BuildContext context, {
-  SettingsPane initialPane = SettingsPane.general,
-  List<SettingsQuickAction> quickActions = const <SettingsQuickAction>[],
-  ValueChanged<SettingsQuickAction>? onQuickActionSelected,
+  VoidCallback? onLogout,
 }) {
   return Navigator.of(context, rootNavigator: true).push(
     m.MaterialPageRoute<void>(
       builder: (_) => Settings(
-        initialPane: initialPane,
-        quickActions: quickActions,
-        onQuickActionSelected: onQuickActionSelected,
-        modal: true,
+        onLogout: onLogout,
       ),
     ),
   );
 }
 
 class Settings extends StatefulWidget {
-  final bool modal;
-  final SettingsPane initialPane;
-  final List<SettingsQuickAction> quickActions;
-  final ValueChanged<SettingsQuickAction>? onQuickActionSelected;
+  final VoidCallback? onLogout;
 
   const Settings({
     super.key,
-    this.modal = false,
-    this.initialPane = SettingsPane.general,
-    this.quickActions = const <SettingsQuickAction>[],
-    this.onQuickActionSelected,
+    this.onLogout,
   });
 
   @override
   State<Settings> createState() => _SettingsState();
 }
 
-class _SettingsState extends State<Settings> with m.WidgetsBindingObserver {
+class _SettingsState extends State<Settings> {
   late final m.TextEditingController _archiveDaysController;
   late final GitSigningManager _signingManager;
   late CloneTransportMode _cloneTransportMode;
   GitSigningStatus? _signingStatus;
   bool _signingBusy = false;
-  SettingsPane _pane = SettingsPane.general;
+
+  static bool get _isFlutterTestEnvironment {
+    if (const bool.fromEnvironment('FLUTTER_TEST')) {
+      return true;
+    }
+    return m.WidgetsBinding.instance.runtimeType
+        .toString()
+        .contains('TestWidgetsFlutterBinding');
+  }
 
   @override
   void initState() {
     super.initState();
-    m.WidgetsBinding.instance.addObserver(this);
-    _pane = widget.initialPane;
     _signingManager = const GitSigningManager();
     _cloneTransportMode = loadCloneTransportMode();
     _archiveDaysController = m.TextEditingController(
       text: '${config.daysToArchive}',
     );
-    if (alembicIsFlutterTestEnvironment()) {
+    if (_isFlutterTestEnvironment) {
       _signingStatus = const GitSigningStatus(
         commitSigningEnabled: false,
         signingFormat: null,
@@ -82,24 +79,8 @@ class _SettingsState extends State<Settings> with m.WidgetsBindingObserver {
 
   @override
   void dispose() {
-    m.WidgetsBinding.instance.removeObserver(this);
     _archiveDaysController.dispose();
     super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(m.AppLifecycleState state) {
-    if (state != m.AppLifecycleState.inactive &&
-        state != m.AppLifecycleState.hidden &&
-        state != m.AppLifecycleState.paused) {
-      return;
-    }
-    if (_pane == SettingsPane.general || !mounted) {
-      return;
-    }
-    setState(() {
-      _pane = SettingsPane.general;
-    });
   }
 
   Future<void> _selectDirectory({
@@ -107,7 +88,7 @@ class _SettingsState extends State<Settings> with m.WidgetsBindingObserver {
     required String dialogTitle,
     required ValueChanged<String> onSelected,
   }) async {
-    final String? pickerInitialDirectory =
+    String? pickerInitialDirectory =
         _safeDirectoryPickerInitialPath(initialDirectory);
     try {
       String? selectedPath = await FilePicker.platform.getDirectoryPath(
@@ -131,7 +112,7 @@ class _SettingsState extends State<Settings> with m.WidgetsBindingObserver {
   }
 
   String? _safeDirectoryPickerInitialPath(String path) {
-    final String resolvedPath =
+    String resolvedPath =
         DesktopPlatformAdapter.instance.expandHomePath(path).trim();
     if (resolvedPath.isEmpty) {
       return null;
@@ -149,8 +130,7 @@ class _SettingsState extends State<Settings> with m.WidgetsBindingObserver {
       return resolvedPath;
     }
 
-    final String? existingParent =
-        _nearestExistingParentDirectory(resolvedPath);
+    String? existingParent = _nearestExistingParentDirectory(resolvedPath);
     return existingParent ??
         DesktopPlatformAdapter.instance.defaultHomeDirectory;
   }
@@ -242,58 +222,47 @@ class _SettingsState extends State<Settings> with m.WidgetsBindingObserver {
     }
   }
 
-  void _selectPane(SettingsPane pane) {
-    setState(() {
-      _pane = pane;
-    });
-  }
+  List<Widget> _sections() => <Widget>[
+        GeneralSettingsPane(
+          onThemeModeChanged: _setThemeMode,
+        ),
+        WorkspaceSettingsPane(
+          archiveDaysController: _archiveDaysController,
+          onSelectDirectory: _selectDirectory,
+        ),
+        ToolsSettingsPane(
+          cloneTransportMode: _cloneTransportMode,
+          signingBusy: _signingBusy,
+          signingStatus: _signingStatus,
+          onCloneTransportChanged: _onCloneTransportChanged,
+          onConfigureCommitSigning: _configureCommitSigning,
+        ),
+        AccountsSettingsPane(
+          onLogout: widget.onLogout,
+        ),
+        const AdvancedSettingsPane(),
+      ];
 
   @override
   Widget build(BuildContext context) {
-    Widget navigation = SettingsNavigation(
-      pane: _pane,
-      onSelected: _selectPane,
-    );
-    Widget content = SettingsContent(
-      pane: _pane,
-      archiveDaysController: _archiveDaysController,
-      cloneTransportMode: _cloneTransportMode,
-      signingBusy: _signingBusy,
-      signingStatus: _signingStatus,
-      onSelectDirectory: _selectDirectory,
-      onCloneTransportChanged: _onCloneTransportChanged,
-      onConfigureCommitSigning: _configureCommitSigning,
-      onThemeModeChanged: _setThemeMode,
-    );
-    return m.Scaffold(
-      backgroundColor: m.Colors.transparent,
-      body: AlembicScaffold(
+    return m.Material(
+      color: Theme.of(context).colorScheme.background,
+      child: AlembicScaffold(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            AlembicPageHeader(
-              title: 'Settings',
-              subtitle: 'Configure startup, workspace, accounts, and tooling.',
-              trailing: AlembicToolbarButton(
-                onPressed: () => Navigator.of(context).pop(),
-                label: 'Done',
+            _SettingsSection(
+              child: _SettingsHeader(
+                onDone: () => Navigator.of(context).pop(),
               ),
             ),
-            const Gap(AlembicShadcnTokens.gapLg),
-            navigation,
-            const Gap(AlembicShadcnTokens.gapLg),
+            const Gap(10),
             Expanded(
               child: _SettingsBody(
-                content: content,
+                sections: _sections(),
               ),
             ),
-            if (widget.quickActions.isNotEmpty) ...<Widget>[
-              const Gap(AlembicShadcnTokens.gapLg),
-              SettingsQuickActions(
-                actions: widget.quickActions,
-                onSelected: widget.onQuickActionSelected,
-              ),
-            ],
           ],
         ),
       ),
@@ -301,19 +270,74 @@ class _SettingsState extends State<Settings> with m.WidgetsBindingObserver {
   }
 }
 
-class _SettingsBody extends StatelessWidget {
-  final Widget content;
+class _SettingsHeader extends StatelessWidget {
+  final VoidCallback onDone;
 
-  const _SettingsBody({
-    required this.content,
+  const _SettingsHeader({
+    required this.onDone,
   });
 
   @override
   Widget build(BuildContext context) {
-    return m.ListView(
+    ThemeData theme = Theme.of(context);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: <Widget>[
-        content,
+        Expanded(
+          child: Text(
+            'Settings',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.typography.small.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+        const Gap(AlembicShadcnTokens.gapMd),
+        AlembicToolbarButton(
+          onPressed: onDone,
+          label: 'Done',
+        ),
       ],
     );
   }
+}
+
+class _SettingsBody extends StatelessWidget {
+  static const double _sectionGap = 14;
+
+  final List<Widget> sections;
+
+  const _SettingsBody({
+    required this.sections,
+  });
+
+  @override
+  Widget build(BuildContext context) => m.ListView(
+        padding: const EdgeInsets.only(bottom: AlembicShadcnTokens.gapXl),
+        children: <Widget>[
+          for (int i = 0; i < sections.length; i++) ...<Widget>[
+            if (i > 0) const Gap(_sectionGap),
+            _SettingsSection(child: sections[i]),
+          ],
+        ],
+      );
+}
+
+class _SettingsSection extends StatelessWidget {
+  static const double _contentMaxWidth = 860;
+
+  final Widget child;
+
+  const _SettingsSection({
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) => Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: _contentMaxWidth),
+          child: child,
+        ),
+      );
 }

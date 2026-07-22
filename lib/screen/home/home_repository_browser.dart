@@ -1,7 +1,7 @@
 import 'package:alembic/core/repository_runtime.dart';
-import 'package:alembic/presentation/home_view_state.dart';
 import 'package:alembic/screen/home/home_repository_rows.dart';
 import 'package:alembic/screen/home/home_tiles.dart';
+import 'package:alembic/screen/home/home_view_filters.dart';
 import 'package:alembic/ui/alembic_ui.dart';
 import 'package:alembic/util/git_accounts.dart';
 import 'package:arcane/arcane.dart';
@@ -9,35 +9,38 @@ import 'package:flutter/material.dart' as m;
 import 'package:github/github.dart';
 
 class HomeRepositoryBrowserPane extends StatefulWidget {
-  final HomeSelectionState selection;
+  final List<HomeRepositoryEntry> entries;
+  final int totalCount;
   final RepositoryRuntime runtime;
   final int revision;
-  final String? searchQuery;
-  final List<Repository> repositories;
-  final VoidCallback onImportRepository;
-  final VoidCallback onOpenSettings;
-  final RepositoryPrimaryActionCallback onPrimaryAction;
-  final RepositoryActionCallback onRepositoryAction;
-  final Future<void> Function(List<Repository> repositories) onCloneSelected;
-  final bool Function(Repository repository) canForkRepository;
+  final bool archiveEnabled;
+  final HomeFilterState filters;
   final GitAccount? Function(Repository repository) accountForRepository;
-  final bool archiveMasterRunning;
+  final bool Function(Repository repository) canForkRepository;
+  final HomeEntryCallback onPrimaryAction;
+  final HomeEntryActionCallback onRepositoryAction;
+  final HomeEntryCallback onShowDetails;
+  final Future<void> Function(List<HomeRepositoryEntry> entries)
+      onCloneSelected;
+  final VoidCallback onClearFilters;
+  final VoidCallback onImportRepository;
 
   const HomeRepositoryBrowserPane({
     super.key,
-    required this.selection,
+    required this.entries,
+    required this.totalCount,
     required this.runtime,
     required this.revision,
-    required this.searchQuery,
-    required this.repositories,
-    required this.onImportRepository,
-    required this.onOpenSettings,
+    required this.archiveEnabled,
+    required this.filters,
+    required this.accountForRepository,
+    required this.canForkRepository,
     required this.onPrimaryAction,
     required this.onRepositoryAction,
+    required this.onShowDetails,
     required this.onCloneSelected,
-    required this.canForkRepository,
-    required this.accountForRepository,
-    required this.archiveMasterRunning,
+    required this.onClearFilters,
+    required this.onImportRepository,
   });
 
   @override
@@ -49,311 +52,105 @@ class _HomeRepositoryBrowserPaneState extends State<HomeRepositoryBrowserPane> {
   static const String _repositoryListKeyPrefix = 'repository:';
 
   late final ScrollController _scrollController;
-  final Set<String> _selectedRepositoryKeys = <String>{};
+  late final HomeSelectionController _selection;
 
   @override
   void initState() {
     super.initState();
     _scrollController = ScrollController();
+    _selection = HomeSelectionController();
   }
 
   @override
   void dispose() {
     _scrollController.dispose();
+    _selection.dispose();
     super.dispose();
   }
 
   @override
   void didUpdateWidget(covariant HomeRepositoryBrowserPane oldWidget) {
     super.didUpdateWidget(oldWidget);
-    _pruneSelection();
+    _selection.prune(<String>{
+      for (HomeRepositoryEntry entry in widget.entries) entry.lowerKey,
+    });
   }
-
-  bool get _isProjects => widget.selection.tab == HomeTab.active;
-
-  bool get _isArchiveMaster => widget.selection.tab == HomeTab.archiveMaster;
-
-  bool get _isRepositories => widget.selection.tab == HomeTab.repositories;
-
-  bool get _selectionEnabled => _isRepositories;
-
-  int get _selectedCount => _selectedRepositories().length;
-
-  String get _listScopeKey => switch (widget.selection.tab) {
-        HomeTab.active => 'active',
-        HomeTab.repositories =>
-          'repositories:${widget.selection.organizationFilter.storageValue}',
-        HomeTab.archiveMaster => 'archiveMaster',
-      };
-
-  String get _title => switch (widget.selection.tab) {
-        HomeTab.active => 'Projects',
-        HomeTab.repositories =>
-          widget.selection.organizationFilter.organizationLogin ??
-              'Repositories',
-        HomeTab.archiveMaster => 'Archive Master',
-      };
 
   String get _subtitle {
-    String? query = widget.searchQuery;
-    if (query != null && query.trim().isNotEmpty) {
-      int count = widget.repositories.length;
-      return '$count match${count == 1 ? '' : 'es'}';
+    if (widget.filters.hasActiveFilters) {
+      int count = widget.entries.length;
+      return '$count matching ${widget.totalCount} total';
     }
-    return switch (widget.selection.tab) {
-      HomeTab.active => 'Local repositories in your workspace.',
-      HomeTab.repositories => _repositoriesSubtitle(),
-      HomeTab.archiveMaster => widget.archiveMasterRunning
-          ? 'Archive Master is refreshing repositories now...'
-          : 'Repositories tracked and pulled by Archive Master on a schedule.',
-    };
+    return '${widget.totalCount} repositor${widget.totalCount == 1 ? 'y' : 'ies'}';
   }
 
-  String _repositoriesSubtitle() {
-    String? selected = widget.selection.organizationFilter.organizationLogin;
-    if (selected == null) {
-      return 'Personal and organization repositories available to your accounts.';
-    }
-    return 'Repositories from $selected.';
-  }
+  List<HomeRepositoryEntry> get _selectedEntries => widget.entries
+      .where((entry) => _selection.isSelected(entry.lowerKey))
+      .toList();
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (BuildContext context, BoxConstraints constraints) {
-        bool compact = constraints.maxWidth < 430;
-        ThemeData theme = Theme.of(context);
-        int count = widget.repositories.length;
-        String countLabel = '$count repositor${count == 1 ? 'y' : 'ies'}';
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            Padding(
-              padding: AlembicShadcnTokens.rowPadding,
-              child: AlembicSectionHeader(
-                title: _title,
-                subtitle: _subtitle,
-                trailing: _buildHeaderActions(countLabel),
-              ),
-            ),
-            m.Divider(
-              height: 1,
-              thickness: 1,
-              color: theme.colorScheme.border,
-            ),
-            Expanded(
-              child: widget.repositories.isEmpty
-                  ? _buildEmptyState()
-                  : _buildList(compact: compact),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _buildEmptyState() => HomeSidebarEmptyState(
-        title: _emptyTitle(),
-        description: _emptyDescription(),
-        primaryLabel: _isArchiveMaster ? 'Open Settings' : 'Clone Link',
-        onPrimaryPressed: _isArchiveMaster
-            ? widget.onOpenSettings
-            : widget.onImportRepository,
-        secondaryLabel: _isProjects ? 'Settings' : null,
-        onSecondaryPressed: _isProjects ? widget.onOpenSettings : null,
-      );
-
-  Widget _buildHeaderActions(String countLabel) {
-    if (!_selectionEnabled || widget.repositories.isEmpty) {
-      return AlembicBadge(
-        label: countLabel,
-        tone: AlembicBadgeTone.outline,
-      );
-    }
-
-    int selectedCount = _selectedCount;
-    bool allSelected = selectedCount == widget.repositories.length;
-    return Wrap(
-      spacing: AlembicShadcnTokens.gapSm,
-      runSpacing: AlembicShadcnTokens.gapSm,
-      alignment: WrapAlignment.end,
-      crossAxisAlignment: WrapCrossAlignment.center,
+    ThemeData theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        AlembicBadge(
-          label: selectedCount == 0 ? countLabel : '$selectedCount selected',
-          tone: AlembicBadgeTone.outline,
+        Padding(
+          padding: const EdgeInsets.only(bottom: AlembicShadcnTokens.gapSm),
+          child: _BrowserHeader(
+            subtitle: _subtitle,
+            trailing: widget.entries.isEmpty
+                ? null
+                : m.ListenableBuilder(
+                    listenable: _selection,
+                    builder: (context, _) => _HeaderActions(
+                      totalVisible: widget.entries.length,
+                      selectedCount: _selection.count,
+                      onSelectAll: _selectVisible,
+                      onClearSelection: _selection.clear,
+                      onCloneSelected: _cloneSelected,
+                    ),
+                  ),
+          ),
         ),
-        AlembicToolbarButton(
-          label: allSelected ? 'Clear' : 'Select all',
-          leadingIcon: allSelected ? m.Icons.close : m.Icons.select_all,
-          compact: true,
-          onPressed: allSelected ? _clearSelection : _selectVisible,
+        m.Divider(
+          height: 1,
+          thickness: 1,
+          color: theme.colorScheme.border,
         ),
-        AlembicToolbarButton(
-          label: 'Clone selected',
-          leadingIcon: m.Icons.add_link,
-          compact: true,
-          prominent: selectedCount > 0,
-          onPressed: selectedCount == 0 ? null : _cloneSelected,
+        Expanded(
+          child: widget.entries.isEmpty
+              ? _EmptyBrowser(
+                  hasActiveFilters: widget.filters.hasActiveFilters,
+                  onClearFilters: widget.onClearFilters,
+                  onImportRepository: widget.onImportRepository,
+                )
+              : _RepositoryList(
+                  scrollController: _scrollController,
+                  entries: widget.entries,
+                  runtime: widget.runtime,
+                  revision: widget.revision,
+                  archiveEnabled: widget.archiveEnabled,
+                  keyPrefix: _repositoryListKeyPrefix,
+                  selection: _selection,
+                  accountForRepository: widget.accountForRepository,
+                  canForkRepository: widget.canForkRepository,
+                  onPrimaryAction: widget.onPrimaryAction,
+                  onRepositoryAction: widget.onRepositoryAction,
+                  onShowDetails: widget.onShowDetails,
+                ),
         ),
       ],
     );
   }
 
-  String _emptyTitle() {
-    if (_isProjects) {
-      return 'No projects';
-    }
-    if (_isArchiveMaster) {
-      return 'No archive master targets';
-    }
-    return 'Nothing found';
-  }
-
-  String _emptyDescription() {
-    if (_isArchiveMaster) {
-      return 'Open Settings → Archive Master to enroll repositories or organizations and let Alembic keep them up to date.';
-    }
-    if (_isProjects) {
-      return 'Use Clone Link, or browse Repositories to bring repositories into your workspace.';
-    }
-    return 'Try another search or change the organization filter.';
-  }
-
-  Widget _buildList({required bool compact}) => m.Scrollbar(
-        controller: _scrollController,
-        child: m.CustomScrollView(
-          controller: _scrollController,
-          cacheExtent: AlembicShadcnTokens.listRowHeight * 8,
-          slivers: <Widget>[
-            m.SliverPadding(
-              padding: const EdgeInsets.symmetric(
-                vertical: AlembicShadcnTokens.gapSm,
-              ),
-              sliver: m.SliverList.builder(
-                key: m.ValueKey<String>(_listScopeKey),
-                itemCount: widget.repositories.length,
-                findChildIndexCallback: _findRepositoryIndex,
-                itemBuilder: (
-                  BuildContext context,
-                  int index,
-                ) =>
-                    _buildRepositoryListItem(
-                  context,
-                  index,
-                  compact: compact,
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
-
-  int? _findRepositoryIndex(m.Key key) {
-    if (key is! m.ValueKey<String>) {
-      return null;
-    }
-    String value = key.value;
-    if (!value.startsWith(_repositoryListKeyPrefix)) {
-      return null;
-    }
-    String fullName = value.substring(_repositoryListKeyPrefix.length);
-    int repositoryIndex = widget.repositories.indexWhere(
-      (Repository repository) {
-        return repository.fullName.toLowerCase() == fullName;
-      },
-    );
-    if (repositoryIndex < 0) {
-      return null;
-    }
-    return repositoryIndex;
-  }
-
-  Widget _buildRepositoryListItem(
-    BuildContext context,
-    int index, {
-    required bool compact,
-  }) {
-    Repository repository = widget.repositories[index];
-    EdgeInsets padding = EdgeInsets.only(
-      bottom: index == widget.repositories.length - 1
-          ? 0
-          : AlembicShadcnTokens.gapXs,
-    );
-    return Padding(
-      key: _repositoryListKey(repository),
-      padding: padding,
-      child: _buildRepositoryRow(
-        context,
-        index,
-        compact: compact,
-      ),
-    );
-  }
-
-  Widget _buildRepositoryRow(
-    BuildContext context,
-    int index, {
-    required bool compact,
-  }) {
-    Repository repository = widget.repositories[index];
-    GitAccount? account = widget.accountForRepository(repository);
-    if (_isProjects) {
-      return LocalRepositoryRow(
-        repository: repository,
-        runtime: widget.runtime,
-        revision: widget.revision,
-        onPrimaryAction: widget.onPrimaryAction,
-        onRepositoryAction: widget.onRepositoryAction,
-        account: account,
-        compact: compact,
-      );
-    }
-    return BrowseRepositoryRow(
-      repository: repository,
-      runtime: widget.runtime,
-      revision: widget.revision,
-      onPrimaryAction: widget.onPrimaryAction,
-      onRepositoryAction: widget.onRepositoryAction,
-      canForkRepository: widget.canForkRepository,
-      account: account,
-      selectable: _selectionEnabled,
-      selected: _selectedRepositoryKeys.contains(_repositoryKey(repository)),
-      onSelectedChanged: (bool selected) => _toggleRepositorySelection(
-        repository,
-        selected,
-      ),
-      compact: compact,
-    );
-  }
-
-  void _toggleRepositorySelection(Repository repository, bool selected) {
-    String key = _repositoryKey(repository);
-    setState(() {
-      if (selected) {
-        _selectedRepositoryKeys.add(key);
-      } else {
-        _selectedRepositoryKeys.remove(key);
-      }
-    });
-  }
-
   void _selectVisible() {
-    setState(() {
-      for (Repository repository in widget.repositories) {
-        _selectedRepositoryKeys.add(_repositoryKey(repository));
-      }
-    });
-  }
-
-  void _clearSelection() {
-    setState(() {
-      _selectedRepositoryKeys.clear();
-    });
+    _selection.selectAll(<String>[
+      for (HomeRepositoryEntry entry in widget.entries) entry.lowerKey,
+    ]);
   }
 
   Future<void> _cloneSelected() async {
-    List<Repository> selected = _selectedRepositories();
+    List<HomeRepositoryEntry> selected = _selectedEntries;
     if (selected.isEmpty) {
       return;
     }
@@ -361,34 +158,207 @@ class _HomeRepositoryBrowserPaneState extends State<HomeRepositoryBrowserPane> {
     if (!mounted) {
       return;
     }
-    _clearSelection();
+    _selection.clear();
   }
+}
 
-  List<Repository> _selectedRepositories() {
-    List<Repository> selected = <Repository>[];
-    for (Repository repository in widget.repositories) {
-      if (_selectedRepositoryKeys.contains(_repositoryKey(repository))) {
-        selected.add(repository);
-      }
-    }
-    return selected;
-  }
+class _BrowserHeader extends StatelessWidget {
+  final String subtitle;
+  final Widget? trailing;
 
-  void _pruneSelection() {
-    Set<String> visibleKeys = <String>{
-      for (Repository repository in widget.repositories)
-        _repositoryKey(repository),
-    };
-    _selectedRepositoryKeys.removeWhere(
-      (String key) => !visibleKeys.contains(key),
+  const _BrowserHeader({
+    required this.subtitle,
+    required this.trailing,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    ThemeData theme = Theme.of(context);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: <Widget>[
+        Text(
+          'Repositories',
+          style: theme.typography.small.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const Gap(AlembicShadcnTokens.gapSm),
+        Expanded(
+          child: Text(
+            subtitle,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.typography.xSmall.copyWith(
+              color: theme.colorScheme.mutedForeground,
+            ),
+          ),
+        ),
+        if (trailing != null) ...<Widget>[
+          const Gap(AlembicShadcnTokens.gapMd),
+          trailing!,
+        ],
+      ],
     );
   }
+}
 
-  String _repositoryKey(Repository repository) =>
-      repository.fullName.toLowerCase();
+class _HeaderActions extends StatelessWidget {
+  final int totalVisible;
+  final int selectedCount;
+  final VoidCallback onSelectAll;
+  final VoidCallback onClearSelection;
+  final VoidCallback onCloneSelected;
 
-  m.ValueKey<String> _repositoryListKey(Repository repository) =>
-      m.ValueKey<String>(
-        '$_repositoryListKeyPrefix${_repositoryKey(repository)}',
+  const _HeaderActions({
+    required this.totalVisible,
+    required this.selectedCount,
+    required this.onSelectAll,
+    required this.onClearSelection,
+    required this.onCloneSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    bool allSelected = selectedCount == totalVisible;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: <Widget>[
+        if (selectedCount > 0) ...<Widget>[
+          AlembicBadge(
+            label: '$selectedCount selected',
+            tone: AlembicBadgeTone.outline,
+          ),
+          const Gap(AlembicShadcnTokens.gapSm),
+        ],
+        AlembicToolbarButton(
+          label: allSelected ? 'Clear' : 'Select all',
+          leadingIcon: allSelected ? m.Icons.close : m.Icons.select_all,
+          compact: true,
+          onPressed: allSelected ? onClearSelection : onSelectAll,
+        ),
+        const Gap(AlembicShadcnTokens.gapSm),
+        AlembicToolbarButton(
+          label: 'Clone selected',
+          leadingIcon: m.Icons.add_link,
+          compact: true,
+          prominent: selectedCount > 0,
+          onPressed: selectedCount == 0 ? null : onCloneSelected,
+        ),
+      ],
+    );
+  }
+}
+
+class _EmptyBrowser extends StatelessWidget {
+  final bool hasActiveFilters;
+  final VoidCallback onClearFilters;
+  final VoidCallback onImportRepository;
+
+  const _EmptyBrowser({
+    required this.hasActiveFilters,
+    required this.onClearFilters,
+    required this.onImportRepository,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (hasActiveFilters) {
+      return HomeSidebarEmptyState(
+        title: 'No repositories match',
+        description: 'Try another search, state, or owner filter.',
+        primaryLabel: 'Clear filters',
+        onPrimaryPressed: onClearFilters,
+      );
+    }
+    return HomeSidebarEmptyState(
+      title: 'No repositories yet',
+      description:
+          'Use Clone Link to bring a repository into your workspace, or refresh to fetch from GitHub.',
+      primaryLabel: 'Clone Link',
+      onPrimaryPressed: onImportRepository,
+    );
+  }
+}
+
+class _RepositoryList extends StatelessWidget {
+  static const double _rowCacheExtent = 480;
+
+  final ScrollController scrollController;
+  final List<HomeRepositoryEntry> entries;
+  final RepositoryRuntime runtime;
+  final int revision;
+  final bool archiveEnabled;
+  final String keyPrefix;
+  final HomeSelectionController selection;
+  final GitAccount? Function(Repository repository) accountForRepository;
+  final bool Function(Repository repository) canForkRepository;
+  final HomeEntryCallback onPrimaryAction;
+  final HomeEntryActionCallback onRepositoryAction;
+  final HomeEntryCallback onShowDetails;
+
+  const _RepositoryList({
+    required this.scrollController,
+    required this.entries,
+    required this.runtime,
+    required this.revision,
+    required this.archiveEnabled,
+    required this.keyPrefix,
+    required this.selection,
+    required this.accountForRepository,
+    required this.canForkRepository,
+    required this.onPrimaryAction,
+    required this.onRepositoryAction,
+    required this.onShowDetails,
+  });
+
+  int? _findRepositoryIndex(m.Key key) {
+    if (key is! m.ValueKey<String>) {
+      return null;
+    }
+    String value = key.value;
+    if (!value.startsWith(keyPrefix)) {
+      return null;
+    }
+    String fullName = value.substring(keyPrefix.length);
+    int repositoryIndex =
+        entries.indexWhere((entry) => entry.lowerKey == fullName);
+    return repositoryIndex < 0 ? null : repositoryIndex;
+  }
+
+  @override
+  Widget build(BuildContext context) => m.Scrollbar(
+        controller: scrollController,
+        child: m.CustomScrollView(
+          controller: scrollController,
+          cacheExtent: _rowCacheExtent,
+          slivers: <Widget>[
+            m.SliverPadding(
+              padding: const EdgeInsets.only(bottom: AlembicShadcnTokens.gapSm),
+              sliver: m.SliverList.builder(
+                itemCount: entries.length,
+                findChildIndexCallback: _findRepositoryIndex,
+                itemBuilder: (context, index) {
+                  HomeRepositoryEntry entry = entries[index];
+                  return HomeRepositoryRow(
+                    key: m.ValueKey<String>('$keyPrefix${entry.lowerKey}'),
+                    entry: entry,
+                    runtime: runtime,
+                    revision: revision,
+                    archiveEnabled: archiveEnabled,
+                    account: accountForRepository(entry.repository),
+                    canFork: canForkRepository(entry.repository),
+                    selection: selection,
+                    showSeparator: index != entries.length - 1,
+                    onPrimaryAction: onPrimaryAction,
+                    onAction: onRepositoryAction,
+                    onShowDetails: onShowDetails,
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
       );
 }

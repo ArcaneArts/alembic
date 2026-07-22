@@ -13,7 +13,6 @@ import 'package:alembic/util/git_signing.dart';
 import 'package:alembic/util/repo_config.dart';
 import 'package:archive/archive_io.dart';
 import 'package:fast_log/fast_log.dart';
-import 'package:flutter/widgets.dart';
 import 'package:github/github.dart';
 import 'package:rxdart/rxdart.dart';
 
@@ -120,6 +119,7 @@ class ArcaneRepository {
       });
 
   Future<bool> get isStaleActive async {
+    if (!config.archiveEnabled) return false;
     if (!await isActive) {
       return false;
     }
@@ -137,6 +137,7 @@ class ArcaneRepository {
   }
 
   Future<int> get daysUntilArchival async {
+    if (!config.archiveEnabled) return 0;
     if (!await isActive) {
       return 0;
     }
@@ -269,15 +270,21 @@ class ArcaneRepository {
     bool updateActive = true,
   }) {
     return doWork<void>("Activating", () async {
-      final Directory repoDir = Directory(repoPath);
-      if (!await repoDir.exists()) {
+      Directory repoDir = Directory(repoPath);
+      bool hasActiveCheckout = await isActive;
+      if (!hasActiveCheckout) {
         if (await isArchived) {
           await unarchive(github, waitForPull: false, notifyActive: true);
+        } else if (await repoDir.exists()) {
+          throw Exception('Path exists but is not a git checkout: $repoPath');
         } else {
           await _cloneRepository(updateActive);
         }
       } else {
         info("Repository ${repository.fullName} already exists at $repoPath");
+        if (updateActive) {
+          runtime.addActiveRepository(repository);
+        }
       }
       await _ensureSigningGuard();
       runtime.notifyChanged();
@@ -416,7 +423,7 @@ class ArcaneRepository {
     });
   }
 
-  Future<void> open(GitHub github, BuildContext context) {
+  Future<void> open(GitHub github) {
     return doWork<void>("Opening", () async {
       await ensureRepositoryActive(github);
 
@@ -428,19 +435,20 @@ class ArcaneRepository {
         repoPath,
         getRepoConfig(repository).openDirectory,
       );
-      tool.launch(openPath);
+      await tool.launch(openPath);
 
       final GitTool gitTool = getRepoConfig(repository).gitTool ??
           config.gitTool ??
           GitTool.gitkraken;
       info(
           "Opening ${repository.fullName} with Git Client ${gitTool.displayName}");
-      gitTool.launch(repoPath);
+      await gitTool.launch(repoPath);
 
-      await Future.wait<void>(<Future<void>>[
-        ensureRepositoryUpdated(github),
-        runAutoMacros(),
-      ]);
+      await ensureRepositoryUpdated(github);
+      unawaited(runAutoMacros().catchError((Object e, StackTrace stackTrace) {
+        warn("Auto macros failed for ${repository.fullName}: $e");
+        verbose("$stackTrace");
+      }));
 
       setRepoConfig(
         repository,
@@ -455,7 +463,7 @@ class ArcaneRepository {
 
   Future<void> archive() {
     return doWork<void>("Archiving", () async {
-      if (await isArchived || !await isActive) {
+      if (!config.archiveEnabled || await isArchived || !await isActive) {
         return;
       }
 
@@ -899,13 +907,16 @@ class ArcaneRepository {
   }
 
   Stream<String> findDartPackages(String path) async* {
+    Directory directory = Directory(path);
+    if (!await directory.exists()) {
+      return;
+    }
     if (await File("$path/pubspec.yaml").exists()) {
       yield path;
     }
-    for (FileSystemEntity entity
-        in Directory(path).listSync(followLinks: false)) {
+    await for (FileSystemEntity entity in directory.list(followLinks: false)) {
       if (entity is Directory) {
-        if (entity.path.endsWith(".plugin_symlinks")) {
+        if (_shouldSkipDartPackageSearchDirectory(entity)) {
           continue;
         }
         yield* findDartPackages(entity.path);
@@ -913,16 +924,39 @@ class ArcaneRepository {
     }
   }
 
+  bool _shouldSkipDartPackageSearchDirectory(Directory directory) {
+    String name = directory.path.split(Platform.pathSeparator).last;
+    if (name.startsWith('.')) {
+      return true;
+    }
+    Set<String> skippedNames = <String>{
+      'build',
+      'DerivedData',
+      'node_modules',
+      'Pods',
+      'target',
+      'vendor',
+    };
+    return skippedNames.contains(name);
+  }
+
   Future<void> runAutoMacros() async {
-    final List<String> packagePaths = <String>[
-      ...await findDartPackages(
-        DesktopPlatformAdapter.instance.joinPath(
-          repoPath,
-          getRepoConfig(repository).openDirectory,
-        ),
-      ).toList(),
-      ...await findDartPackages(repoPath).toList(),
+    List<String> packagePaths = <String>[];
+    Set<String> seenPaths = <String>{};
+    List<String> searchRoots = <String>[
+      DesktopPlatformAdapter.instance.joinPath(
+        repoPath,
+        getRepoConfig(repository).openDirectory,
+      ),
+      repoPath,
     ];
+    for (String searchRoot in searchRoots) {
+      await for (String path in findDartPackages(searchRoot)) {
+        if (seenPaths.add(path)) {
+          packagePaths.add(path);
+        }
+      }
+    }
     for (String path in packagePaths) {
       warn("Running pub get in $path");
       await commandRunner(

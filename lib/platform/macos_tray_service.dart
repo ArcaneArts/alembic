@@ -2,6 +2,30 @@ import 'package:fast_log/fast_log.dart';
 import 'package:flutter/services.dart';
 import 'package:rxdart/rxdart.dart';
 
+enum AlembicTrayMenuAction {
+  show,
+  hide,
+  refresh,
+  import,
+  settings,
+  resetPosition,
+  restart,
+  quit;
+
+  static AlembicTrayMenuAction? fromKey(String key) => switch (key) {
+        'show' => AlembicTrayMenuAction.show,
+        'hide' => AlembicTrayMenuAction.hide,
+        'refresh' => AlembicTrayMenuAction.refresh,
+        'import' => AlembicTrayMenuAction.import,
+        'settings' => AlembicTrayMenuAction.settings,
+        'resetPosition' => AlembicTrayMenuAction.resetPosition,
+        'restart' => AlembicTrayMenuAction.restart,
+        'quit' => AlembicTrayMenuAction.quit,
+        'exit' => AlembicTrayMenuAction.quit,
+        _ => null,
+      };
+}
+
 sealed class MacOSTrayEvent {
   const MacOSTrayEvent();
 }
@@ -12,7 +36,10 @@ class MacOSTrayLeftClick extends MacOSTrayEvent {
 
 class MacOSTrayMenuItem extends MacOSTrayEvent {
   final String key;
+
   const MacOSTrayMenuItem(this.key);
+
+  AlembicTrayMenuAction? get action => AlembicTrayMenuAction.fromKey(key);
 }
 
 class MacOSTrayService {
@@ -28,6 +55,11 @@ class MacOSTrayService {
   MacOSTrayService._();
 
   Stream<MacOSTrayEvent> get events => _events.stream;
+
+  Stream<AlembicTrayMenuAction> get menuActions => _events.stream
+      .whereType<MacOSTrayMenuItem>()
+      .map((event) => event.action)
+      .whereType<AlembicTrayMenuAction>();
 
   Future<void> init() async {
     _attachHandler();

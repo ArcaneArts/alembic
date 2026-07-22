@@ -1,137 +1,35 @@
-import 'dart:io';
+import 'dart:async';
 
-import 'package:alembic/app/alembic_dialogs.dart';
-import 'package:alembic/core/app_update_service.dart';
-import 'package:alembic/main.dart';
-import 'package:alembic/platform/desktop_platform_adapter.dart';
-import 'package:arcane/arcane.dart';
-import 'package:fast_log/fast_log.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:window_manager/window_manager.dart';
+import 'package:alembic/core/update_controller.dart';
+import 'package:alembic/core/update_status.dart';
+import 'package:rxdart/rxdart.dart';
 
-class HomeUpdateChecker {
-  static const String _settingsKey = 'achup';
+class HomeUpdatesHook {
+  final UpdateController controller;
+  final BehaviorSubject<bool> updateAvailable;
 
-  const HomeUpdateChecker();
+  StreamSubscription<UpdateSnapshot>? _subscription;
 
-  Future<bool> check({
-    required BuildContext context,
-    required bool force,
-  }) async {
-    if (!force && boxSettings.get(_settingsKey, defaultValue: true) != true) {
-      return false;
-    }
-    AppUpdateService updateService = AppUpdateService();
-    UpdateCheckResult? update;
-    bool shouldNotifyFailure = force;
-    try {
-      String currentVersion = packageInfo.version.trim();
-      update =
-          await updateService.checkForUpdate(currentVersion: currentVersion);
-      if (update == null) {
-        info('The app is up to date (version: $currentVersion)');
-        return false;
+  HomeUpdatesHook({required this.controller})
+      : updateAvailable =
+            BehaviorSubject<bool>.seeded(controller.value.updateAvailable);
+
+  void start() {
+    _subscription ??= controller.stream.listen((snapshot) {
+      if (updateAvailable.isClosed) {
+        return;
       }
-      if (!context.mounted) {
-        return true;
+      if (updateAvailable.value != snapshot.updateAvailable) {
+        updateAvailable.add(snapshot.updateAvailable);
       }
-      bool confirmed = await _confirmDownload(context, update);
-      if (!confirmed) {
-        return true;
-      }
-      shouldNotifyFailure = true;
-      await _downloadAndApply(updateService, update);
-      return true;
-    } catch (e) {
-      error('Error checking for updates: $e');
-      if (shouldNotifyFailure && context.mounted) {
-        await _showUpdateFailure(context, update, e);
-      }
-      return false;
-    } finally {
-      updateService.dispose();
-    }
+    });
   }
 
-  Future<bool> _confirmDownload(
-    BuildContext context,
-    UpdateCheckResult update,
-  ) {
-    DesktopPlatformAdapter adapter = DesktopPlatformAdapter.instance;
-    return showAlembicConfirmDialog(
-      context,
-      title: 'Alembic ${update.manifest.version} Available',
-      description:
-          'A new ${adapter.updatePlatformName} release is available. Alembic will download it, replace this install, and relaunch.',
-      confirmText: 'Update',
-      cancelText: 'Later',
-    );
-  }
+  Future<void> checkNow() => controller.checkNow();
 
-  Future<void> _showUpdateFailure(
-    BuildContext context,
-    UpdateCheckResult? update,
-    Object failure,
-  ) async {
-    DesktopPlatformAdapter adapter = DesktopPlatformAdapter.instance;
-    String manualInstallerUrl = _manualInstallerUrl(update);
-    if (manualInstallerUrl.isEmpty) {
-      await showAlembicInfoDialog(
-        context,
-        title: 'Update Failed',
-        message:
-            'Alembic could not complete the update check.\n\nDetails: $failure',
-      );
-      return;
-    }
-
-    bool openInstaller = await showAlembicConfirmDialog(
-      context,
-      title: 'Automatic Update Failed',
-      description:
-          'Alembic could not install the update automatically.\n\nDetails: $failure\n\nOpen the platform installer instead?',
-      confirmText: 'Open Installer',
-      cancelText: 'Close',
-    );
-    if (openInstaller) {
-      await adapter.launchDownloadedUpdate(manualInstallerUrl);
-    }
-  }
-
-  String _manualInstallerUrl(UpdateCheckResult? update) {
-    if (update == null) {
-      return '';
-    }
-    if (update.asset.manualUrl.isNotEmpty) {
-      return update.asset.manualUrl;
-    }
-    return update.asset.url;
-  }
-
-  Future<void> _downloadAndApply(
-    AppUpdateService updateService,
-    UpdateCheckResult update,
-  ) async {
-    DesktopPlatformAdapter adapter = DesktopPlatformAdapter.instance;
-    String temporaryDirectory = (await getTemporaryDirectory()).absolute.path;
-    File payload = await updateService.downloadAsset(
-      asset: update.asset,
-      temporaryDirectory: temporaryDirectory,
-    );
-    String installTarget = adapter.currentInstallTarget();
-    String manualInstallerUrl = _manualInstallerUrl(update);
-
-    verbose('Launching updater for $installTarget from ${payload.path}');
-    int launchExitCode = await adapter.launchSilentUpdateHelper(
-      payloadPath: payload.path,
-      installTarget: installTarget,
-      manualInstallerUrl: manualInstallerUrl,
-    );
-    if (launchExitCode != 0) {
-      throw Exception('Failed to launch silent update helper');
-    }
-    warn('Shutting down Alembic so the update can be installed');
-    await windowManager.destroy();
-    exit(0);
+  Future<void> dispose() async {
+    await _subscription?.cancel();
+    _subscription = null;
+    await updateAvailable.close();
   }
 }

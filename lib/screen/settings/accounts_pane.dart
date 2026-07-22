@@ -1,12 +1,20 @@
+import 'dart:async';
+
 import 'package:alembic/app/alembic_dialogs.dart';
 import 'package:alembic/core/token_validator.dart';
+import 'package:alembic/main.dart';
 import 'package:alembic/ui/alembic_ui.dart';
 import 'package:alembic/util/git_accounts.dart';
 import 'package:arcane/arcane.dart';
 import 'package:flutter/material.dart' as m;
 
 class AccountsSettingsPane extends StatefulWidget {
-  const AccountsSettingsPane({super.key});
+  final VoidCallback? onLogout;
+
+  const AccountsSettingsPane({
+    super.key,
+    this.onLogout,
+  });
 
   @override
   State<AccountsSettingsPane> createState() => _AccountsSettingsPaneState();
@@ -48,6 +56,7 @@ class _AccountsSettingsPaneState extends State<AccountsSettingsPane> {
         tokenType: detectTokenType(token),
         login: result.login,
       );
+      unawaited(repositoryListStore.refresh());
       if (mounted) {
         setState(() {});
       }
@@ -121,6 +130,7 @@ class _AccountsSettingsPaneState extends State<AccountsSettingsPane> {
       return;
     }
     await removeGitAccount(account.id);
+    unawaited(repositoryListStore.refresh());
     if (mounted) {
       setState(() {});
     }
@@ -128,6 +138,7 @@ class _AccountsSettingsPaneState extends State<AccountsSettingsPane> {
 
   Future<void> _setPrimary(GitAccount account) async {
     await setPrimaryGitAccount(account.id);
+    unawaited(repositoryListStore.refresh());
     if (mounted) {
       setState(() {});
     }
@@ -158,6 +169,7 @@ class _AccountsSettingsPaneState extends State<AccountsSettingsPane> {
         tokenType: detectTokenType(token),
         login: result.login,
       ));
+      unawaited(repositoryListStore.refresh());
       if (mounted) {
         setState(() {});
       }
@@ -189,35 +201,79 @@ class _AccountsSettingsPaneState extends State<AccountsSettingsPane> {
         onPressed: _busy ? null : _addAccount,
         prominent: true,
       ),
-      children: _buildRows(accounts, primaryId),
+      children: <Widget>[
+        if (accounts.isEmpty)
+          const AlembicSettingsInfoRow(
+            title: 'No accounts',
+            description:
+                'Add a GitHub account below to start syncing repositories.',
+            value: '',
+          )
+        else
+          for (GitAccount account in accounts)
+            _AccountRow(
+              account: account,
+              isPrimary: account.id == primaryId,
+              busy: _busy,
+              onRename: () => _renameAccount(account),
+              onDelete: () => _deleteAccount(account),
+              onSetPrimary:
+                  account.id == primaryId ? null : () => _setPrimary(account),
+              onReplaceToken: () => _replaceToken(account),
+            ),
+        if (widget.onLogout != null)
+          _LogoutRow(
+            onLogout: widget.onLogout!,
+          ),
+      ],
     );
   }
+}
 
-  List<Widget> _buildRows(List<GitAccount> accounts, String? primaryId) {
-    if (accounts.isEmpty) {
-      return <Widget>[
-        const AlembicSettingsInfoRow(
-          title: 'No accounts',
-          description:
-              'Add a GitHub account below to start syncing repositories.',
-          value: '',
+class _LogoutRow extends StatelessWidget {
+  final VoidCallback onLogout;
+
+  const _LogoutRow({
+    required this.onLogout,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    ThemeData theme = Theme.of(context);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: <Widget>[
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(
+                'Log out',
+                style: theme.typography.small.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: theme.colorScheme.destructive,
+                ),
+              ),
+              const Gap(AlembicShadcnTokens.gapXs),
+              Text(
+                'Sign out of this Alembic session and remove all saved git accounts from this device.',
+                style: theme.typography.xSmall.copyWith(
+                  color: theme.colorScheme.mutedForeground,
+                ),
+              ),
+            ],
+          ),
         ),
-      ];
-    }
-    List<Widget> rows = <Widget>[];
-    for (GitAccount account in accounts) {
-      bool isPrimary = account.id == primaryId;
-      rows.add(_AccountRow(
-        account: account,
-        isPrimary: isPrimary,
-        busy: _busy,
-        onRename: () => _renameAccount(account),
-        onDelete: () => _deleteAccount(account),
-        onSetPrimary: isPrimary ? null : () => _setPrimary(account),
-        onReplaceToken: () => _replaceToken(account),
-      ));
-    }
-    return rows;
+        const Gap(AlembicShadcnTokens.gapLg),
+        AlembicToolbarButton(
+          label: 'Log out',
+          leadingIcon: m.Icons.logout,
+          destructive: true,
+          compact: true,
+          onPressed: onLogout,
+        ),
+      ],
+    );
   }
 }
 

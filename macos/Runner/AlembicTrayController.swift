@@ -422,17 +422,34 @@ final class AlembicTrayController: NSObject {
 
     private func makeMenu() -> NSMenu {
         let menu: NSMenu = NSMenu()
+        menu.autoenablesItems = false
         menu.addItem(menuItem(title: "Show Alembic", key: "show"))
-        menu.addItem(menuItem(title: "Hide Alembic", key: "hide"))
+        menu.addItem(menuItem(
+            title: "Hide Window",
+            key: "hide",
+            enabled: window?.isVisible == true
+        ))
         menu.addItem(NSMenuItem.separator())
-        menu.addItem(menuItem(title: "Open Settings", key: "settings"))
-        menu.addItem(menuItem(title: "Check for Updates", key: "update"))
+        menu.addItem(menuItem(title: "Refresh Repositories", key: "refresh"))
+        menu.addItem(menuItem(title: "Import Repositories...", key: "import"))
+        menu.addItem(menuItem(title: "Settings...", key: "settings"))
+        menu.addItem(menuItem(
+            title: "Reset Window Position",
+            key: "resetPosition",
+            symbolName: "arrow.counterclockwise"
+        ))
         menu.addItem(NSMenuItem.separator())
-        menu.addItem(menuItem(title: "Quit Alembic", key: "exit"))
+        menu.addItem(menuItem(title: "Restart Alembic", key: "restart"))
+        menu.addItem(menuItem(title: "Quit Alembic", key: "quit"))
         return menu
     }
 
-    private func menuItem(title: String, key: String) -> NSMenuItem {
+    private func menuItem(
+        title: String,
+        key: String,
+        enabled: Bool = true,
+        symbolName: String? = nil
+    ) -> NSMenuItem {
         let item: NSMenuItem = NSMenuItem(
             title: title,
             action: #selector(handleMenuItemClick(_:)),
@@ -440,6 +457,15 @@ final class AlembicTrayController: NSObject {
         )
         item.target = self
         item.representedObject = key
+        item.isEnabled = enabled
+        if let symbolName: String = symbolName,
+           #available(macOS 11.0, *),
+           let symbol: NSImage = NSImage(
+               systemSymbolName: symbolName,
+               accessibilityDescription: title
+           ) {
+            item.image = symbol
+        }
         return item
     }
 

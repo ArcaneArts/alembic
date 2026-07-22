@@ -15,6 +15,7 @@ class AlembicDropdownMenu<T> extends StatelessWidget {
   final String? tooltip;
   final AlignmentGeometry alignment;
   final T? selectedValue;
+  final double? minWidth;
 
   const AlembicDropdownMenu({
     super.key,
@@ -28,6 +29,7 @@ class AlembicDropdownMenu<T> extends StatelessWidget {
     this.tooltip,
     this.alignment = Alignment.centerLeft,
     this.selectedValue,
+    this.minWidth,
   });
 
   @override
@@ -41,6 +43,7 @@ class AlembicDropdownMenu<T> extends StatelessWidget {
         compact: compact,
         iconOnly: iconOnly,
         alignment: alignment,
+        minWidth: minWidth,
       ),
     );
     if (tooltip == null && !iconOnly) {
@@ -172,6 +175,7 @@ class AlembicSelect<T> extends StatelessWidget {
   final ValueChanged<T> onChanged;
   final IconData? leadingIcon;
   final bool compact;
+  final double? minWidth;
 
   const AlembicSelect({
     super.key,
@@ -180,6 +184,7 @@ class AlembicSelect<T> extends StatelessWidget {
     required this.onChanged,
     this.leadingIcon,
     this.compact = false,
+    this.minWidth,
   });
 
   @override
@@ -199,6 +204,7 @@ class AlembicSelect<T> extends StatelessWidget {
       leadingIcon: leadingIcon,
       compact: compact,
       selectedValue: value,
+      minWidth: minWidth,
     );
   }
 }
@@ -211,6 +217,7 @@ class _AlembicDropdownTrigger extends StatelessWidget {
   final bool compact;
   final bool iconOnly;
   final AlignmentGeometry alignment;
+  final double? minWidth;
 
   const _AlembicDropdownTrigger({
     required this.label,
@@ -220,6 +227,7 @@ class _AlembicDropdownTrigger extends StatelessWidget {
     required this.compact,
     required this.iconOnly,
     required this.alignment,
+    required this.minWidth,
   });
 
   @override
@@ -236,7 +244,7 @@ class _AlembicDropdownTrigger extends StatelessWidget {
               ? AlembicShadcnTokens.iconButtonSize
               : compact
                   ? AlembicShadcnTokens.compactButtonHeight
-                  : AlembicShadcnTokens.buttonHeight,
+                  : AlembicShadcnTokens.controlHeight,
           alignment: alignment,
           padding: iconOnly
               ? EdgeInsets.zero
@@ -259,10 +267,17 @@ class _AlembicDropdownTrigger extends StatelessWidget {
         ),
       ),
     );
-    return AlembicControlFrame(
+    Widget framed = AlembicControlFrame(
       compact: compact,
       iconOnly: iconOnly,
       child: button,
+    );
+    if (iconOnly || minWidth == null) {
+      return framed;
+    }
+    return ConstrainedBox(
+      constraints: BoxConstraints(minWidth: minWidth!),
+      child: framed,
     );
   }
 }

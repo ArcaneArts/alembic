@@ -6,4 +6,3 @@ export 'package:alembic/ui/controls/alembic_inputs.dart';
 export 'package:alembic/ui/controls/alembic_models.dart';
 export 'package:alembic/ui/controls/alembic_navigation.dart';
 export 'package:alembic/ui/controls/alembic_progress.dart';
-export 'package:alembic/ui/controls/alembic_tabs.dart';

@@ -32,7 +32,7 @@ class AlembicControlFrame extends StatelessWidget {
             : AlembicShadcnTokens.buttonMinWidth,
         minHeight: compact
             ? AlembicShadcnTokens.compactButtonHeight
-            : AlembicShadcnTokens.buttonHeight,
+            : AlembicShadcnTokens.controlHeight,
       ),
       child: child,
     );

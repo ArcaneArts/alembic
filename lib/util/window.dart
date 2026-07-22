@@ -11,26 +11,27 @@ import 'package:tray_manager/tray_manager.dart';
 import 'package:window_manager/window_manager.dart';
 
 class WindowUtil {
-  static const double minWidth = 460;
-  static const double minHeight = 640;
-  static const double defaultWidth = 560;
-  static const double defaultHeight = 760;
-  static const double maxWidth = 680;
-  static const double maxHeight = 980;
+  static const double minWidth = 920;
+  static const double minHeight = 600;
+  static const double defaultWidth = 1080;
+  static const double defaultHeight = 720;
   static const double trayOffset = 12;
   static const double visibleMargin = 8;
   static const String _windowsIconAsset = 'assets/app_icon.ico';
   static const String _defaultTrayIconAsset = 'assets/tray.png';
 
-  static bool isDark = false;
-  static bool iconIsDark = true;
   static Size _windowSize = const Size(defaultWidth, defaultHeight);
-  static bool _hideOnBlur = true;
+  static bool _hideOnBlur = false;
   static int _hideOnBlurSuspendCount = 0;
   static DateTime _hideOnBlurBlockedUntil = DateTime.fromMillisecondsSinceEpoch(
     0,
   );
   static StreamSubscription<MacOSTrayEvent>? _macOSTraySubscription;
+  static final StreamController<AlembicTrayMenuAction> _menuActionController =
+      StreamController<AlembicTrayMenuAction>.broadcast();
+
+  static Stream<AlembicTrayMenuAction> get menuActions =>
+      _menuActionController.stream;
 
   static bool get hideOnBlurEnabled =>
       _hideOnBlur &&
@@ -38,30 +39,21 @@ class WindowUtil {
       DateTime.now().isAfter(_hideOnBlurBlockedUntil);
 
   static Future<void> init() async {
+    _windowSize = _loadWindowSize();
+
     if (windowMode) {
+      await _initWindowMode();
       return;
     }
 
-    _windowSize = _loadWindowSize();
-
     if (!boxSettings.containsKey('hide_on_blur')) {
-      await boxSettings.put(
-        'hide_on_blur',
-        DesktopPlatformAdapter.instance.isTrayFirstPlatform,
-      );
+      await boxSettings.put('hide_on_blur', false);
     }
     if (!boxSettings.containsKey('start_hidden')) {
-      await boxSettings.put(
-        'start_hidden',
-        DesktopPlatformAdapter.instance.isTrayFirstPlatform,
-      );
+      await boxSettings.put('start_hidden', true);
     }
 
-    _hideOnBlur = boxSettings.get(
-          'hide_on_blur',
-          defaultValue: DesktopPlatformAdapter.instance.isTrayFirstPlatform,
-        ) ==
-        true;
+    _hideOnBlur = boxSettings.get('hide_on_blur', defaultValue: false) == true;
 
     verbose("  Starting Window Manager");
     await windowManager.ensureInitialized();
@@ -75,13 +67,6 @@ class WindowUtil {
     );
     verbose("  Waiting for Window to be ready");
     windowManager.waitUntilReadyToShow(_windowOptions, () async {
-      verbose("Setting Window Properties (mv=false, bg=transparent)");
-      if (DesktopPlatformAdapter.instance.isMacOS) {
-        await _safeWindowCall(
-          'disable native window movement',
-          () => windowManager.setMovable(false),
-        );
-      }
       if (DesktopPlatformAdapter.instance.isWindows) {
         await _safeWindowCall(
           'set Windows taskbar icon',
@@ -89,11 +74,8 @@ class WindowUtil {
         );
       }
       await _safeWindowCall('center window', () => windowManager.center());
-      bool startHidden = boxSettings.get(
-            'start_hidden',
-            defaultValue: DesktopPlatformAdapter.instance.isTrayFirstPlatform,
-          ) ==
-          true;
+      bool startHidden =
+          boxSettings.get('start_hidden', defaultValue: true) == true;
       if (startHidden) {
         verbose("Window is Ready. Starting hidden (tray mode).");
         await _setWindowsTaskbarVisibility(visible: false);
@@ -104,27 +86,19 @@ class WindowUtil {
         await _safeWindowCall('show window', () => windowManager.show());
         await _safeWindowCall('focus window', () => windowManager.focus());
       }
-      await _reassertFramelessVisuals();
-      Future<void>.delayed(const Duration(milliseconds: 120), () async {
-        await _reassertFramelessVisuals();
-      });
       await persistWindowSize();
     });
   }
 
-  static Future<void> _reassertFramelessVisuals() async {
-    await _safeWindowCall(
-      'make window frameless',
-      windowManager.setAsFrameless,
-    );
-    await _safeWindowCall(
-      'disable window shadow',
-      () => windowManager.setHasShadow(false),
-    );
-    await _safeWindowCall(
-      'set transparent window background',
-      () => windowManager.setBackgroundColor(const Color(0x00000000)),
-    );
+  static Future<void> _initWindowMode() async {
+    verbose("  Window mode active: starting normal window without tray");
+    await windowManager.ensureInitialized();
+    await initSystemTray();
+    windowManager.waitUntilReadyToShow(_windowModeOptions, () async {
+      await _safeWindowCall('center window', () => windowManager.center());
+      await _safeWindowCall('show window', () => windowManager.show());
+      await _safeWindowCall('focus window', () => windowManager.focus());
+    });
   }
 
   static Future<void> _safeWindowCall(
@@ -190,6 +164,27 @@ class WindowUtil {
         ),
         MenuItem.separator(),
         MenuItem(
+          key: 'refresh',
+          label: 'Refresh Repositories',
+        ),
+        MenuItem(
+          key: 'import',
+          label: 'Import Repositories...',
+        ),
+        MenuItem(
+          key: 'settings',
+          label: 'Settings...',
+        ),
+        MenuItem(
+          key: 'resetPosition',
+          label: 'Reset Window Position',
+        ),
+        MenuItem.separator(),
+        MenuItem(
+          key: 'restart',
+          label: 'Restart Alembic',
+        ),
+        MenuItem(
           key: 'exit',
           label: 'Exit Alembic',
         ),
@@ -205,25 +200,79 @@ class WindowUtil {
   static void _handleMacOSTrayEvent(MacOSTrayEvent event) {
     if (event is MacOSTrayLeftClick) {
       verbose('macOS tray left-click: showing window');
-      WindowUtil.show();
+      show();
       return;
     }
     if (event is! MacOSTrayMenuItem) {
       return;
     }
-    String key = event.key;
-    verbose('macOS tray menu item: $key');
-    if (key == 'hide') {
-      WindowUtil.hide();
+    verbose('macOS tray menu item: ${event.key}');
+    AlembicTrayMenuAction? action = event.action;
+    if (action == null) {
+      show();
       return;
     }
-    if (key == 'exit') {
+    _dispatchTrayMenuAction(action);
+  }
+
+  static void _dispatchTrayMenuAction(AlembicTrayMenuAction action) {
+    verbose('tray menu action: ${action.name}');
+    if (action == AlembicTrayMenuAction.show) {
+      show();
+      return;
+    }
+    if (action == AlembicTrayMenuAction.hide) {
+      hide();
+      return;
+    }
+    if (action == AlembicTrayMenuAction.quit) {
       windowManager.destroy().then((_) => exit(0));
       return;
     }
-    if (key == 'show' || key == 'settings' || key == 'update') {
-      WindowUtil.show();
+    if (action == AlembicTrayMenuAction.restart) {
+      restart();
+      return;
     }
+    if (action == AlembicTrayMenuAction.resetPosition) {
+      resetWindowPosition();
+      return;
+    }
+    show();
+    _menuActionController.add(action);
+  }
+
+  static Future<void> resetWindowPosition() async {
+    if (windowMode) {
+      return;
+    }
+    _windowSize = const Size(defaultWidth, defaultHeight);
+    await boxSettings.delete('window_width');
+    await boxSettings.delete('window_height');
+    await _safeWindowCall(
+      'reset window size',
+      () => windowManager.setSize(
+        const Size(defaultWidth, defaultHeight),
+        animate: false,
+      ),
+    );
+    await _setWindowsTaskbarVisibility(visible: true);
+    bool positionedNearTray = DesktopPlatformAdapter.instance.isMacOS &&
+        await _positionNearTrayBounds();
+    if (!positionedNearTray) {
+      await _safeWindowCall('center window', () => windowManager.center());
+    }
+    await _safeWindowCall('show window', () => windowManager.show());
+    await _safeWindowCall('focus window', () => windowManager.focus());
+  }
+
+  static Future<void> restart() async {
+    await Process.start(
+      Platform.resolvedExecutable,
+      <String>[],
+      mode: ProcessStartMode.detached,
+    );
+    await _safeWindowCall('destroy window', windowManager.destroy);
+    exit(0);
   }
 
   static void _scheduleMacOSTrayDebugDumps() {
@@ -265,15 +314,21 @@ class WindowUtil {
 
   static WindowOptions get _windowOptions => WindowOptions(
         size: _windowSize,
-        maximumSize: const Size(maxWidth, maxHeight),
         minimumSize: const Size(minWidth, minHeight),
         center: false,
         windowButtonVisibility: false,
         title: 'Alembic',
         alwaysOnTop: false,
-        backgroundColor: const Color(0x00000000),
         skipTaskbar: DesktopPlatformAdapter.instance.isTrayFirstPlatform,
         titleBarStyle: TitleBarStyle.hidden,
+      );
+
+  static WindowOptions get _windowModeOptions => WindowOptions(
+        size: _windowSize,
+        minimumSize: const Size(minWidth, minHeight),
+        center: true,
+        title: 'Alembic',
+        titleBarStyle: TitleBarStyle.normal,
       );
 
   static Size _loadWindowSize() {
@@ -283,7 +338,8 @@ class WindowUtil {
     if ((rawWidth == 1380 && rawHeight == 860) ||
         (rawWidth == 1280 && rawHeight == 800) ||
         (rawWidth == 980 && rawHeight == 740) ||
-        (rawWidth == 900 && rawHeight == 740)) {
+        (rawWidth == 900 && rawHeight == 740) ||
+        (rawWidth == 560 && rawHeight == 760)) {
       return const Size(defaultWidth, defaultHeight);
     }
 
@@ -291,13 +347,11 @@ class WindowUtil {
       raw: rawWidth,
       fallback: defaultWidth,
       min: minWidth,
-      max: maxWidth,
     );
     double height = _coerceDimension(
       raw: rawHeight,
       fallback: defaultHeight,
       min: minHeight,
-      max: maxHeight,
     );
 
     return Size(width, height);
@@ -307,11 +361,10 @@ class WindowUtil {
     required dynamic raw,
     required double fallback,
     required double min,
-    required double max,
   }) {
     if (raw is num) {
       double value = raw.toDouble();
-      return value.clamp(min, max).toDouble();
+      return value < min ? min : value;
     }
 
     return fallback;
@@ -323,8 +376,8 @@ class WindowUtil {
     }
 
     Size size = await windowManager.getSize();
-    double width = size.width.clamp(minWidth, maxWidth).toDouble();
-    double height = size.height.clamp(minHeight, maxHeight).toDouble();
+    double width = size.width < minWidth ? minWidth : size.width;
+    double height = size.height < minHeight ? minHeight : size.height;
 
     _windowSize = Size(width, height);
     await boxSettings.put('window_width', width);
@@ -339,10 +392,6 @@ class WindowUtil {
     await _positionNearTray();
     await _safeWindowCall('show window', () => windowManager.show());
     await _safeWindowCall('focus window', () => windowManager.focus());
-    await _reassertFramelessVisuals();
-    Future<void>.delayed(const Duration(milliseconds: 120), () async {
-      await _reassertFramelessVisuals();
-    });
   }
 
   static Future<void> hide() async {
@@ -391,37 +440,55 @@ class WindowUtil {
   }
 
   static Future<void> _positionNearTray() async {
-    Rect? trayBounds = DesktopPlatformAdapter.instance.isMacOS
-        ? await MacOSTrayService.instance.getBounds()
-        : await trayManager.getBounds();
+    bool positionedNearTray = await _positionNearTrayBounds();
+    if (positionedNearTray) {
+      return;
+    }
     List<Display> displays = await screenRetriever.getAllDisplays();
     if (displays.isEmpty) {
       return;
     }
-
-    Rect? usableTrayBounds = _usableTrayBounds(trayBounds);
-    Display display = usableTrayBounds == null
-        ? await _defaultDisplay(displays)
-        : _displayForTrayBounds(
-            trayBounds: usableTrayBounds,
-            displays: displays,
-          );
+    Display display = await _defaultDisplay(displays);
     Rect visibleBounds = _visibleBoundsForDisplay(display);
     Size windowSize = await _currentWindowSize();
-    Offset position = usableTrayBounds == null
-        ? _defaultTrayFallbackPosition(
-            visibleBounds: visibleBounds,
-            windowSize: windowSize,
-          )
-        : _positionForTrayBounds(
-            trayBounds: usableTrayBounds,
-            visibleBounds: visibleBounds,
-            windowSize: windowSize,
-          );
+    Offset position = _defaultTrayFallbackPosition(
+      visibleBounds: visibleBounds,
+      windowSize: windowSize,
+    );
     await _safeWindowCall(
       'move window near tray',
       () => windowManager.setPosition(position, animate: false),
     );
+  }
+
+  static Future<bool> _positionNearTrayBounds() async {
+    Rect? trayBounds = DesktopPlatformAdapter.instance.isMacOS
+        ? await MacOSTrayService.instance.getBounds()
+        : await trayManager.getBounds();
+    Rect? usableTrayBounds = _usableTrayBounds(trayBounds);
+    if (usableTrayBounds == null) {
+      return false;
+    }
+    List<Display> displays = await screenRetriever.getAllDisplays();
+    if (displays.isEmpty) {
+      return false;
+    }
+    Display display = _displayForTrayBounds(
+      trayBounds: usableTrayBounds,
+      displays: displays,
+    );
+    Rect visibleBounds = _visibleBoundsForDisplay(display);
+    Size windowSize = await _currentWindowSize();
+    Offset position = _positionForTrayBounds(
+      trayBounds: usableTrayBounds,
+      visibleBounds: visibleBounds,
+      windowSize: windowSize,
+    );
+    await _safeWindowCall(
+      'move window near tray',
+      () => windowManager.setPosition(position, animate: false),
+    );
+    return true;
   }
 
   static Rect? _usableTrayBounds(Rect? trayBounds) {
@@ -633,8 +700,6 @@ enum _TrayEdge {
 class AlembicTrayListener implements TrayListener {
   @override
   void onTrayIconMouseDown() {
-    // On Windows, the plugin dispatches `onTrayIconMouseDown` for
-    // `WM_LBUTTONUP`, so this is the click event we receive.
     if (Platform.isWindows) {
       WindowUtil.show();
     }
@@ -642,8 +707,6 @@ class AlembicTrayListener implements TrayListener {
 
   @override
   void onTrayIconMouseUp() {
-    // macOS dispatches both Down and Up. Use Up to mirror the original
-    // behaviour while leaving Windows handled in `onTrayIconMouseDown`.
     if (!Platform.isWindows) {
       WindowUtil.show();
     }
@@ -651,8 +714,6 @@ class AlembicTrayListener implements TrayListener {
 
   @override
   void onTrayIconRightMouseDown() {
-    // On Windows, the plugin dispatches `onTrayIconRightMouseDown` for
-    // `WM_RBUTTONUP`, so this is when we should pop the context menu.
     if (Platform.isWindows) {
       trayManager.popUpContextMenu();
     }
@@ -667,17 +728,12 @@ class AlembicTrayListener implements TrayListener {
 
   @override
   void onTrayMenuItemClick(MenuItem menuItem) {
-    if (menuItem.key == 'show') {
-      WindowUtil.show();
+    AlembicTrayMenuAction? action =
+        AlembicTrayMenuAction.fromKey(menuItem.key ?? '');
+    if (action == null) {
       return;
     }
-    if (menuItem.key == 'hide') {
-      WindowUtil.hide();
-      return;
-    }
-    if (menuItem.key == 'exit') {
-      windowManager.destroy().then((_) => exit(0));
-    }
+    WindowUtil._dispatchTrayMenuAction(action);
   }
 }
 
