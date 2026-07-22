@@ -283,8 +283,6 @@ class _EmptyBrowser extends StatelessWidget {
 }
 
 class _RepositoryList extends StatelessWidget {
-  static const double _rowCacheExtent = 480;
-
   final ScrollController scrollController;
   final List<HomeRepositoryEntry> entries;
   final RepositoryRuntime runtime;
@@ -332,7 +330,6 @@ class _RepositoryList extends StatelessWidget {
         controller: scrollController,
         child: m.CustomScrollView(
           controller: scrollController,
-          cacheExtent: _rowCacheExtent,
           slivers: <Widget>[
             m.SliverPadding(
               padding: const EdgeInsets.only(bottom: AlembicShadcnTokens.gapSm),
